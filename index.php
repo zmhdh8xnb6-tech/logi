@@ -11,7 +11,7 @@ if ($conn->connect_error) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Cadastro de Clientes</title>
+  <title>Logi</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -30,11 +30,11 @@ if ($conn->connect_error) {
         <table class="table table-striped" id="clientesTable">
           <thead>
             <tr>
-              <th>Nome</th>
-              <th>Email</th>
-              <th>Telefone</th>
-              <th>Número da Empresa</th>
+              <th>Número</th>
               <th>CNPJ</th>
+              <th>Nome</th>
+              <th>Endereço</th>
+              <th>E-mail</th>
               <th>Ações</th>
             </tr>
           </thead>
@@ -56,24 +56,24 @@ if ($conn->connect_error) {
           <div class="modal-body">
             <input type="hidden" name="id" id="id">
             <div class="mb-3">
+              <label for="numero" class="form-label">Número</label>
+              <input type="text" class="form-control" id="numero" name="numero" required>
+            </div>
+            <div class="mb-3">
+              <label for="cnpj" class="form-label">Cnpj</label>
+              <input type="text" class="form-control" id="cnpj" name="cnpj" required>
+            </div>
+            <div class="mb-3">
               <label for="nome" class="form-label">Nome</label>
-              <input type="text" class="form-control" id="nome" name="nome" required>
+              <input type="text" class="form-control" id="nome" name="nome">
             </div>
             <div class="mb-3">
-              <label for="email" class="form-label">Email</label>
-              <input type="email" class="form-control" id="email" name="email" required>
+              <label for="endereco" class="form-label">Endereço</label>
+              <input type="text" class="form-control" id="endereco" name="endereco">
             </div>
             <div class="mb-3">
-              <label for="telefone" class="form-label">Telefone</label>
-              <input type="text" class="form-control" id="telefone" name="telefone">
-            </div>
-            <div class="mb-3">
-              <label for="numero_empresa" class="form-label">Número da Empresa</label>
-              <input type="text" class="form-control" id="numero_empresa" name="numero_empresa">
-            </div>
-            <div class="mb-3">
-              <label for="cnpj" class="form-label">CNPJ</label>
-              <input type="text" class="form-control" id="cnpj" name="cnpj">
+              <label for="email" class="form-label">E-mail</label>
+              <input type="email" class="form-control" id="email" name="email">
             </div>
           </div>
           <div class="modal-footer">

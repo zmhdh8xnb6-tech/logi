@@ -26,15 +26,15 @@ if ($action == 'read') {
 
 if ($action == 'create' || $action == 'update') {
     $id = $_POST['id'] ?? '';
-    $nome = $_POST['nome'] ?? '';
-    $email = $_POST['email'] ?? '';
-    $telefone = $_POST['telefone'] ?? '';
-    $numero_empresa = $_POST['numero_empresa'] ?? '';
+    $numero = $_POST['numero'] ?? '';
     $cnpj = $_POST['cnpj'] ?? '';
+    $nome = $_POST['nome'] ?? '';
+    $endereco = $_POST['endereco'] ?? '';
+    $email = $_POST['email'] ?? '';
 
     if ($id == '') {
-        $stmt = $conn->prepare("INSERT INTO clientes (nome, email, telefone, numero_empresa, cnpj) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("sssss", $nome, $email, $telefone, $numero_empresa, $cnpj);
+        $stmt = $conn->prepare("INSERT INTO clientes (numero, cnpj, nome, endereco, email) VALUES (?, ?, ?, ?, ?)");
+        $stmt->bind_param("sssss", $numero, $cnpj, $nome, $endereco, $email);
         if ($stmt->execute()) {
             echo "ok";
         } else {
@@ -42,8 +42,8 @@ if ($action == 'create' || $action == 'update') {
             echo "Erro ao inserir: " . $stmt->error;
         }
     } else {
-        $stmt = $conn->prepare("UPDATE clientes SET nome=?, email=?, telefone=?, numero_empresa=?, cnpj=? WHERE id=?");
-        $stmt->bind_param("sssssi", $nome, $email, $telefone, $numero_empresa, $cnpj, $id);
+        $stmt = $conn->prepare("UPDATE clientes SET numero=?, cnpj=?, nome=?, endereco=?, email=? WHERE id=?");
+        $stmt->bind_param("sssssi", $numero, $cnpj, $nome, $endereco, $email, $id);
         if ($stmt->execute()) {
             echo "ok";
         } else {

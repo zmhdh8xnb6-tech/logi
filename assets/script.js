@@ -33,21 +33,21 @@ function carregarClientes() {
     $.getJSON('api.php?action=read', function (data) {
         let linhas = '';
         $.each(data, function (i, cliente) {
-            const nome = (cliente.nome || '').replace(/'/g, "\\'");
-            const email = (cliente.email || '').replace(/'/g, "\\'");
-            const telefone = (cliente.telefone || '').replace(/'/g, "\\'");
-            const numero_empresa = (cliente.numero_empresa || '').replace(/'/g, "\\'");
+            const numero = (cliente.numero || '').replace(/'/g, "\\'");
             const cnpj = (cliente.cnpj || '').replace(/'/g, "\\'");
+            const nome = (cliente.nome || '').replace(/'/g, "\\'");
+            const endereco = (cliente.endereco || '').replace(/'/g, "\\'");
+            const email = (cliente.email || '').replace(/'/g, "\\'");
 
             linhas += `
                 <tr>
-                    <td>${nome}</td>
-                    <td>${email}</td>
-                    <td>${telefone}</td>
-                    <td>${numero_empresa}</td>
+                    <td>${numero}</td>
                     <td>${cnpj}</td>
+                    <td>${nome}</td>
+                    <td>${endereco}</td>
+                    <td>${email}</td>
                     <td>
-                        <button class="btn btn-warning btn-sm" onclick="abrirModalEditar(${cliente.id}, '${nome}', '${email}', '${telefone}', '${numero_empresa}', '${cnpj}')">Editar</button>
+                        <button class="btn btn-warning btn-sm" onclick="abrirModalEditar(${cliente.id}, '${numero}', '${cnpj}', '${nome}', '${endereco}', '${email}')">Editar</button>
                         <button class="btn btn-danger btn-sm" onclick="excluirCliente(${cliente.id})">Excluir</button>
                     </td>
                 </tr>`;
@@ -64,14 +64,14 @@ function abrirModalNovo() {
     modal.show();
 }
 
-function abrirModalEditar(id, nome, email, telefone, numero_empresa, cnpj) {
+function abrirModalEditar(id, numero, cnpj, nome, endereco, email) {
     $('#clienteModalLabel').text('Editar Cliente');
     $('#id').val(id);
-    $('#nome').val(nome);
-    $('#email').val(email);
-    $('#telefone').val(telefone);
-    $('#numero_empresa').val(numero_empresa);
+    $('#numero').val(numero);
     $('#cnpj').val(cnpj);
+    $('#nome').val(nome);
+    $('#endereco').val(endereco);
+    $('#email').val(email);
     var modal = new bootstrap.Modal(document.getElementById('clienteModal'));
     modal.show();
 }
