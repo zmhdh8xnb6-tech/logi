@@ -1,0 +1,30 @@
+<svg width="900" height="260" viewBox="0 0 900 260" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Logi logo</title>
+  <desc id="desc">Logo Logi with blue geometric L icon and navy wordmark.</desc>
+
+  <defs>
+    <linearGradient id="blueMain" x1="91" y1="28" x2="184" y2="213" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B63FF"/>
+      <stop offset="1" stop-color="#0636B8"/>
+    </linearGradient>
+    <linearGradient id="blueLight" x1="202" y1="132" x2="351" y2="214" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B78FF"/>
+      <stop offset="1" stop-color="#05B6F3"/>
+    </linearGradient>
+    <linearGradient id="blueDark" x1="160" y1="128" x2="245" y2="221" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#084DD9"/>
+      <stop offset="1" stop-color="#062C94"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Icon -->
+  <g transform="translate(40 18)">
+    <path d="M103.1 0C112 0 119.2 7.2 119.2 16.1V132.4C119.2 143.5 123.6 154.1 131.4 161.9L193.6 224.1H79.5C35.6 224.1 0 188.5 0 144.6V67.4C0 45.3 10.3 24.4 27.8 10.9L92.9 3.4C95.8 1.2 99.4 0 103.1 0Z" fill="url(#blueMain)"/>
+    <path d="M119.2 132.4H237.8C254.2 132.4 269.8 139.7 280.3 152.3L342.4 226.6C350.9 236.8 343.6 252.4 330.3 252.4H193.6L131.4 190.2C123.6 182.4 119.2 171.8 119.2 160.7V132.4Z" fill="url(#blueLight)"/>
+    <path d="M119.2 132.4V160.7C119.2 171.8 123.6 182.4 131.4 190.2L193.6 252.4H118.9L74.2 207.8C58.9 192.5 50.3 171.8 50.3 150.2V132.4H119.2Z" fill="url(#blueDark)" opacity="0.95"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="420" y="182" fill="#06153B" font-family="Inter, Poppins, Arial, Helvetica, sans-serif" font-size="132" font-weight="800" letter-spacing="-7">Logi</text>
+  <circle cx="779" cy="66" r="22" fill="#096BFF"/>
+</svg>
