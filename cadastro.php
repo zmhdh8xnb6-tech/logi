@@ -1,6 +1,5 @@
 <?php
-session_start();
-
+require 'config.php';
 require 'mailer.php';
 
 $conn = new mysqli("localhost", "root", "", "crud_clientes");

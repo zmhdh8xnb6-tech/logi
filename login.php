@@ -1,5 +1,6 @@
 <?php
-session_start();
+require 'config.php';
+
 
 $conn = new mysqli("localhost", "root", "", "crud_clientes");
 if ($conn->connect_error) {
