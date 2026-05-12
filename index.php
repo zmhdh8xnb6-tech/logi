@@ -24,47 +24,54 @@ if ($conn->connect_error) {
 
 <head>
     <?php include 'includes/head.php'; ?>
-    <title>Logi</title>
+    <title>Clientes</title>
 </head>
 
-<body>
-    <div class="container mt-5">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <div>
-                <strong>Usuário:</strong> <?= htmlspecialchars($_SESSION["usuario_nome"]) ?>
+<body class="app-layout">
+
+    <?php include 'includes/sidebar.php'; ?>
+
+    <main class="app-main">
+
+        <div class="container-fluid">
+
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h3 class="mb-1">Clientes</h3>
+                    <p class="text-muted mb-0">Cadastro e gerenciamento de clientes</p>
+                </div>
+
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#clienteModal" onclick="abrirModalNovo()">
+                    <i class="bi bi-plus-circle"></i> Novo Cliente
+                </button>
             </div>
-            <a href="logout.php" class="btn btn-outline-danger btn-sm">Sair</a>
-        </div>
-        <h1 class="text-center mb-4">Empresas</h1>
-        <div class="text-end mb-3">
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#clienteModal"
-                onclick="abrirModalNovo()">➕
-                Novo Cliente</button>
+
+            <div class="clientes-box">
+                <div class="table-responsive">
+                    <table class="table align-middle" id="clientesTable">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>CPF/CNPJ</th>
+                                <th>Razão Social</th>
+                                <th>Nome Fantasia</th>
+                                <th>Cidade</th>
+                                <th>UF</th>
+                                <th>Telefone</th>
+                                <th>E-mail</th>
+                                <th class="text-end">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <div class="mt-3" id="paginacao"></div>
+            </div>
+
         </div>
 
-        <div class="card p-4">
-            <h2 class="mb-3">Empresas</h2>
-            <div class="table-responsive">
-                <table class="table table-striped" id="clientesTable">
-                    <thead>
-                        <tr>
-                            <th>Código</th>
-                            <th>CPF/CNPJ</th>
-                            <th>Nome</th>
-                            <th>Nome Fantasia</th>
-                            <th>Cidade</th>
-                            <th>UF</th>
-                            <th>Telefone</th>
-                            <th>E-mail</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-            <div id="paginacao"></div>
-        </div>
-    </div>
+    </main>
 
     <!-- Modal -->
     <div class="modal fade" id="clienteModal" tabindex="-1" aria-labelledby="clienteModalLabel" aria-hidden="true">

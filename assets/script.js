@@ -106,7 +106,20 @@ function carregarClientes(page = 1) {
 
     $.getJSON(`api.php?action=read&page=${page}&limit=${limitePorPagina}`, function (res) {
         let linhas = '';
-        const clientes = res.data || [];
+        const clientes = Array.isArray(res) ? res : (res.data || []);
+
+        if (clientes.length === 0) {
+            $('#clientesTable tbody').html(`
+                <tr>
+                    <td colspan="9" class="text-center text-muted py-4">
+                        Nenhum cliente cadastrado ainda.
+                    </td>
+                </tr>
+            `);
+
+            $('#paginacao').html('');
+            return;
+        }
 
         clientes.forEach(cliente => {
             linhas += `

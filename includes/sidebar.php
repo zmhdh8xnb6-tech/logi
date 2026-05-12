@@ -1,6 +1,8 @@
-<div class="app-sidebar" id="appSidebar">
+<div class="app-sidebar collapsed" id="appSidebar">
 
-    <button id="toggleBtn">☰</button>
+    <button class="sidebar-toggle" id="sidebarToggle" type="button">
+        <i class="bi bi-list"></i>
+    </button>
 
     <div class="sidebar-logo">
         <img src="assets/images/logo.svg" alt="Logi">
@@ -17,9 +19,9 @@
             <span>Parcelamentos</span>
         </a>
 
-        <a href="certidoes.php" class="sidebar-link">
+        <a href="certificados.php" class="sidebar-link">
             <i class="bi bi-file-earmark-text"></i>
-            <span>Certidões</span>
+            <span>Certificado Digital</span>
         </a>
 
         <a href="alvaras.php" class="sidebar-link">
@@ -32,7 +34,7 @@
             <span>Procurações</span>
         </a>
 
-        <a href="clientes.php" class="sidebar-link">
+        <a href="index.php" class="sidebar-link">
             <i class="bi bi-people"></i>
             <span>Clientes</span>
         </a>

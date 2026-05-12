@@ -126,3 +126,20 @@ body {
     max-height: 90vh;
     overflow: auto;
 }
+
+.clientes-box {
+    background: #fff;
+    border-radius: 18px;
+    padding: 25px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.05);
+}
+
+.clientes-box table th {
+    font-size: 0.85rem;
+    color: #6b7280;
+    font-weight: 600;
+}
+
+.clientes-box table td {
+    font-size: 0.9rem;
+}

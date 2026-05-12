@@ -35,10 +35,10 @@
                 </div>
 
                 <div class="col-md-4">
-                    <div class="card-servico" onclick="location.href='certidoes.php'">
-                        <div class="icon">📄</div>
-                        <h5>Certidões</h5>
-                        <p>Controle de certidões negativas</p>
+                    <div class="card-servico" onclick="location.href='certificados.php'">
+                        <div class="icon">🔐</div>
+                        <h5>Certificado Digital</h5>
+                        <p>Controle de certificados digitais</p>
                     </div>
                 </div>
 
@@ -59,7 +59,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <div class="card-servico" onclick="location.href='clientes.php'">
+                    <div class="card-servico" onclick="location.href='index.php'">
                         <div class="icon">👤</div>
                         <h5>Clientes</h5>
                         <p>Cadastro e gerenciamento</p>
@@ -79,19 +79,6 @@
         </div>
 
     </main>
-
-    <script>
-        document.addEventListener("DOMContentLoaded", function() {
-            const btn = document.getElementById('sidebarToggle');
-            const sidebar = document.getElementById('appSidebar');
-
-            if (btn && sidebar) {
-                btn.addEventListener('click', function() {
-                    sidebar.classList.toggle('collapsed');
-                });
-            }
-        });
-    </script>
 
 </body>
 

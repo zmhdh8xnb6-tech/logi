@@ -1,6 +1,7 @@
 <?php
 $baseUrl = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 $stylePath = $_SERVER['DOCUMENT_ROOT'] . $baseUrl . '/assets/style.css';
+$sidebarPath = $_SERVER['DOCUMENT_ROOT'] . $baseUrl . '/assets/sidebar.css';
 ?>
 
 <meta charset="UTF-8">
@@ -8,16 +9,12 @@ $stylePath = $_SERVER['DOCUMENT_ROOT'] . $baseUrl . '/assets/style.css';
 
 <link rel="shortcut icon" href="<?= $baseUrl ?>/assets/images/logo.svg">
 
-<link rel="icon" href="<?= $baseUrl ?>/assets/favicon.ico">
-
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 
 <link rel="stylesheet" href="<?= $baseUrl ?>/assets/style.css?v=<?= file_exists($stylePath) ? filemtime($stylePath) : time() ?>">
+<link rel="stylesheet" href="<?= $baseUrl ?>/assets/sidebar.css?v=<?= file_exists($sidebarPath) ? filemtime($sidebarPath) : time() ?>">
 
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="<?= $baseUrl ?>/assets/sidebar.js?v=<?= time() ?>" defer></script>
 
-<link rel="stylesheet" href="assets/style.css">
-
-<link rel="stylesheet" href="assets/home.css">
+<link rel="stylesheet" href="<?= $baseUrl ?>/assets/sidebar.css?v=<?= time() ?>">

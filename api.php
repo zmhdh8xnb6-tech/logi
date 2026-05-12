@@ -27,7 +27,7 @@ if ($action == 'read') {
     $totalRow = $totalResult->fetch_assoc();
     $total = $totalRow['total'];
 
-    $stmt = $conn->prepare("SELECT * FROM clientes ORDER BY id DESC LIMIT ? OFFSET ?");
+    $stmt = $conn->prepare("SELECT * FROM clientes ORDER BY CAST(codigo AS UNSIGNED) ASC LIMIT ? OFFSET ?");
     $stmt->bind_param("ii", $limit, $offset);
     $stmt->execute();
     $result = $stmt->get_result();
