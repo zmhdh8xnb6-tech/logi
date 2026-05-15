@@ -9,35 +9,32 @@ $(document).ready(function () {
         let cep = $(this).val().replace(/\D/g, '');
         let feedback = $('#cepFeedback');
 
-        $('#cep').removeClass('is-invalid is-valid');
+        feedback.text('').removeClass('text-danger text-success text-muted');
 
-        if (cep.length !== 8) {
-            feedback.text('CEP deve ter 8 números').addClass('text-danger').removeClass('text-success');
-            $('#cep').addClass('is-invalid');
+        if (cep.length === 0) {
             return;
         }
 
-        feedback.text('Consultando CEP...').removeClass('text-danger text-success').addClass('text-muted');
+        if (cep.length !== 8) {
+            feedback.text('CEP deve ter 8 números.').addClass('text-danger');
+            return;
+        }
+
+        feedback.text('Consultando CEP...').addClass('text-muted');
 
         $.getJSON(`https://viacep.com.br/ws/${cep}/json/`, function (dados) {
+            feedback.text('').removeClass('text-danger text-success text-muted');
 
             if (!dados.erro) {
                 $('#endereco').val(dados.logradouro || '');
                 $('#bairro').val(dados.bairro || '');
                 $('#cidade').val(dados.localidade || '');
                 $('#uf').val((dados.uf || '').toUpperCase());
-
-                feedback.text('CEP encontrado').removeClass('text-danger').addClass('text-success');
-                $('#cep').addClass('is-valid');
-
             } else {
-                feedback.text('CEP não encontrado').removeClass('text-success').addClass('text-danger');
-                $('#cep').addClass('is-invalid');
+                feedback.text('CEP não encontrado.').addClass('text-danger');
             }
-
         }).fail(function () {
-            feedback.text('Erro ao consultar CEP').removeClass('text-success').addClass('text-danger');
-            $('#cep').addClass('is-invalid');
+            feedback.text('Erro ao consultar CEP.').addClass('text-danger');
         });
     });
 
@@ -86,19 +83,6 @@ $(document).ready(function () {
     $('#numero_endereco').on('input', function () {
         this.value = this.value.replace(/\D/g, '');
     });
-
-    $('#documento').on('input', function () {
-        let value = $(this).val().replace(/\D/g, '');
-
-        if (value.length <= 11) {
-            $(this).mask('000.000.000-00');
-        } else {
-            $(this).mask('00.000.000/0000-00');
-        }
-    });
-
-    $('#cep').mask('00000-000');
-    $('#telefone').mask('(00) 00000-0000');
 });
 
 function carregarClientes(page = 1) {
@@ -202,12 +186,31 @@ function renderizarPaginacao(total, pagina, limite) {
 
 function abrirModalNovo() {
     $('#clienteModalLabel').text('Novo Cliente');
+
     $('#clienteForm')[0].reset();
     $('#id').val('');
+
+    limparValidacoes();
+
+    // 🔥 LIMPAR CEP COMPLETAMENTE
+    $('#cep')
+        .val('')
+        .removeClass('');
+
+    $('#cepFeedback')
+        .text('')
+        .removeClass('text-success text-danger text-muted');
+
     aplicarMascaras();
 
     const modal = new bootstrap.Modal(document.getElementById('clienteModal'));
     modal.show();
+
+    setTimeout(() => $('#codigo').focus(), 500);
+
+    $('#clienteModal').on('show.bs.modal', function () {
+        $('#cep').removeClass('');
+    });
 }
 
 function abrirModalEditar(
@@ -247,6 +250,7 @@ function abrirModalEditar(
     $('#nire').val(nire);
     $('#email').val(email);
 
+    limparValidacoes();
     aplicarMascaras();
 
     const modal = new bootstrap.Modal(document.getElementById('clienteModal'));
@@ -268,37 +272,101 @@ function excluirCliente(id) {
 }
 
 function validarFormulario() {
-    const codigo = $('#codigo').val().trim();
+    limparValidacoes();
+
+    let valido = true;
+    let primeiroCampoInvalido = null;
+
+    function validarObrigatorio(campo) {
+        if ($(campo).val().trim() === '') {
+            $(campo).addClass('is-invalid');
+
+            if (primeiroCampoInvalido === null) {
+                primeiroCampoInvalido = campo;
+            }
+
+            valido = false;
+        }
+    }
+
+    validarObrigatorio('#codigo');
+    validarObrigatorio('#documento');
+    validarObrigatorio('#nome');
+    validarObrigatorio('#cep');
+    validarObrigatorio('#endereco');
+    validarObrigatorio('#numero_endereco');
+    validarObrigatorio('#bairro');
+    validarObrigatorio('#cidade');
+    validarObrigatorio('#uf');
+    validarObrigatorio('#telefone');
+    validarObrigatorio('#email');
+
     const documento = $('#documento').val().replace(/\D/g, '');
-    const nome = $('#nome').val().trim();
-    const uf = $('#uf').val().trim();
+    const telefone = $('#telefone').val().replace(/\D/g, '');
+    const email = $('#email').val().trim();
 
-    if (codigo === '') {
-        alert('Informe o código.');
-        return false;
+    if (documento !== '' && !validarCpfOuCnpj(documento)) {
+        $('#documento').addClass('is-invalid');
+
+        if (primeiroCampoInvalido === null) {
+            primeiroCampoInvalido = '#documento';
+        }
+
+        valido = false;
     }
 
-    if (documento === '') {
-        alert('Informe o CPF/CNPJ.');
-        return false;
+    if (telefone !== '' && (telefone.length < 10 || telefone.length > 11)) {
+        $('#telefone').addClass('is-invalid');
+
+        if (primeiroCampoInvalido === null) {
+            primeiroCampoInvalido = '#telefone';
+        }
+
+        valido = false;
     }
 
-    if (!validarCpfOuCnpj(documento)) {
-        alert('CPF ou CNPJ inválido.');
-        return false;
+    if (email !== '' && !validarEmail(email)) {
+        $('#email').addClass('is-invalid');
+
+        if (primeiroCampoInvalido === null) {
+            primeiroCampoInvalido = '#email';
+        }
+
+        valido = false;
     }
 
-    if (nome === '') {
-        alert('Informe o nome / razão social.');
-        return false;
+    if (!valido && primeiroCampoInvalido !== null) {
+        $(primeiroCampoInvalido).focus();
     }
 
-    if (uf !== '' && uf.length !== 2) {
-        alert('UF deve ter 2 letras.');
-        return false;
-    }
+    return valido;
+}
 
-    return true;
+function validarEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+$('input, select').on('input change', function () {
+    if ($(this).val().trim() !== '') {
+        $(this).removeClass('is-invalid');
+    }
+});
+
+$('#numero_endereco').on('input', function () {
+    this.value = this.value.replace(/\D/g, '');
+});
+
+function marcarInvalido(campo) {
+    $(campo).addClass('is-invalid').focus();
+}
+
+function limparValidacoes() {
+    $('.is-invalid').removeClass('is-invalid');
+    $('.is-valid').removeClass('is-valid');
+
+    $('#cepFeedback')
+        .text('')
+        .removeClass('text-danger text-success text-muted');
 }
 
 function validarCpfOuCnpj(valor) {
@@ -311,6 +379,7 @@ function validarCPF(cpf) {
     if (!cpf || cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false;
 
     let soma = 0;
+
     for (let i = 0; i < 9; i++) {
         soma += parseInt(cpf.charAt(i)) * (10 - i);
     }
@@ -321,6 +390,7 @@ function validarCPF(cpf) {
     if (digito1 !== parseInt(cpf.charAt(9))) return false;
 
     soma = 0;
+
     for (let i = 0; i < 10; i++) {
         soma += parseInt(cpf.charAt(i)) * (11 - i);
     }
@@ -346,6 +416,7 @@ function validarCNPJ(cnpj) {
     }
 
     let resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
+
     if (resultado !== parseInt(digitos.charAt(0))) return false;
 
     tamanho = tamanho + 1;
@@ -359,6 +430,7 @@ function validarCNPJ(cnpj) {
     }
 
     resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
+
     return resultado === parseInt(digitos.charAt(1));
 }
 
@@ -366,12 +438,19 @@ function aplicarMascaras() {
     $('#cep').mask('00000-000');
     $('#telefone').mask('(00) 00000-0000');
 
-    const documento = $('#documento').val().replace(/\D/g, '');
-    if (documento.length <= 11) {
-        $('#documento').mask('000.000.000-00');
-    } else {
-        $('#documento').mask('00.000.000/0000-00');
-    }
+    const cpfCnpjMaskBehavior = function (val) {
+        return val.replace(/\D/g, '').length > 11
+            ? '00.000.000/0000-00'
+            : '000.000.000-009';
+    };
+
+    const cpfCnpjOptions = {
+        onKeyPress: function (val, e, field, options) {
+            field.mask(cpfCnpjMaskBehavior.apply({}, arguments), options);
+        }
+    };
+
+    $('#documento').mask(cpfCnpjMaskBehavior, cpfCnpjOptions);
 }
 
 function escapeHtml(valor) {
@@ -391,32 +470,4 @@ document.getElementById('clienteModal').addEventListener('hidden.bs.modal', func
     document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
     document.body.classList.remove('modal-open');
     document.body.style = "";
-});
-$('#cep').on('blur', function () {
-    let cep = $(this).val().replace(/\D/g, '');
-
-    if (cep.length !== 8) {
-        return;
-    }
-
-    $.getJSON(`https://viacep.com.br/ws/${cep}/json/`, function (dados) {
-
-        if (!dados.erro) {
-            $('#endereco').val(dados.logradouro || '');
-            $('#bairro').val(dados.bairro || '');
-            $('#cidade').val(dados.localidade || '');
-            $('#uf').val((dados.uf || '').toUpperCase());
-
-            feedback.text('CEP encontrado').removeClass('text-danger').addClass('text-success');
-            $('#cep').addClass('is-valid');
-
-        } else {
-            feedback.text('CEP não encontrado').removeClass('text-success').addClass('text-danger');
-            $('#cep').addClass('is-invalid');
-        }
-
-    }).fail(function () {
-        feedback.text('Erro ao consultar CEP').removeClass('text-success').addClass('text-danger');
-        $('#cep').addClass('is-invalid');
-    });
 });

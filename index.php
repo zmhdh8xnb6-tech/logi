@@ -62,7 +62,14 @@ if ($conn->connect_error) {
                                 <th class="text-end">Ações</th>
                             </tr>
                         </thead>
-                        <tbody></tbody>
+
+                        <tbody>
+                            <tr>
+                                <td colspan="9" class="text-center text-muted py-4">
+                                    Nenhum cliente cadastrado ainda.
+                                </td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
 
@@ -115,7 +122,7 @@ if ($conn->connect_error) {
                                     <input type="email" class="form-control" name="email" id="email">
                                 </div>
 
-                                <div class="col-md-6 mb-3">
+                                <div class="col-md-3 mb-3">
                                     <label for="telefone" class="form-label">Telefone</label>
                                     <input type="text" class="form-control" name="telefone" id="telefone">
                                 </div>
@@ -137,6 +144,12 @@ if ($conn->connect_error) {
                         <div class="border rounded p-3 mb-3">
                             <h6 class="mb-3 fw-bold">Endereço</h6>
 
+                            <div class="col-md-2 mb-3">
+                                <label for="cep" class="form-label">CEP</label>
+                                <input type="text" class="form-control" name="cep" id="cep">
+                                <small id="cepFeedback" class="text-muted"></small>
+                            </div>
+
                             <div class="row">
                                 <div class="col-md-7 mb-3">
                                     <label for="endereco" class="form-label">Endereço</label>
@@ -146,12 +159,6 @@ if ($conn->connect_error) {
                                 <div class="col-md-2 mb-3">
                                     <label for="numero_endereco" class="form-label">Número</label>
                                     <input type="text" class="form-control" name="numero_endereco" id="numero_endereco">
-                                </div>
-
-                                <div class="col-md-3 mb-3">
-                                    <label for="cep" class="form-label">CEP</label>
-                                    <input type="text" class="form-control" name="cep" id="cep">
-                                    <small id="cepFeedback" class="text-muted"></small>
                                 </div>
 
                                 <div class="col-md-5 mb-3">
