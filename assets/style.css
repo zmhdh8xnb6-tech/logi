@@ -139,3 +139,68 @@ body {
     color: #6b7280;
     font-weight: 600;
 }
+
+.clientes-box {
+    background: #fff;
+    border-radius: 18px;
+    padding: 25px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.05);
+}
+
+.clientes-box table {
+    margin-bottom: 0;
+}
+
+.clientes-box thead th {
+    font-size: 0.82rem;
+    color: #6b7280;
+    font-weight: 700;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.clientes-box tbody td {
+    font-size: 0.92rem;
+    vertical-align: middle;
+    padding: 14px 8px;
+}
+
+.clientes-box table tbody tr:nth-child(odd) td {
+    --bs-table-bg: #ffffff;
+    background-color: #ffffff;
+}
+
+.clientes-box table tbody tr:nth-child(even) td {
+    --bs-table-bg: #f5f7fa;
+    background-color: #f5f7fa;
+}
+
+.clientes-box table {
+    background-color: transparent;
+}
+
+.linha-cliente {
+    transition: 0.2s ease;
+}
+
+.linha-cliente td {
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.linha-cliente:hover td {
+    background-color: #e9f2ff !important;
+    cursor: pointer;
+}
+
+#painelCliente .offcanvas-header {
+    border-bottom: 1px solid #e5e7eb;
+}
+
+#painelCliente .offcanvas-title {
+    font-weight: 700;
+}
+
+#painelCliente small {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}

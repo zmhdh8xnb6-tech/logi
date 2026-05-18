@@ -7,23 +7,20 @@ $(document).ready(function () {
 
     $('#cep').on('blur', function () {
         let cep = $(this).val().replace(/\D/g, '');
-        let feedback = $('#cepFeedback');
 
-        feedback.text('').removeClass('text-danger text-success text-muted');
+        if (cep.length === 0) return;
+        if (cep.length !== 8) return;
 
-        if (cep.length === 0) {
-            return;
-        }
-
-        if (cep.length !== 8) {
-            feedback.text('CEP deve ter 8 números.').addClass('text-danger');
-            return;
-        }
-
-        feedback.text('Consultando CEP...').addClass('text-muted');
+        $('#cepFeedback')
+            .html('<span class="spinner-border spinner-border-sm me-1"></span> Buscando CEP...')
+            .removeClass('text-danger')
+            .addClass('text-muted');
 
         $.getJSON(`https://viacep.com.br/ws/${cep}/json/`, function (dados) {
-            feedback.text('').removeClass('text-danger text-success text-muted');
+
+            $('#cepFeedback')
+                .html('')
+                .removeClass('text-muted text-danger');
 
             if (!dados.erro) {
                 $('#endereco').val(dados.logradouro || '');
@@ -31,11 +28,30 @@ $(document).ready(function () {
                 $('#cidade').val(dados.localidade || '');
                 $('#uf').val((dados.uf || '').toUpperCase());
             } else {
-                feedback.text('CEP não encontrado.').addClass('text-danger');
+                mostrarAviso('CEP não encontrado.', '#cep');
             }
+
         }).fail(function () {
-            feedback.text('Erro ao consultar CEP.').addClass('text-danger');
+
+            $('#cepFeedback')
+                .html('')
+                .removeClass('text-muted text-danger');
+
+            mostrarAviso('Erro ao consultar CEP.', '#cep');
         });
+    });
+
+    $('#documento').on('blur', function () {
+        const documento = $(this).val().replace(/\D/g, '');
+
+        if (documento.length === 0) {
+            return;
+        }
+
+        if (!validarCpfOuCnpj(documento)) {
+            $('#documento').addClass('is-invalid');
+            mostrarAviso('CPF ou CNPJ inválido.', '#documento');
+        }
     });
 
     $('#clienteForm').on('submit', function (e) {
@@ -48,12 +64,20 @@ $(document).ready(function () {
         let id = $('#id').val();
         let action = id === '' ? 'create' : 'update';
 
+        // 🔥 LOADING NO BOTÃO
+        $('#btnSalvarCliente')
+            .prop('disabled', true)
+            .html('<span class="spinner-border spinner-border-sm me-1"></span> Salvando...');
+
         $.ajax({
             url: 'api.php?action=' + action,
             method: 'POST',
             data: $(this).serialize(),
+
             success: function (resp) {
-                if (resp.trim() === 'ok') {
+                resp = resp.trim();
+
+                if (resp === 'ok') {
                     $('#clienteForm')[0].reset();
                     $('#id').val('');
 
@@ -61,13 +85,28 @@ $(document).ready(function () {
                     const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
                     modal.hide();
 
-                    carregarClientes(paginaAtual);
+                    if (window.location.pathname.includes('cliente.php')) {
+                        window.location.reload();
+                    } else {
+                        carregarClientes(paginaAtual);
+                    }
+
+                } else if (resp === 'duplicado') {
+                    mostrarAviso('Já existe um cliente cadastrado com este CPF/CNPJ.', '#documento');
                 } else {
-                    alert(resp);
+                    mostrarAviso(resp);
                 }
             },
+
             error: function (xhr) {
-                alert('Erro: ' + xhr.responseText);
+                mostrarAviso('Erro: ' + xhr.responseText);
+            },
+
+            complete: function () {
+                // 🔥 VOLTA BOTÃO AO NORMAL
+                $('#btnSalvarCliente')
+                    .prop('disabled', false)
+                    .html('Salvar');
             }
         });
     });
@@ -80,10 +119,34 @@ $(document).ready(function () {
         this.value = this.value.replace(/\D/g, '');
     });
 
-    $('#numero_endereco').on('input', function () {
-        this.value = this.value.replace(/\D/g, '');
+    $('#buscaCliente, #filtroUf').on('input change', function () {
+        filtrarClientesNaTela();
     });
+
+    $(document).on('input', '#nome_fantasia', function () {
+        this.value = this.value.toUpperCase();
+    });
+
 });
+
+function mostrarAviso(mensagem, campo = null) {
+    $('#modalAvisoMensagem').text(mensagem);
+
+    const modalEl = document.getElementById('modalAviso');
+
+    const modal = new bootstrap.Modal(modalEl, {
+        backdrop: 'static',
+        keyboard: false
+    });
+
+    modal.show();
+
+    modalEl.addEventListener('hidden.bs.modal', function () {
+        if (campo) {
+            $(campo).val('').focus();
+        }
+    }, { once: true });
+}
 
 function carregarClientes(page = 1) {
     paginaAtual = page;
@@ -107,44 +170,30 @@ function carregarClientes(page = 1) {
 
         clientes.forEach(cliente => {
             linhas += `
-                <tr>
-                    <td>${escapeHtml(cliente.codigo)}</td>
-                    <td>${escapeHtml(cliente.documento)}</td>
-                    <td>${escapeHtml(cliente.nome)}</td>
-                    <td>${escapeHtml(cliente.nome_fantasia)}</td>
-                    <td>${escapeHtml(cliente.cidade)}</td>
-                    <td>${escapeHtml(cliente.uf)}</td>
-                    <td>${escapeHtml(cliente.telefone)}</td>
-                    <td>${escapeHtml(cliente.email)}</td>
-                    <td>
-                        <button class="btn btn-warning btn-sm me-1" onclick="abrirModalEditar(
-                            ${cliente.id},
-                            ${jsString(cliente.codigo)},
-                            ${jsString(cliente.documento)},
-                            ${jsString(cliente.nome)},
-                            ${jsString(cliente.nome_fantasia)},
-                            ${jsString(cliente.endereco)},
-                            ${jsString(cliente.numero_endereco)},
-                            ${jsString(cliente.complemento)},
-                            ${jsString(cliente.bairro)},
-                            ${jsString(cliente.cidade)},
-                            ${jsString(cliente.uf)},
-                            ${jsString(cliente.cep)},
-                            ${jsString(cliente.telefone)},
-                            ${jsString(cliente.inscricao_estadual)},
-                            ${jsString(cliente.nire)},
-                            ${jsString(cliente.email)}
-                        )">Editar</button>
-                        <button class="btn btn-danger btn-sm" onclick="excluirCliente(${cliente.id})">Excluir</button>
-                    </td>
-                </tr>
-            `;
+<tr class="linha-cliente"
+    data-busca="${escapeHtml(`${cliente.codigo} ${cliente.documento} ${cliente.nome} ${cliente.nome_fantasia} ${cliente.email}`).toLowerCase()}"
+    data-uf="${escapeHtml(cliente.uf)}"
+    onclick="window.location.href='cliente.php?id=${cliente.id}'">
+
+    <td>${escapeHtml(cliente.codigo)}</td>
+    <td>${escapeHtml(cliente.documento)}</td>
+    <td>${escapeHtml(cliente.nome)}</td>
+    <td>${escapeHtml(cliente.nome_fantasia)}</td>
+    <td>${escapeHtml(cliente.cidade)}</td>
+    <td>${escapeHtml(cliente.uf)}</td>
+    <td>${escapeHtml(cliente.telefone)}</td>
+    <td>${escapeHtml(cliente.email)}</td>
+    <td class="text-end text-muted">
+        <i class="bi bi-chevron-right"></i>
+    </td>
+</tr>
+`;
         });
 
         $('#clientesTable tbody').html(linhas);
         renderizarPaginacao(res.total || 0, res.page || 1, res.limit || limitePorPagina);
     }).fail(function (xhr) {
-        alert('Erro ao carregar clientes: ' + xhr.responseText);
+        ('Erro ao carregar clientes: ' + xhr.responseText);
     });
 }
 
@@ -258,18 +307,35 @@ function abrirModalEditar(
 }
 
 function excluirCliente(id) {
-    if (confirm("Tem certeza que deseja excluir este cliente?")) {
-        $.post('api.php?action=delete', { id: id }, function (resp) {
-            if (resp.trim() === 'ok') {
-                carregarClientes(paginaAtual);
-            } else {
-                alert(resp);
-            }
-        }).fail(function (xhr) {
-            alert('Erro: ' + xhr.responseText);
-        });
-    }
+    clienteParaExcluir = id;
+
+    const modal = new bootstrap.Modal(document.getElementById('modalConfirmarExclusao'));
+    modal.show();
 }
+
+$('#btnConfirmarExclusao').on('click', function () {
+    if (!clienteParaExcluir) return;
+
+    const botao = $(this);
+
+    botao.prop('disabled', true)
+        .html('<span class="spinner-border spinner-border-sm me-1"></span> Excluindo...');
+
+    $.post('api.php?action=delete', { id: clienteParaExcluir }, function (resp) {
+        if (resp.trim() === 'ok') {
+            window.location.href = 'index.php';
+        } else {
+            mostrarAviso(resp);
+        }
+    }).fail(function (xhr) {
+        mostrarAviso('Erro: ' + xhr.responseText);
+    }).always(function () {
+        botao.prop('disabled', false).html('Excluir');
+
+        const modal = bootstrap.Modal.getInstance(document.getElementById('modalConfirmacao'));
+        modal.hide();
+    });
+});
 
 function validarFormulario() {
     limparValidacoes();
@@ -293,11 +359,7 @@ function validarFormulario() {
     validarObrigatorio('#documento');
     validarObrigatorio('#nome');
     validarObrigatorio('#cep');
-    validarObrigatorio('#endereco');
     validarObrigatorio('#numero_endereco');
-    validarObrigatorio('#bairro');
-    validarObrigatorio('#cidade');
-    validarObrigatorio('#uf');
     validarObrigatorio('#telefone');
     validarObrigatorio('#email');
 
@@ -307,12 +369,8 @@ function validarFormulario() {
 
     if (documento !== '' && !validarCpfOuCnpj(documento)) {
         $('#documento').addClass('is-invalid');
-
-        if (primeiroCampoInvalido === null) {
-            primeiroCampoInvalido = '#documento';
-        }
-
-        valido = false;
+        mostrarAviso('CPF ou CNPJ inválido.', '#documento');
+        return false;
     }
 
     if (telefone !== '' && (telefone.length < 10 || telefone.length > 11)) {
@@ -352,10 +410,6 @@ $('input, select').on('input change', function () {
     }
 });
 
-$('#numero_endereco').on('input', function () {
-    this.value = this.value.replace(/\D/g, '');
-});
-
 function marcarInvalido(campo) {
     $(campo).addClass('is-invalid').focus();
 }
@@ -363,10 +417,7 @@ function marcarInvalido(campo) {
 function limparValidacoes() {
     $('.is-invalid').removeClass('is-invalid');
     $('.is-valid').removeClass('is-valid');
-
-    $('#cepFeedback')
-        .text('')
-        .removeClass('text-danger text-success text-muted');
+    $('#cepFeedback').text('').removeClass('text-danger text-success text-muted');
 }
 
 function validarCpfOuCnpj(valor) {
@@ -470,4 +521,49 @@ document.getElementById('clienteModal').addEventListener('hidden.bs.modal', func
     document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
     document.body.classList.remove('modal-open');
     document.body.style = "";
+});
+
+function filtrarClientesNaTela() {
+    const busca = $('#buscaCliente').val().toLowerCase().trim();
+    const uf = $('#filtroUf').val();
+
+    $('#clientesTable tbody tr.linha-cliente').each(function () {
+        const texto = $(this).data('busca') || '';
+        const linhaUf = $(this).data('uf') || '';
+
+        const bateBusca = texto.includes(busca);
+        const bateUf = uf === '' || linhaUf === uf;
+
+        $(this).toggle(bateBusca && bateUf);
+    });
+}
+
+$(document).on('click', '#btnConfirmarExclusao', function () {
+
+    if (!clienteParaExcluir) return;
+
+    const botao = $(this);
+
+    botao.prop('disabled', true)
+        .html('<span class="spinner-border spinner-border-sm me-1"></span> Excluindo...');
+
+    $.post('api.php?action=delete', { id: clienteParaExcluir }, function (resp) {
+
+        if (resp.trim() === 'ok') {
+            window.location.href = 'index.php';
+        } else {
+            mostrarAviso(resp);
+        }
+
+    }).fail(function (xhr) {
+        mostrarAviso('Erro: ' + xhr.responseText);
+    }).always(function () {
+
+        botao.prop('disabled', false).html('Excluir');
+
+        const modalEl = document.getElementById('modalConfirmarExclusao');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+
+        if (modal) modal.hide();
+    });
 });

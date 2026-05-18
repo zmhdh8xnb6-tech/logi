@@ -24,6 +24,7 @@ if ($conn->connect_error) {
 
 <head>
     <?php include 'includes/head.php'; ?>
+    <?php include 'includes/modal_cliente.php'; ?>
     <title>Clientes</title>
 </head>
 
@@ -47,6 +48,23 @@ if ($conn->connect_error) {
             </div>
 
             <div class="clientes-box">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <input
+                            type="text"
+                            id="buscaCliente"
+                            class="form-control"
+                            placeholder="Buscar por código, nome, CPF/CNPJ ou e-mail...">
+                    </div>
+
+                    <div class="col-md-3">
+                        <select id="filtroUf" class="form-select">
+                            <option value="">Todas as UFs</option>
+                            <option value="DF">DF</option>
+                            <option value="GO">GO</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="table-responsive">
                     <table class="table align-middle" id="clientesTable">
                         <thead>
@@ -80,122 +98,61 @@ if ($conn->connect_error) {
 
     </main>
 
-    <!-- Modal -->
-    <div class="modal fade" id="clienteModal" tabindex="-1" aria-labelledby="clienteModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
-            <div class="modal-content">
-                <form id="clienteForm">
-                    <div class="modal-header bg-light">
-                        <h5 class="modal-title" id="clienteModalLabel">Novo Cliente</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-                    </div>
-                    <div class="modal-body">
-                        <input type="hidden" name="id" id="id">
+    <div class="modal fade" id="modalAviso" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content border-0 shadow">
 
-                        <!-- DADOS PRINCIPAIS -->
-                        <div class="border rounded p-3 mb-3">
-                            <h6 class="mb-3 fw-bold">Dados principais</h6>
+                <div class="modal-header bg-danger text-white">
+                    <h6 class="modal-title">Atenção</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
 
-                            <div class="row">
-                                <div class="col-md-2 mb-3">
-                                    <label for="codigo" class="form-label">Código</label>
-                                    <input type="text" class="form-control" name="codigo" id="codigo">
-                                </div>
+                <div class="modal-body text-center" id="modalAvisoMensagem">
+                    Mensagem
+                </div>
 
-                                <div class="col-md-4 mb-3">
-                                    <label for="documento" class="form-label">CPF / CNPJ</label>
-                                    <input type="text" class="form-control" name="documento" id="documento">
-                                </div>
+                <div class="modal-footer justify-content-center">
+                    <button type="button" class="btn btn-danger btn-sm" data-bs-dismiss="modal">
+                        OK
+                    </button>
+                </div>
 
-                                <div class="col-md-6 mb-3">
-                                    <label for="nome" class="form-label">Razão Social</label>
-                                    <input type="text" class="form-control" name="nome" id="nome">
-                                </div>
-
-                                <div class="col-md-7 mb-3">
-                                    <label for="nome_fantasia" class="form-label">Nome Fantasia</label>
-                                    <input type="text" class="form-control" name="nome_fantasia" id="nome_fantasia">
-                                </div>
-
-                                <div class="col-md-5 mb-3">
-                                    <label for="email" class="form-label">E-mail</label>
-                                    <input type="email" class="form-control" name="email" id="email">
-                                </div>
-
-                                <div class="col-md-3 mb-3">
-                                    <label for="telefone" class="form-label">Telefone</label>
-                                    <input type="text" class="form-control" name="telefone" id="telefone">
-                                </div>
-
-                                <div class="col-md-3 mb-3">
-                                    <label for="inscricao_estadual" class="form-label">Inscrição Estadual</label>
-                                    <input type="text" class="form-control" name="inscricao_estadual"
-                                        id="inscricao_estadual">
-                                </div>
-
-                                <div class="col-md-3 mb-3">
-                                    <label for="nire" class="form-label">NIRE</label>
-                                    <input type="text" class="form-control" name="nire" id="nire">
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- ENDEREÇO -->
-                        <div class="border rounded p-3 mb-3">
-                            <h6 class="mb-3 fw-bold">Endereço</h6>
-
-                            <div class="col-md-2 mb-3">
-                                <label for="cep" class="form-label">CEP</label>
-                                <input type="text" class="form-control" name="cep" id="cep">
-                                <small id="cepFeedback" class="text-muted"></small>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-md-7 mb-3">
-                                    <label for="endereco" class="form-label">Endereço</label>
-                                    <input type="text" class="form-control" name="endereco" id="endereco">
-                                </div>
-
-                                <div class="col-md-2 mb-3">
-                                    <label for="numero_endereco" class="form-label">Número</label>
-                                    <input type="text" class="form-control" name="numero_endereco" id="numero_endereco">
-                                </div>
-
-                                <div class="col-md-5 mb-3">
-                                    <label for="complemento" class="form-label">Complemento</label>
-                                    <input type="text" class="form-control" name="complemento" id="complemento">
-                                </div>
-
-                                <div class="col-md-4 mb-3">
-                                    <label for="bairro" class="form-label">Bairro</label>
-                                    <input type="text" class="form-control" name="bairro" id="bairro">
-                                </div>
-
-                                <div class="col-md-3 mb-3">
-                                    <label for="cidade" class="form-label">Cidade</label>
-                                    <input type="text" class="form-control" name="cidade" id="cidade">
-                                </div>
-
-                                <div class="col-md-2 mb-3">
-                                    <label for="uf" class="form-label">UF</label>
-                                    <input type="text" class="form-control text-uppercase" name="uf" id="uf"
-                                        maxlength="2">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer bg-light">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-success">Salvar</button>
-                    </div>
-                </form>
             </div>
         </div>
     </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script>
     <script src="assets/script.js"></script>
+
+    <div class="modal fade" id="modalConfirmarExclusao" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+
+                <div class="modal-header bg-danger text-white">
+                    <h6 class="modal-title">Confirmar exclusão</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body text-center">
+                    Tem certeza que deseja excluir este cliente?
+                </div>
+
+                <div class="modal-footer justify-content-center">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">
+                        Cancelar
+                    </button>
+
+                    <button type="button" class="btn btn-danger btn-sm" id="btnConfirmarExclusao">
+                        Excluir
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
 </body>
 
 </html>

@@ -65,6 +65,31 @@ if ($action == 'create' || $action == 'update') {
     $nire = $_POST['nire'] ?? '';
     $email = $_POST['email'] ?? '';
 
+    $documento = $_POST['documento'] ?? '';
+
+    if ($id == '') {
+        $stmt = $conn->prepare("SELECT id FROM clientes WHERE documento = ?");
+        $stmt->bind_param("s", $documento);
+    } else {
+        $stmt = $conn->prepare("SELECT id FROM clientes WHERE documento = ? AND id <> ?");
+        $stmt->bind_param("si", $documento, $id);
+    }
+
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows > 0) {
+        echo "duplicado";
+        exit;
+    }
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows > 0) {
+        echo "duplicado";
+        exit;
+    }
+
     if ($id == '') {
         $stmt = $conn->prepare("
             INSERT INTO clientes (
