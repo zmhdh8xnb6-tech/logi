@@ -278,7 +278,8 @@ function abrirModalEditar(
     telefone,
     inscricao_estadual,
     nire,
-    email
+    email,
+    vencimento_certificado
 ) {
     $('#clienteModalLabel').text('Editar Cliente');
 
@@ -298,6 +299,7 @@ function abrirModalEditar(
     $('#inscricao_estadual').val(inscricao_estadual);
     $('#nire').val(nire);
     $('#email').val(email);
+    $('#vencimento_certificado').val(vencimento_certificado);
 
     limparValidacoes();
     aplicarMascaras();

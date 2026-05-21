@@ -23,48 +23,8 @@ if (!$cliente) {
 
 <head>
     <?php include 'includes/head.php'; ?>
-    <?php include 'includes/modal_cliente.php'; ?>
     <title><?= htmlspecialchars($cliente['nome']) ?> - Cliente</title>
 </head>
-
-<script>
-    const clienteAtual = <?= json_encode($cliente, JSON_UNESCAPED_UNICODE) ?>;
-
-    function abrirModalEditarCliente() {
-        abrirModalEditar(
-            clienteAtual.id,
-            clienteAtual.codigo,
-            clienteAtual.documento,
-            clienteAtual.nome,
-            clienteAtual.nome_fantasia,
-            clienteAtual.endereco,
-            clienteAtual.numero_endereco,
-            clienteAtual.complemento,
-            clienteAtual.bairro,
-            clienteAtual.cidade,
-            clienteAtual.uf,
-            clienteAtual.cep,
-            clienteAtual.telefone,
-            clienteAtual.inscricao_estadual,
-            clienteAtual.nire,
-            clienteAtual.email
-        );
-    }
-
-    function confirmarExclusaoCliente() {
-        if (confirm("Tem certeza que deseja excluir este cliente?")) {
-            $.post('api.php?action=delete', {
-                id: clienteAtual.id
-            }, function(resp) {
-                if (resp.trim() === 'ok') {
-                    window.location.href = 'index.php';
-                } else {
-                    alert(resp);
-                }
-            });
-        }
-    }
-</script>
 
 <body class="app-layout">
 
@@ -73,9 +33,7 @@ if (!$cliente) {
     <main class="app-main">
         <div class="container-fluid">
 
-            <a href="index.php" class="btn btn-outline-secondary mb-3">
-                Voltar
-            </a>
+            <a href="index.php" class="btn btn-outline-secondary mb-3">Voltar</a>
 
             <h3><?= htmlspecialchars($cliente['nome']) ?></h3>
             <p class="text-muted"><?= htmlspecialchars($cliente['documento']) ?></p>
@@ -92,18 +50,22 @@ if (!$cliente) {
 
             <div class="clientes-box mt-4">
                 <h5>Dados principais</h5>
-
                 <p><strong>Código:</strong> <?= htmlspecialchars($cliente['codigo'] ?? '') ?></p>
                 <p><strong>Nome Fantasia:</strong> <?= htmlspecialchars($cliente['nome_fantasia'] ?? '') ?></p>
                 <p><strong>E-mail:</strong> <?= htmlspecialchars($cliente['email'] ?? '') ?></p>
                 <p><strong>Telefone:</strong> <?= htmlspecialchars($cliente['telefone'] ?? '') ?></p>
                 <p><strong>Inscrição Estadual:</strong> <?= htmlspecialchars($cliente['inscricao_estadual'] ?? '') ?></p>
                 <p><strong>NIRE:</strong> <?= htmlspecialchars($cliente['nire'] ?? '') ?></p>
+                <p>
+                    <strong>Vencimento Certificado Digital:</strong>
+                    <?= !empty($cliente['vencimento_certificado'])
+                        ? date('d/m/Y', strtotime($cliente['vencimento_certificado']))
+                        : 'Não cadastrado'; ?>
+                </p>
             </div>
 
             <div class="clientes-box mt-4">
                 <h5>Endereço</h5>
-
                 <p><strong>CEP:</strong> <?= htmlspecialchars($cliente['cep'] ?? '') ?></p>
                 <p><strong>Endereço:</strong> <?= htmlspecialchars($cliente['endereco'] ?? '') ?>, <?= htmlspecialchars($cliente['numero_endereco'] ?? '') ?></p>
                 <p><strong>Complemento:</strong> <?= htmlspecialchars($cliente['complemento'] ?? '') ?></p>
@@ -114,37 +76,42 @@ if (!$cliente) {
         </div>
     </main>
 
+    <?php include 'includes/modal_cliente.php'; ?>
+
+    <?php include 'includes/modal_confirmar.php'; ?>
+
+    <?php include 'includes/modal_aviso.php'; ?>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script>
     <script src="assets/script.js"></script>
 
-    <div class="modal fade" id="modalConfirmarExclusao" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered modal-sm">
-            <div class="modal-content">
+    <script>
+        const clienteAtual = <?= json_encode($cliente, JSON_UNESCAPED_UNICODE) ?>;
 
-                <div class="modal-header bg-danger text-white">
-                    <h6 class="modal-title">Confirmar exclusão</h6>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-
-                <div class="modal-body text-center">
-                    Tem certeza que deseja excluir este cliente?
-                </div>
-
-                <div class="modal-footer justify-content-center">
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">
-                        Cancelar
-                    </button>
-
-                    <button type="button" class="btn btn-danger btn-sm" id="btnConfirmarExclusao">
-                        Excluir
-                    </button>
-                </div>
-
-            </div>
-        </div>
-    </div>
+        function abrirModalEditarCliente() {
+            abrirModalEditar(
+                clienteAtual.id,
+                clienteAtual.codigo,
+                clienteAtual.documento,
+                clienteAtual.nome,
+                clienteAtual.nome_fantasia,
+                clienteAtual.endereco,
+                clienteAtual.numero_endereco,
+                clienteAtual.complemento,
+                clienteAtual.bairro,
+                clienteAtual.cidade,
+                clienteAtual.uf,
+                clienteAtual.cep,
+                clienteAtual.telefone,
+                clienteAtual.inscricao_estadual,
+                clienteAtual.nire,
+                clienteAtual.email,
+                clienteAtual.vencimento_certificado
+            );
+        }
+    </script>
 
 </body>
 

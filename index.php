@@ -5,20 +5,8 @@ if (!isset($_SESSION["usuario_id"])) {
     header("Location: login.php");
     exit;
 }
-
-$conn = new mysqli("localhost", "root", "", "crud_clientes");
-if ($conn->connect_error) {
-    die("Falha na conexão: " . $conn->connect_error);
-}
 ?>
 
-<?php
-// index.php - Interface with Bootstrap modal
-$conn = new mysqli("localhost", "root", "", "crud_clientes");
-if ($conn->connect_error) {
-    die("Falha na conexão: " . $conn->connect_error);
-}
-?>
 <!DOCTYPE html>
 <html lang="pt-br">
 
@@ -98,60 +86,14 @@ if ($conn->connect_error) {
 
     </main>
 
-    <div class="modal fade" id="modalAviso" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered modal-sm">
-            <div class="modal-content border-0 shadow">
-
-                <div class="modal-header bg-danger text-white">
-                    <h6 class="modal-title">Atenção</h6>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-
-                <div class="modal-body text-center" id="modalAvisoMensagem">
-                    Mensagem
-                </div>
-
-                <div class="modal-footer justify-content-center">
-                    <button type="button" class="btn btn-danger btn-sm" data-bs-dismiss="modal">
-                        OK
-                    </button>
-                </div>
-
-            </div>
-        </div>
-    </div>
+    <?php include 'includes/modal_aviso.php'; ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script>
     <script src="assets/script.js"></script>
 
-    <div class="modal fade" id="modalConfirmarExclusao" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered modal-sm">
-            <div class="modal-content">
-
-                <div class="modal-header bg-danger text-white">
-                    <h6 class="modal-title">Confirmar exclusão</h6>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-
-                <div class="modal-body text-center">
-                    Tem certeza que deseja excluir este cliente?
-                </div>
-
-                <div class="modal-footer justify-content-center">
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">
-                        Cancelar
-                    </button>
-
-                    <button type="button" class="btn btn-danger btn-sm" id="btnConfirmarExclusao">
-                        Excluir
-                    </button>
-                </div>
-
-            </div>
-        </div>
-    </div>
+    <?php include 'includes/modal_confirmar.php'; ?>
 
 </body>
 

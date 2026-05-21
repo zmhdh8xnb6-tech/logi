@@ -1,19 +1,9 @@
 <?php
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "crud_clientes";
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-if ($conn->connect_error) {
-    header('HTTP/1.1 500 Internal Server Error');
-    echo json_encode(['error' => 'Conexão falhou: ' . $conn->connect_error]);
-    exit;
-}
+require 'config.php';
 
 $action = $_GET['action'] ?? '';
 
-if ($action == 'read') {
+if ($action === 'read') {
 
     $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
     $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
@@ -23,32 +13,38 @@ if ($action == 'read') {
 
     $offset = ($page - 1) * $limit;
 
-    $totalResult = $conn->query("SELECT COUNT(*) as total FROM clientes");
-    $totalRow = $totalResult->fetch_assoc();
-    $total = $totalRow['total'];
+    $stmtTotal = $pdo->query("SELECT COUNT(*) FROM clientes");
+    $total = $stmtTotal->fetchColumn();
 
-    $stmt = $conn->prepare("SELECT * FROM clientes ORDER BY CAST(codigo AS UNSIGNED) ASC LIMIT ? OFFSET ?");
-    $stmt->bind_param("ii", $limit, $offset);
+    $stmt = $pdo->prepare("
+        SELECT * 
+        FROM clientes
+        ORDER BY CAST(codigo AS UNSIGNED) ASC
+        LIMIT :limit OFFSET :offset
+    ");
+
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
     $stmt->execute();
-    $result = $stmt->get_result();
 
-    $data = [];
-    while ($row = $result->fetch_assoc()) {
-        $data[] = $row;
-    }
+    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     header('Content-Type: application/json; charset=utf-8');
+
     echo json_encode([
         "data" => $data,
         "total" => $total,
         "page" => $page,
         "limit" => $limit
     ]);
+
     exit;
 }
 
-if ($action == 'create' || $action == 'update') {
+if ($action === 'create' || $action === 'update') {
+
     $id = $_POST['id'] ?? '';
+
     $codigo = $_POST['codigo'] ?? '';
     $documento = $_POST['documento'] ?? '';
     $nome = $_POST['nome'] ?? '';
@@ -65,86 +61,59 @@ if ($action == 'create' || $action == 'update') {
     $nire = $_POST['nire'] ?? '';
     $email = $_POST['email'] ?? '';
 
-    $documento = $_POST['documento'] ?? '';
+    $vencimento_certificado = !empty($_POST['vencimento_certificado'])
+        ? $_POST['vencimento_certificado']
+        : null;
 
     if ($id == '') {
-        $stmt = $conn->prepare("SELECT id FROM clientes WHERE documento = ?");
-        $stmt->bind_param("s", $documento);
+        $stmt = $pdo->prepare("
+            SELECT id 
+            FROM clientes 
+            WHERE documento = ?
+        ");
+
+        $stmt->execute([$documento]);
     } else {
-        $stmt = $conn->prepare("SELECT id FROM clientes WHERE documento = ? AND id <> ?");
-        $stmt->bind_param("si", $documento, $id);
+        $stmt = $pdo->prepare("
+            SELECT id 
+            FROM clientes
+            WHERE documento = ?
+            AND id <> ?
+        ");
+
+        $stmt->execute([$documento, $id]);
     }
 
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($result->num_rows > 0) {
-        echo "duplicado";
-        exit;
-    }
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($result->num_rows > 0) {
+    if ($stmt->rowCount() > 0) {
         echo "duplicado";
         exit;
     }
 
     if ($id == '') {
-        $stmt = $conn->prepare("
+
+        $stmt = $pdo->prepare("
             INSERT INTO clientes (
-                codigo, documento, nome, nome_fantasia, endereco, numero_endereco,
-                complemento, bairro, cidade, uf, cep, telefone,
-                inscricao_estadual, nire, email
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                codigo,
+                documento,
+                nome,
+                nome_fantasia,
+                endereco,
+                numero_endereco,
+                complemento,
+                bairro,
+                cidade,
+                uf,
+                cep,
+                telefone,
+                inscricao_estadual,
+                nire,
+                email,
+                vencimento_certificado
+            )
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ");
-        $stmt->bind_param(
-            "sssssssssssssss",
-            $codigo,
-            $documento,
-            $nome,
-            $nome_fantasia,
-            $endereco,
-            $numero_endereco,
-            $complemento,
-            $bairro,
-            $cidade,
-            $uf,
-            $cep,
-            $telefone,
-            $inscricao_estadual,
-            $nire,
-            $email
-        );
 
-        if ($stmt->execute()) {
-            echo "ok";
-        } else {
-            header('HTTP/1.1 500 Internal Server Error');
-            echo "Erro ao inserir: " . $stmt->error;
-        }
-    } else {
-        $stmt = $conn->prepare("
-            UPDATE clientes SET
-                codigo=?,
-                documento=?,
-                nome=?,
-                nome_fantasia=?,
-                endereco=?,
-                numero_endereco=?,
-                complemento=?,
-                bairro=?,
-                cidade=?,
-                uf=?,
-                cep=?,
-                telefone=?,
-                inscricao_estadual=?,
-                nire=?,
-                email=?
-            WHERE id=?
-        ");
-        $stmt->bind_param(
-            "sssssssssssssssi",
+        $ok = $stmt->execute([
             $codigo,
             $documento,
             $nome,
@@ -160,33 +129,75 @@ if ($action == 'create' || $action == 'update') {
             $inscricao_estadual,
             $nire,
             $email,
-            $id
-        );
-
-        if ($stmt->execute()) {
-            echo "ok";
-        } else {
-            header('HTTP/1.1 500 Internal Server Error');
-            echo "Erro ao atualizar: " . $stmt->error;
-        }
-    }
-    exit;
-}
-
-if ($action == 'delete') {
-    $id = $_POST['id'] ?? '';
-    $stmt = $conn->prepare("DELETE FROM clientes WHERE id=?");
-    $stmt->bind_param("i", $id);
-
-    if ($stmt->execute()) {
-        echo "ok";
+            $vencimento_certificado
+        ]);
     } else {
-        header('HTTP/1.1 500 Internal Server Error');
-        echo "Erro ao excluir: " . $stmt->error;
+
+        $stmt = $pdo->prepare("
+            UPDATE clientes SET
+                codigo=?,
+                documento=?,
+                nome=?,
+                nome_fantasia=?,
+                endereco=?,
+                numero_endereco=?,
+                complemento=?,
+                bairro=?,
+                cidade=?,
+                uf=?,
+                cep=?,
+                telefone=?,
+                inscricao_estadual=?,
+                nire=?,
+                email=?,
+                vencimento_certificado=?
+            WHERE id=?
+        ");
+
+        $ok = $stmt->execute([
+            $codigo,
+            $documento,
+            $nome,
+            $nome_fantasia,
+            $endereco,
+            $numero_endereco,
+            $complemento,
+            $bairro,
+            $cidade,
+            $uf,
+            $cep,
+            $telefone,
+            $inscricao_estadual,
+            $nire,
+            $email,
+            $vencimento_certificado,
+            $id
+        ]);
     }
+
+    echo $ok ? 'ok' : 'erro';
     exit;
 }
 
-header('HTTP/1.1 400 Bad Request');
-echo json_encode(['error' => 'Ação inválida']);
+if ($action === 'delete') {
+
+    $id = $_POST['id'] ?? '';
+
+    $stmt = $pdo->prepare("
+        DELETE FROM clientes
+        WHERE id = ?
+    ");
+
+    $ok = $stmt->execute([$id]);
+
+    echo $ok ? 'ok' : 'erro';
+    exit;
+}
+
+header('Content-Type: application/json; charset=utf-8');
+
+echo json_encode([
+    'error' => 'Ação inválida'
+]);
+
 exit;

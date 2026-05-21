@@ -55,6 +55,16 @@
                                     <label for="nire" class="form-label">NIRE</label>
                                     <input type="text" class="form-control" name="nire" id="nire">
                                 </div>
+                                <div class="col-md-3 mb-3">
+                                    <label for="vencimento_certificado" class="form-label">
+                                        Vencimento Certificado Digital
+                                    </label>
+                                    <input
+                                        type="date"
+                                        class="form-control"
+                                        name="vencimento_certificado"
+                                        id="vencimento_certificado">
+                                </div>
                             </div>
                         </div>
 
