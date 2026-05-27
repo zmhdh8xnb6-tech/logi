@@ -3,11 +3,6 @@ body {
     font-family: Arial;
 }
 
-.modal-body {
-    max-height: 60vh;
-    overflow-y: auto;
-}
-
 .senha-wrapper {
     position: relative;
 }

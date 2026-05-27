@@ -75,26 +75,52 @@ $(document).ready(function () {
             data: $(this).serialize(),
 
             success: function (resp) {
-                resp = resp.trim();
 
-                if (resp === 'ok') {
+                if (resp.trim() === 'ok') {
+
+                    $('#btnSalvarCliente')
+                        .prop('disabled', false)
+                        .html('Salvar Alterações');
+
+                    if (window.location.pathname.includes('cliente_editar.php')) {
+
+                        window.location.href =
+                            'cliente.php?id=' + $('#id').val();
+
+                        return;
+                    }
+
                     $('#clienteForm')[0].reset();
                     $('#id').val('');
 
-                    const modalEl = document.getElementById('clienteModal');
-                    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-                    modal.hide();
+                    if (window.location.pathname.includes('cliente_novo.php')) {
 
-                    if (window.location.pathname.includes('cliente.php')) {
-                        window.location.reload();
-                    } else {
-                        carregarClientes(paginaAtual);
+                        window.location.href = 'index.php';
+
+                        return;
                     }
 
-                } else if (resp === 'duplicado') {
-                    mostrarAviso('Já existe um cliente cadastrado com este CPF/CNPJ.', '#documento');
+                    carregarClientes(paginaAtual);
+
+                } else if (resp.trim() === 'duplicado') {
+
+                    mostrarAviso(
+                        'Já existe um cliente cadastrado com este CPF/CNPJ.',
+                        '#documento'
+                    );
+
+                    $('#btnSalvarCliente')
+                        .prop('disabled', false)
+                        .html('Salvar');
+
                 } else {
+
                     mostrarAviso(resp);
+
+                    $('#btnSalvarCliente')
+                        .prop('disabled', false)
+                        .html('Salvar');
+
                 }
             },
 

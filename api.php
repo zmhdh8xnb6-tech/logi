@@ -6,7 +6,7 @@ $action = $_GET['action'] ?? '';
 if ($action === 'read') {
 
     $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-    $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
+    $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
 
     if ($page < 1) $page = 1;
     if ($limit < 1) $limit = 10;
@@ -60,6 +60,10 @@ if ($action === 'create' || $action === 'update') {
     $inscricao_estadual = $_POST['inscricao_estadual'] ?? '';
     $nire = $_POST['nire'] ?? '';
     $email = $_POST['email'] ?? '';
+    $cadastro_df_legal = $_POST['cadastro_df_legal'] ?? '';
+    $alvara = $_POST['alvara'] ?? '';
+    $contador = $_POST['contador'] ?? '';
+    $cadastro_crf = $_POST['cadastro_crf'] ?? '';
 
     $vencimento_certificado = !empty($_POST['vencimento_certificado'])
         ? $_POST['vencimento_certificado']
@@ -108,9 +112,13 @@ if ($action === 'create' || $action === 'update') {
                 inscricao_estadual,
                 nire,
                 email,
-                vencimento_certificado
+                vencimento_certificado,
+                cadastro_df_legal,
+                alvara,
+                contador,
+                cadastro_crf
             )
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ");
 
         $ok = $stmt->execute([
@@ -129,7 +137,11 @@ if ($action === 'create' || $action === 'update') {
             $inscricao_estadual,
             $nire,
             $email,
-            $vencimento_certificado
+            $vencimento_certificado,
+            $cadastro_df_legal,
+            $alvara,
+            $contador,
+            $cadastro_crf
         ]);
     } else {
 
@@ -150,7 +162,11 @@ if ($action === 'create' || $action === 'update') {
                 inscricao_estadual=?,
                 nire=?,
                 email=?,
-                vencimento_certificado=?
+                vencimento_certificado=?,
+                cadastro_df_legal=?,
+                alvara=?,
+                contador=?,
+                cadastro_crf=?
             WHERE id=?
         ");
 
@@ -171,6 +187,10 @@ if ($action === 'create' || $action === 'update') {
             $nire,
             $email,
             $vencimento_certificado,
+            $cadastro_df_legal,
+            $alvara,
+            $contador,
+            $cadastro_crf,
             $id
         ]);
     }

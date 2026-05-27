@@ -39,9 +39,9 @@ if (!$cliente) {
             <p class="text-muted"><?= htmlspecialchars($cliente['documento']) ?></p>
 
             <div class="d-flex gap-2 mb-4">
-                <button class="btn btn-primary" onclick="abrirModalEditarCliente()">
+                <a href="cliente_editar.php?id=<?= (int)$cliente['id'] ?>" class="btn btn-primary">
                     <i class="bi bi-pencil-square"></i> Editar
-                </button>
+                </a>
 
                 <button class="btn btn-danger" onclick="excluirCliente(<?= (int)$cliente['id'] ?>)">
                     <i class="bi bi-trash"></i> Excluir
@@ -62,6 +62,39 @@ if (!$cliente) {
                         ? date('d/m/Y', strtotime($cliente['vencimento_certificado']))
                         : 'Não cadastrado'; ?>
                 </p>
+                <hr>
+
+                <h6 class="mt-3 mb-3">Controles internos</h6>
+
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">Cadastro DF Legal</small>
+                        <?= htmlspecialchars(
+                            ucfirst(str_replace('_', ' ', $cliente['cadastro_df_legal'] ?: 'Não informado'))
+                        ) ?>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">Alvará</small>
+                        <?= htmlspecialchars(
+                            ucfirst(str_replace('_', ' ', $cliente['alvara'] ?: 'Não informado'))
+                        ) ?>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">Contador</small>
+                        <?= htmlspecialchars(
+                            ucfirst(str_replace('_', ' ', $cliente['contador'] ?: 'Não informado'))
+                        ) ?>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">Cadastro CRF</small>
+                        <?= htmlspecialchars(
+                            ucfirst(str_replace('_', ' ', $cliente['cadastro_crf'] ?: 'Não informado'))
+                        ) ?>
+                    </div>
+                </div>
             </div>
 
             <div class="clientes-box mt-4">
@@ -76,8 +109,6 @@ if (!$cliente) {
         </div>
     </main>
 
-    <?php include 'includes/modal_cliente.php'; ?>
-
     <?php include 'includes/modal_confirmar.php'; ?>
 
     <?php include 'includes/modal_aviso.php'; ?>
@@ -89,28 +120,6 @@ if (!$cliente) {
 
     <script>
         const clienteAtual = <?= json_encode($cliente, JSON_UNESCAPED_UNICODE) ?>;
-
-        function abrirModalEditarCliente() {
-            abrirModalEditar(
-                clienteAtual.id,
-                clienteAtual.codigo,
-                clienteAtual.documento,
-                clienteAtual.nome,
-                clienteAtual.nome_fantasia,
-                clienteAtual.endereco,
-                clienteAtual.numero_endereco,
-                clienteAtual.complemento,
-                clienteAtual.bairro,
-                clienteAtual.cidade,
-                clienteAtual.uf,
-                clienteAtual.cep,
-                clienteAtual.telefone,
-                clienteAtual.inscricao_estadual,
-                clienteAtual.nire,
-                clienteAtual.email,
-                clienteAtual.vencimento_certificado
-            );
-        }
     </script>
 
 </body>

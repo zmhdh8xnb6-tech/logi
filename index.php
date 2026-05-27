@@ -30,9 +30,9 @@ if (!isset($_SESSION["usuario_id"])) {
                     <p class="text-muted mb-0">Cadastro e gerenciamento de clientes</p>
                 </div>
 
-                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#clienteModal" onclick="abrirModalNovo()">
+                <a href="cliente_novo.php" class="btn btn-primary">
                     <i class="bi bi-plus-circle"></i> Novo Cliente
-                </button>
+                </a>
             </div>
 
             <div class="clientes-box">

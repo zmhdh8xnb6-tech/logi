@@ -31,6 +31,18 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <p class="text-muted mb-0">Acompanhe os vencimentos dos certificados digitais dos clientes</p>
             </div>
 
+            <div class="row mb-3">
+
+                <div class="col-md-4">
+                    <input
+                        type="text"
+                        id="buscaCertificado"
+                        class="form-control"
+                        placeholder="Buscar por código ou CNPJ...">
+                </div>
+
+            </div>
+
             <div class="clientes-box">
 
                 <div class="table-responsive">
@@ -60,17 +72,17 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                             ?>
 
-                                <tr class="linha-cliente">
+                                <tr class="linha-certificado">
 
-                                    <td>
+                                    <td class="codigo-cliente">
                                         <?= htmlspecialchars($cliente['codigo']) ?>
                                     </td>
 
-                                    <td>
+                                    <td class="doc-cliente">
                                         <?= htmlspecialchars($cliente['documento']) ?>
                                     </td>
 
-                                    <td>
+                                    <td class="nome-cliente">
                                         <?= htmlspecialchars($cliente['nome']) ?>
                                     </td>
 
@@ -82,17 +94,37 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     </td>
 
                                     <td>
+                                        <?php if ($diasRestantes < 0): ?>
 
-                                        <?php
-                                        if ($diasRestantes < 0) {
-                                            echo 'Vencido';
-                                        } elseif ($diasRestantes == 0) {
-                                            echo 'Vence hoje';
-                                        } else {
-                                            echo $diasRestantes . ' dias';
-                                        }
-                                        ?>
+                                            <span class="badge bg-dark">
+                                                Vencido há <?= abs($diasRestantes) ?> dias
+                                            </span>
 
+                                        <?php elseif ($diasRestantes == 0): ?>
+
+                                            <span class="badge bg-danger">
+                                                Vence hoje
+                                            </span>
+
+                                        <?php elseif ($diasRestantes <= 14): ?>
+
+                                            <span class="badge bg-danger">
+                                                <?= $diasRestantes ?> dias
+                                            </span>
+
+                                        <?php elseif ($diasRestantes <= 30): ?>
+
+                                            <span class="badge bg-warning text-dark">
+                                                <?= $diasRestantes ?> dias
+                                            </span>
+
+                                        <?php else: ?>
+
+                                            <span class="badge bg-success">
+                                                <?= $diasRestantes ?> dias
+                                            </span>
+
+                                        <?php endif; ?>
                                     </td>
 
                                 </tr>
@@ -109,6 +141,22 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         </div>
     </main>
+
+    <script>
+        document.getElementById('buscaCertificado').addEventListener('keyup', function() {
+            const valor = this.value.toLowerCase();
+
+            document.querySelectorAll('.linha-certificado').forEach(function(linha) {
+                const codigo = linha.querySelector('.codigo-cliente').textContent.toLocaleLowerCase();
+                const nome = linha.querySelector('.nome-cliente').textContent.toLowerCase();
+                const documento = linha.querySelector('.doc-cliente').textContent.toLowerCase();
+
+                const encontrou = nome.includes(valor) || documento.includes(valor) || codigo.includes(valor);
+
+                linha.style.display = encontrou ? '' : 'none';
+            });
+        });
+    </script>
 
 </body>
 
