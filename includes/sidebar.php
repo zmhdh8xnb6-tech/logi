@@ -1,11 +1,15 @@
 <div class="app-sidebar collapsed" id="appSidebar">
 
-    <button class="sidebar-toggle" id="sidebarToggle" type="button">
-        <i class="bi bi-list"></i>
-    </button>
+    <div class="sidebar-header">
 
-    <div class="sidebar-logo">
-        <img src="assets/images/logo.svg" alt="Logi">
+        <button class="sidebar-toggle" id="sidebarToggle" type="button">
+            <i class="bi bi-layout-sidebar"></i>
+        </button>
+
+        <span class="sidebar-title">
+            Menu
+        </span>
+
     </div>
 
     <nav class="sidebar-menu">
@@ -19,7 +23,7 @@
             <span>Parcelamentos</span>
         </a>
 
-        <a href="certificados.php" class="sidebar-link">
+        <a href="certificados.php" class="sidebar-link" title="Certificado Digital">
             <i class="bi bi-file-earmark-text"></i>
             <span>Certificado Digital</span>
         </a>

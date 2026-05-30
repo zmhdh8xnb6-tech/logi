@@ -4,7 +4,7 @@ require 'config.php';
 $stmt = $pdo->query("
 SELECT id,codigo,nome
 FROM clientes
-ORDER BY nome
+ORDER BY CAST(codigo AS UNSIGNED) ASC
 ");
 
 $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -53,7 +53,7 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <select
                                 class="form-select"
                                 name="cliente_id"
-                                required>
+                                id="cliente_id">
 
                                 <option value="">
                                     Selecione
@@ -84,11 +84,13 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                             <select
                                 class="form-select"
-                                name="orgao">
+                                name="orgao"
+                                id="orgao">
 
-                                <option>SEFAZ DF</option>
-                                <option>Receita Federal</option>
-                                <option>PGFN</option>
+                                <option value="">Selecione</option>
+                                <option value="SEFAZ DF">SEFAZ DF</option>
+                                <option value="Receita Federal">Receita Federal</option>
+                                <option value="PGFN">PGFN</option>
 
                             </select>
 
@@ -104,7 +106,8 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <input
                                 type="text"
                                 class="form-control"
-                                name="numero_parcelamento">
+                                name="numero_parcelamento"
+                                id="numero_parcelamento">
 
                         </div>
 
@@ -117,11 +120,13 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                             <select
                                 class="form-select"
-                                name="forma_envio">
+                                name="forma_envio"
+                                id="forma_envio">
 
-                                <option>E-mail</option>
-                                <option>Zap</option>
-                                <option>Em mãos</option>
+                                <option value="">Selecione</option>
+                                <option value="E-mail">E-mail</option>
+                                <option value="WhatsApp"></option>
+                                <option value="Em mãos">Em mãos</option>
 
                             </select>
 
@@ -137,7 +142,8 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <input
                                 type="number"
                                 class="form-control"
-                                name="parcelas_total">
+                                name="parcelas_total"
+                                id="parceas_total">
 
                         </div>
 
@@ -151,7 +157,8 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <input
                                 type="number"
                                 class="form-control"
-                                name="parcelas_emitidas">
+                                name="parcelas_emitidas"
+                                id="parcelas_emitidas">
 
                         </div>
 
@@ -165,7 +172,8 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <input
                                 type="number"
                                 class="form-control"
-                                name="parcelas_atrasadas">
+                                name="parcelas_atrasadas"
+                                id="parcelas_atrasadas">
 
                         </div>
 
@@ -190,6 +198,62 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
 
     </main>
+
+    <script>
+        const camposParcelamento = [
+            'cliente_id',
+            'orgao',
+            'numero_parcelamento',
+            'forma_envio',
+            'parcelas_total',
+            'parcelas_emitidas',
+            'parcelas_atrasadas'
+        ];
+
+        camposParcelamento.forEach(function(id) {
+            const campo = document.getElementById(id);
+
+            if (!campo) {
+                console.warn('Campo não encontrado:', id);
+                return;
+            }
+
+            campo.addEventListener('input', function() {
+                this.classList.remove('is-invalid');
+            });
+
+            campo.addEventListener('change', function() {
+                this.classList.remove('is-invalid');
+            });
+        });
+
+        document.getElementById('formParcelamento').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            let valido = true;
+
+            camposParcelamento.forEach(function(id) {
+                const campo = document.getElementById(id);
+
+                if (!campo) {
+                    console.warn('Campo não encontrado:', id);
+                    valido = false;
+                    return;
+                }
+
+                if (!campo.value.trim()) {
+                    campo.classList.add('is-invalid');
+                    valido = false;
+                }
+            });
+
+            if (!valido) {
+                return;
+            }
+
+            // Aqui depois vamos salvar no banco
+        });
+    </script>
 
 </body>
 

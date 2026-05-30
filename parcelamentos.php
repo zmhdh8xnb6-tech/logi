@@ -5,9 +5,8 @@
 
 <head>
     <?php include 'includes/head.php'; ?>
-    <title>Logi - Parcelamentos</title>
+    <title>Parcelamentos</title>
     <link rel="stylesheet" href="assets/home.css">
-    <link rel="stylesheet" href="assets/parcelamentos.css">
 </head>
 
 <body class="app-layout">
@@ -15,50 +14,68 @@
     <?php include 'includes/sidebar.php'; ?>
 
     <main class="app-main">
-
         <div class="container-fluid">
 
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h3 class="mb-1">Parcelamentos</h3>
-                    <p class="text-muted mb-0">Acompanhe os parcelamentos dos clientes</p>
-                </div>
-
-                <a href="#" class="btn btn-primary">
-                    <i class="bi bi-plus-circle"></i> Novo Parcelamento
-                </a>
+            <div class="mb-4">
+                <h3 class="mb-1">Parcelamentos</h3>
+                <p class="text-muted mb-0">Escolha o tipo de parcelamento que deseja acompanhar</p>
             </div>
 
-            <div class="parcelamento-box">
-                <h5 class="mb-3">Lista de Parcelamentos</h5>
+            <div class="row g-4">
 
-                <div class="table-responsive">
-                    <table class="table align-middle">
-                        <thead>
-                            <tr>
-                                <th>Cliente</th>
-                                <th>Órgão</th>
-                                <th>Tipo</th>
-                                <th>Parcelas</th>
-                                <th>Vencimento</th>
-                                <th>Status</th>
-                                <th class="text-end">Ações</th>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
-                                    Nenhum parcelamento cadastrado ainda.
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div class="col-md-4">
+                    <a href="parcelamento_simples.php" class="text-decoration-none text-dark d-block">
+                        <div class="card-servico">
+                            <div class="icon">🏦</div>
+                            <h5>Simples Nacional</h5>
+                            <p>Parcelamentos DAS</p>
+                        </div>
+                    </a>
                 </div>
+
+                <div class="col-md-4">
+                    <a href="parcelamento_tributos.php" class="text-decoration-none text-dark d-block">
+                        <div class="card-servico">
+                            <div class="icon">⚖️</div>
+                            <h5>Previdência Social / Multas / Tributos</h5>
+                            <p>Débitos Federais</p>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-4">
+                    <a href="parcelamento_pgfn.php" class="text-decoration-none text-dark d-block">
+                        <div class="card-servico">
+                            <div class="icon">⚖️</div>
+                            <h5>PGFN</h5>
+                            <p>Dívida Ativa</p>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-4">
+                    <a href="parcelamento_sefazdf.php" class="text-decoration-none text-dark d-block">
+                        <div class="card-servico">
+                            <div class="icon">🏢</div>
+                            <h5>SEFAZ DF</h5>
+                            <p>Débitos Estaduais</p>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-4">
+                    <a href="parcelamento_sefazgo.php" class="text-decoration-none text-dark d-block">
+                        <div class="card-servico">
+                            <div class="icon">🏢</div>
+                            <h5>SEFAZ GO</h5>
+                            <p>Débitos Estaduais</p>
+                        </div>
+                    </a>
+                </div>
+
             </div>
 
         </div>
-
     </main>
 
 </body>

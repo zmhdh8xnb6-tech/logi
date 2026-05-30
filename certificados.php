@@ -5,7 +5,7 @@ $stmt = $pdo->query("
     SELECT *
     FROM clientes
     WHERE vencimento_certificado IS NOT NULL
-    ORDER BY vencimento_certificado ASC
+    ORDER BY CAST(codigo AS UNSIGNED) ASC
 ");
 
 $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -62,7 +62,7 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                             <?php foreach ($certificados as $cliente):
 
-                                $hoje = new DateTime();
+                                $hoje = new DateTime(date('Y-m-d'));
                                 $vencimento = new DateTime($cliente['vencimento_certificado']);
 
                                 $dias = $hoje->diff($vencimento);
@@ -72,7 +72,7 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                             ?>
 
-                                <tr class="linha-certificado">
+                                <tr class="linha-cliente">
 
                                     <td class="codigo-cliente">
                                         <?= htmlspecialchars($cliente['codigo']) ?>
@@ -87,10 +87,20 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     </td>
 
                                     <td>
-                                        <?= date(
-                                            'd/m/Y',
-                                            strtotime($cliente['vencimento_certificado'])
-                                        ) ?>
+                                        <div class="d-flex gap-2">
+                                            <input
+                                                type="date"
+                                                class="form-control form-control-sm campo-vencimento"
+                                                style="max-width: 120px;"
+                                                value="<?= htmlspecialchars($cliente['vencimento_certificado']) ?>"
+                                                data-id="<?= (int)$cliente['id'] ?>">
+
+                                            <button
+                                                type="button"
+                                                class="btn btn-success btn-sm btn-salvar-vencimento">
+                                                Salvar
+                                            </button>
+                                        </div>
                                     </td>
 
                                     <td>
@@ -146,7 +156,7 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
         document.getElementById('buscaCertificado').addEventListener('keyup', function() {
             const valor = this.value.toLowerCase();
 
-            document.querySelectorAll('.linha-certificado').forEach(function(linha) {
+            document.querySelectorAll('.linha-cliente').forEach(function(linha) {
                 const codigo = linha.querySelector('.codigo-cliente').textContent.toLocaleLowerCase();
                 const nome = linha.querySelector('.nome-cliente').textContent.toLowerCase();
                 const documento = linha.querySelector('.doc-cliente').textContent.toLowerCase();
@@ -154,6 +164,46 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 const encontrou = nome.includes(valor) || documento.includes(valor) || codigo.includes(valor);
 
                 linha.style.display = encontrou ? '' : 'none';
+            });
+        });
+    </script>
+
+    <script>
+        document.querySelectorAll('.btn-salvar-vencimento').forEach(function(botao) {
+            botao.addEventListener('click', function(e) {
+                e.stopPropagation();
+
+                const linha = this.closest('tr');
+                const campo = linha.querySelector('.campo-vencimento');
+
+                const id = campo.dataset.id;
+                const vencimento = campo.value;
+
+                this.disabled = true;
+                this.innerHTML = 'Salvando...';
+
+                fetch('api_certificados.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: 'id=' + encodeURIComponent(id) +
+                            '&vencimento_certificado=' + encodeURIComponent(vencimento)
+                    })
+                    .then(response => response.text())
+                    .then(resp => {
+                        if (resp.trim() === 'ok') {
+                            this.innerHTML = 'Salvo';
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 500);
+                        } else {
+                            this.innerHTML = 'Erro';
+                        }
+                    })
+                    .catch(() => {
+                        this.innerHTML = 'Erro';
+                    });
             });
         });
     </script>

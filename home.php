@@ -59,14 +59,6 @@
                 </div>
 
                 <div class="col-md-4">
-                    <div class="card-servico" onclick="location.href='index.php'">
-                        <div class="icon">👤</div>
-                        <h5>Clientes</h5>
-                        <p>Cadastro e gerenciamento</p>
-                    </div>
-                </div>
-
-                <div class="col-md-4">
                     <div class="card-servico" onclick="location.href='outros.php'">
                         <div class="icon">⚙️</div>
                         <h5>Outros Serviços</h5>
