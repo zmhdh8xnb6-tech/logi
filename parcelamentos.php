@@ -37,8 +37,8 @@
                     <a href="parcelamento_tributos.php" class="text-decoration-none text-dark d-block">
                         <div class="card-servico">
                             <div class="icon">⚖️</div>
-                            <h5>Previdência Social / Multas / Tributos</h5>
-                            <p>Débitos Federais</p>
+                            <h5>Previdência Social</h5>
+                            <p>Multas / Tributos</p>
                         </div>
                     </a>
                 </div>

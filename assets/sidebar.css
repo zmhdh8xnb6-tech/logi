@@ -1,4 +1,7 @@
 .sidebar-toggle {
+    position: absolute;
+    left: 0;
+    top: 0;
     width: 42px;
     height: 42px;
     border: none;
@@ -12,18 +15,19 @@
 }
 
 .sidebar-header {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 25px;
+    margin-bottom: 20px;
     padding-bottom: 15px;
-    border-bottom: 1px solid rgba(255, 255, 255, .08);
 }
 
 .sidebar-title {
+    margin-left: 58px;
     color: #fff;
     font-size: 1rem;
     font-weight: 600;
+    margin-top: 9px;
 }
 
 .sidebar-toggle:hover {
@@ -103,6 +107,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    margin-top: 25px;
 }
 
 .sidebar-link {
