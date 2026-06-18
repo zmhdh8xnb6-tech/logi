@@ -1,5 +1,66 @@
 <?php
 require 'config.php';
+require 'includes/parcelamentos_funcoes.php';
+
+$orgaosPermitidos = [
+    'Simples Nacional' => 'parcelamento_simples.php',
+    'Receita Federal' => 'parcelamento_tributos.php',
+    'PGFN' => 'parcelamento_pgfn.php',
+    'SEFAZ DF' => 'parcelamento_sefazdf.php',
+    'SEFAZ GO' => 'parcelamento_sefazgo.php',
+];
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $clienteId = (int)($_POST['cliente_id'] ?? 0);
+    $orgao = trim($_POST['orgao'] ?? '');
+    $numeroParcelamento = trim($_POST['numero_parcelamento'] ?? '');
+    $formaEnvio = trim($_POST['forma_envio'] ?? '');
+    $dataPrimeiraParcela = $_POST['data_primeira_parcela'] ?? null;
+    $parcelasTotal = (int)($_POST['parcelas_total'] ?? 0);
+    $parcelasEmitidas = (int)($_POST['parcelas_emitidas'] ?? 0);
+    $parcelasAtrasadas = (int)($_POST['parcelas_atrasadas'] ?? 0);
+
+    if (
+        $clienteId <= 0 ||
+        !array_key_exists($orgao, $orgaosPermitidos) ||
+        $numeroParcelamento === '' ||
+        $formaEnvio === '' ||
+        empty($dataPrimeiraParcela) ||
+        $parcelasTotal <= 0 ||
+        $parcelasEmitidas < 0 ||
+        $parcelasAtrasadas < 0
+    ) {
+        $erro = 'Preencha todos os campos corretamente.';
+    } else {
+        $stmt = $pdo->prepare("
+            INSERT INTO parcelamentos (
+                cliente_id,
+                orgao,
+                numero_parcelamento,
+                forma_envio,
+                data_primeira_parcela,
+                parcelas_total,
+                parcelas_emitidas,
+                parcelas_atrasadas
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+
+        $stmt->execute([
+            $clienteId,
+            $orgao,
+            $numeroParcelamento,
+            $formaEnvio,
+            $dataPrimeiraParcela,
+            $parcelasTotal,
+            $parcelasEmitidas,
+            $parcelasAtrasadas,
+        ]);
+
+        header('Location: ' . $orgaosPermitidos[$orgao] . '?salvo=1');
+        exit;
+    }
+}
 
 $stmt = $pdo->query("
 SELECT id,codigo,nome
@@ -40,7 +101,12 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             <div class="clientes-box">
 
-                <form id="formParcelamento">
+                <form id="formParcelamento" method="post">
+                    <?php if (!empty($erro)): ?>
+                        <div class="alert alert-danger">
+                            <?= htmlspecialchars($erro) ?>
+                        </div>
+                    <?php endif; ?>
 
                     <div class="row">
 
@@ -88,9 +154,11 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 id="orgao">
 
                                 <option value="">Selecione</option>
-                                <option value="SEFAZ DF">SEFAZ DF</option>
+                                <option value="Simples Nacional">Simples Nacional</option>
                                 <option value="Receita Federal">Receita Federal</option>
                                 <option value="PGFN">PGFN</option>
+                                <option value="SEFAZ DF">SEFAZ DF</option>
+                                <option value="SEFAZ GO">SEFAZ GO</option>
 
                             </select>
 
@@ -125,10 +193,25 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                 <option value="">Selecione</option>
                                 <option value="E-mail">E-mail</option>
-                                <option value="WhatsApp"></option>
+                                <option value="WhatsApp">WhatsApp</option>
                                 <option value="Em mãos">Em mãos</option>
 
                             </select>
+
+                        </div>
+
+
+                        <div class="col-md-3 mb-3">
+
+                            <label class="form-label">
+                                Data primeira parcela
+                            </label>
+
+                            <input
+                                type="date"
+                                class="form-control"
+                                name="data_primeira_parcela"
+                                id="data_primeira_parcela">
 
                         </div>
 
@@ -143,7 +226,8 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 type="number"
                                 class="form-control"
                                 name="parcelas_total"
-                                id="parceas_total">
+                                id="parcelas_total"
+                                min="1">
 
                         </div>
 
@@ -158,7 +242,8 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 type="number"
                                 class="form-control"
                                 name="parcelas_emitidas"
-                                id="parcelas_emitidas">
+                                id="parcelas_emitidas"
+                                min="0">
 
                         </div>
 
@@ -173,7 +258,8 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 type="number"
                                 class="form-control"
                                 name="parcelas_atrasadas"
-                                id="parcelas_atrasadas">
+                                id="parcelas_atrasadas"
+                                min="0">
 
                         </div>
 
@@ -205,6 +291,7 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             'orgao',
             'numero_parcelamento',
             'forma_envio',
+            'data_primeira_parcela',
             'parcelas_total',
             'parcelas_emitidas',
             'parcelas_atrasadas'
@@ -251,7 +338,7 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 return;
             }
 
-            // Aqui depois vamos salvar no banco
+            this.submit();
         });
     </script>
 

@@ -1,4 +1,9 @@
-<?php require 'config.php'; ?>
+<?php
+require 'config.php';
+require 'includes/parcelamentos_funcoes.php';
+
+$parcelamentos = buscarParcelamentosPorOrgao($pdo, 'PGFN');
+?>
 
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -29,6 +34,24 @@
                 </a>
             </div>
 
+            <?php if (isset($_GET['salvo'])): ?>
+                <div class="alert alert-success alert-auto-dismiss fade show">
+                    Parcelamento salvo com sucesso.
+                </div>
+            <?php endif; ?>
+
+            <?php if (isset($_GET['editado'])): ?>
+                <div class="alert alert-success alert-auto-dismiss fade show">
+                    Parcelamento atualizado com sucesso.
+                </div>
+            <?php endif; ?>
+
+            <?php if (isset($_GET['excluido'])): ?>
+                <div class="alert alert-success alert-auto-dismiss fade show">
+                    Parcelamento excluído com sucesso.
+                </div>
+            <?php endif; ?>
+
             <div class="parcelamento-box">
                 <h5 class="mb-3">Lista de Parcelamentos</h5>
 
@@ -38,20 +61,17 @@
                             <tr>
                                 <th>Cliente</th>
                                 <th>Órgão</th>
-                                <th>Tipo</th>
+                                <th>Número</th>
+                                <th>Forma envio</th>
                                 <th>Parcelas</th>
-                                <th>Vencimento</th>
+                                <th>Atrasadas</th>
                                 <th>Status</th>
                                 <th class="text-end">Ações</th>
                             </tr>
                         </thead>
 
                         <tbody>
-                            <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
-                                    Nenhum parcelamento cadastrado ainda.
-                                </td>
-                            </tr>
+                            <?php renderizarLinhasParcelamentos($parcelamentos); ?>
                         </tbody>
                     </table>
                 </div>
@@ -62,5 +82,17 @@
     </main>
 
 </body>
+
+<script>
+    setTimeout(function() {
+        document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {
+            alerta.classList.remove('show');
+
+            setTimeout(function() {
+                alerta.remove();
+            }, 200);
+        });
+    }, 4000);
+</script>
 
 </html>

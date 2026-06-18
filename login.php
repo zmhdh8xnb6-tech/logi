@@ -8,7 +8,7 @@ if ($conn->connect_error) {
 }
 
 if (isset($_SESSION["usuario_id"])) {
-    header("Location: index.php");
+    header("Location: home.php");
     exit;
 }
 
