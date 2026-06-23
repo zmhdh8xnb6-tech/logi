@@ -16,9 +16,17 @@
     <main class="app-main">
         <div class="container-fluid">
 
-            <div class="mb-4">
-                <h3 class="mb-1">Parcelamentos</h3>
-                <p class="text-muted mb-0">Escolha o tipo de parcelamento que deseja acompanhar</p>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h3 class="mb-1">Parcelamentos</h3>
+                    <p class="text-muted mb-0">
+                        Escolha o tipo de parcelamento que deseja acompanhar
+                    </p>
+                </div>
+
+                <a href="parcelamento_novo.php" class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> Novo Parcelamento
+                </a>
             </div>
 
             <div class="row g-4">

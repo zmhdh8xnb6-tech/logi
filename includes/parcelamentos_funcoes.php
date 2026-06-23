@@ -4,7 +4,7 @@ function orgaosParcelamento(): array
 {
     return [
         'Simples Nacional' => 'parcelamento_simples.php',
-        'Receita Federal' => 'parcelamento_tributos.php',
+        'Previdência Social e Tributos' => 'parcelamento_tributos.php',
         'PGFN' => 'parcelamento_pgfn.php',
         'SEFAZ DF' => 'parcelamento_sefazdf.php',
         'SEFAZ GO' => 'parcelamento_sefazgo.php',
@@ -122,14 +122,14 @@ function renderizarLinhasParcelamentos(array $parcelamentos): void
                 <?= htmlspecialchars($parcelamento['cliente_nome']) ?>
             </td>
             <td><?= htmlspecialchars($parcelamento['orgao']) ?></td>
-            <td><?= htmlspecialchars($parcelamento['numero_parcelamento']) ?></td>
-            <td><?= htmlspecialchars($parcelamento['forma_envio']) ?></td>
-            <td>
+            <td class="text-end"><?= htmlspecialchars($parcelamento['numero_parcelamento']) ?></td>
+            <td class="text-end"><?= htmlspecialchars($parcelamento['forma_envio']) ?></td>
+            <td class="text-end">
                 <?= $parcelasEmitidas ?>
                 /
                 <?= (int)$parcelamento['parcelas_total'] ?>
             </td>
-            <td>
+            <td class="text-end">
                 <?php if ((int)$parcelamento['parcelas_atrasadas'] > 0): ?>
                     <span class="badge text-bg-danger">
                         <?= (int)$parcelamento['parcelas_atrasadas'] ?>
@@ -143,7 +143,7 @@ function renderizarLinhasParcelamentos(array $parcelamentos): void
                     <?= $status ?>
                 </span>
             </td>
-            <td class="text-end">
+            <td class="text-end coluna-acoes">
                 <a
                     href="parcelamento_editar.php?id=<?= (int)$parcelamento['id'] ?>"
                     class="btn btn-sm btn-outline-primary">

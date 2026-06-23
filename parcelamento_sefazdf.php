@@ -12,7 +12,7 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'SEFAZ DF');
     <?php include 'includes/head.php'; ?>
     <title>Logi - Parcelamentos</title>
     <link rel="stylesheet" href="assets/home.css">
-    <link rel="stylesheet" href="assets/parcelamentos.css">
+    <link rel="stylesheet" href="assets/parcelamentos.css?v=<?= filemtime(__DIR__ . '/assets/parcelamentos.css') ?>">
 </head>
 
 <body class="app-layout">
@@ -23,15 +23,9 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'SEFAZ DF');
 
         <div class="container-fluid">
 
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h3 class="mb-1">Parcelamento SEFAZ DF</h3>
-                    <p class="text-muted mb-0">Acompanhe os parcelamentos dos clientes</p>
-                </div>
-
-                <a href="parcelamento_novo.php" class="btn btn-primary">
-                    <i class="bi bi-plus-circle"></i> Novo Parcelamento
-                </a>
+            <div class="mb-4">
+                <h3 class="mb-1">Parcelamento SEFAZ DF</h3>
+                <p class="text-muted mb-0">Acompanhe os parcelamentos dos clientes</p>
             </div>
 
             <?php if (isset($_GET['salvo'])): ?>
@@ -53,7 +47,14 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'SEFAZ DF');
             <?php endif; ?>
 
             <div class="parcelamento-box">
-                <h5 class="mb-3">Lista de Parcelamentos</h5>
+                <div class="cabecalho-lista d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Lista de Parcelamentos</h5>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()" title="Imprimir dados">
+                        <i class="bi bi-printer"></i> Imprimir
+                    </button>
+                </div>
+
+                <div class="orgao-impressao">Órgão: SEFAZ DF</div>
 
                 <div class="table-responsive">
                     <table class="table align-middle">
@@ -66,7 +67,7 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'SEFAZ DF');
                                 <th>Parcelas</th>
                                 <th>Atrasadas</th>
                                 <th>Status</th>
-                                <th class="text-end">Ações</th>
+                                <th class="text-end coluna-acoes">Ações</th>
                             </tr>
                         </thead>
 
@@ -81,18 +82,18 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'SEFAZ DF');
 
     </main>
 
+    <script>
+        setTimeout(function() {
+            document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {
+                alerta.classList.remove('show');
+
+                setTimeout(function() {
+                    alerta.remove();
+                }, 200);
+            });
+        }, 4000);
+    </script>
+
 </body>
-
-<script>
-    setTimeout(function() {
-        document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {
-            alerta.classList.remove('show');
-
-            setTimeout(function() {
-                alerta.remove();
-            }, 200);
-        });
-    }, 4000);
-</script>
 
 </html>

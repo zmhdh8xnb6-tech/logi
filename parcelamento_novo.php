@@ -4,7 +4,7 @@ require 'includes/parcelamentos_funcoes.php';
 
 $orgaosPermitidos = [
     'Simples Nacional' => 'parcelamento_simples.php',
-    'Receita Federal' => 'parcelamento_tributos.php',
+    'Previdência Social e Tributos' => 'parcelamento_tributos.php',
     'PGFN' => 'parcelamento_pgfn.php',
     'SEFAZ DF' => 'parcelamento_sefazdf.php',
     'SEFAZ GO' => 'parcelamento_sefazgo.php',
@@ -155,7 +155,7 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                 <option value="">Selecione</option>
                                 <option value="Simples Nacional">Simples Nacional</option>
-                                <option value="Receita Federal">Receita Federal</option>
+                                <option value="Previdência Social e Tributos">Previdência Social e Tributos</option>
                                 <option value="PGFN">PGFN</option>
                                 <option value="SEFAZ DF">SEFAZ DF</option>
                                 <option value="SEFAZ GO">SEFAZ GO</option>

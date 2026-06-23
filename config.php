@@ -4,20 +4,26 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-$ambiente = $_SERVER['SERVER_NAME'];
+$hostServidor = $_SERVER['SERVER_NAME'];
 
-if ($ambiente === 'localhost') {
+if (
+    $hostServidor === 'localhost' ||
+    $hostServidor === '127.0.0.1'
+) {
+    // LOCAL
+    $host = "localhost";
+    $db = "crud_clientes";
+    $user = "root";
+    $pass = "";
+    $baseUrl = "http://localhost/projeto_ph";
+} else {
+
+    // HOSTINGER
     $host = "localhost";
     $db = "u285798939_logi";
     $user = "u285798939_logi";
     $pass = "Logi@2026#Sistema";
     $baseUrl = "https://sistemalogi.com.br";
-} else {
-    $host = "SEU_HOST_ONLINE";
-    $db = "SEU_BANCO_ONLINE";
-    $user = "SEU_USUARIO_ONLINE";
-    $pass = "SUA_SENHA_ONLINE";
-    $baseUrl = "https://SEU_SITE_ONLINE";
 }
 
 try {

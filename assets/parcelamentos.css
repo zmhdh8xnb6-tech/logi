@@ -10,3 +10,106 @@
     color: #6b7280;
     font-weight: 600;
 }
+
+.orgao-impressao {
+    display: none;
+}
+
+@media print {
+    @page {
+        size: A4 landscape;
+        margin: 10mm;
+    }
+
+    html,
+    body,
+    .app-layout {
+        min-height: 0 !important;
+        height: auto !important;
+        overflow: visible !important;
+        background: #fff !important;
+        display: block !important;
+    }
+
+    .app-sidebar,
+    .container-fluid> :not(.parcelamento-box),
+    .cabecalho-lista,
+    .coluna-acoes,
+    .coluna-acoes * {
+        display: none !important;
+    }
+
+    .app-main,
+    .app-sidebar.collapsed+.app-main {
+        min-height: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .container-fluid {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .parcelamento-box {
+        position: static !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border-radius: 0;
+        box-shadow: none !important;
+    }
+
+    .orgao-impressao {
+        display: block !important;
+        margin: 0 0 10px;
+        padding-bottom: 7px;
+        border-bottom: 2px solid #111827;
+        color: #111827;
+        font-size: 12pt;
+        font-weight: 700;
+    }
+
+    .table-responsive {
+        overflow: visible !important;
+    }
+
+    .parcelamento-box table {
+        width: 100%;
+        margin: 0;
+        border-collapse: collapse;
+        font-size: 8.5pt;
+    }
+
+    .parcelamento-box table th,
+    .parcelamento-box table td {
+        padding: 7px 6px !important;
+        border: 1px solid #cbd5e1 !important;
+        color: #111827 !important;
+        vertical-align: middle;
+    }
+
+    .parcelamento-box table th {
+        background: #e2e8f0 !important;
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: 7.5pt;
+    }
+
+    .parcelamento-box table tr {
+        break-inside: avoid;
+    }
+
+    .parcelamento-box thead {
+        display: table-header-group;
+    }
+
+    .parcelamento-box .badge {
+        padding: 2px 5px;
+        border: 1px solid #64748b;
+        background: transparent !important;
+        color: #111827 !important;
+    }
+}
