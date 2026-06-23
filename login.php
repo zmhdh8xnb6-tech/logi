@@ -80,7 +80,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             <!-- LOGO -->
             <div class="text-center mb-4">
-                <img src="/projeto_ph/assets/images/logo.svg" class="logo-img">
+                <img src="<?= $baseUrl ?>/assets/images/logo.svg" class="logo-img">
             </div>
 
             <!-- FORM -->
