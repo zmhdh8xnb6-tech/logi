@@ -8,10 +8,10 @@ $ambiente = $_SERVER['SERVER_NAME'];
 
 if ($ambiente === 'localhost') {
     $host = "localhost";
-    $db = "crud_clientes";
-    $user = "root";
-    $pass = "";
-    $baseUrl = "http://localhost/projeto_ph";
+    $db = "u285798939_logi";
+    $user = "u285798939_logi";
+    $pass = "Logi@2026#Sistema";
+    $baseUrl = "https://sistemalogi.com.br";
 } else {
     $host = "SEU_HOST_ONLINE";
     $db = "SEU_BANCO_ONLINE";
