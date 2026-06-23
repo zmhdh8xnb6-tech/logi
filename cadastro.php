@@ -2,11 +2,6 @@
 require 'config.php';
 require 'mailer.php';
 
-$conn = new mysqli("localhost", "root", "", "crud_clientes");
-if ($conn->connect_error) {
-    die("Erro na conexão: " . $conn->connect_error);
-}
-
 $mensagem = $_SESSION["mensagem"] ?? "";
 $tipoMensagem = $_SESSION["tipoMensagem"] ?? "";
 

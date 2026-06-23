@@ -1,12 +1,6 @@
 <?php
 require 'config.php';
 
-
-$conn = new mysqli("localhost", "root", "", "crud_clientes");
-if ($conn->connect_error) {
-    die("Erro na conexão: " . $conn->connect_error);
-}
-
 if (isset($_SESSION["usuario_id"])) {
     header("Location: home.php");
     exit;
