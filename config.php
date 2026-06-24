@@ -4,21 +4,15 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-$hostServidor = $_SERVER['SERVER_NAME'];
+$ambiente = $_SERVER['SERVER_NAME'] ?? 'localhost';
 
-if (
-    $hostServidor === 'localhost' ||
-    $hostServidor === '127.0.0.1'
-) {
-    // LOCAL
+if ($ambiente === 'localhost' || $ambiente === '127.0.0.1') {
     $host = "localhost";
     $db = "crud_clientes";
     $user = "root";
     $pass = "";
     $baseUrl = "http://localhost/projeto_ph";
 } else {
-
-    // HOSTINGER
     $host = "localhost";
     $db = "u285798939_logi";
     $user = "u285798939_logi";
@@ -26,11 +20,12 @@ if (
     $baseUrl = "https://sistemalogi.com.br";
 }
 
-$conn = new mysqli($host, $user, $pass, $db);
-
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$db;charset=utf8mb4", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+    $conn = new mysqli($host, $user, $pass, $db);
+    $conn->set_charset('utf8mb4');
 } catch (PDOException $e) {
     die("Erro de conexão: " . $e->getMessage());
 }
