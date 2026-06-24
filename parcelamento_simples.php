@@ -62,10 +62,10 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'Simples Nacional');
                             <tr>
                                 <th>Cliente</th>
                                 <th>Órgão</th>
-                                <th>Número</th>
-                                <th>Forma envio</th>
-                                <th>Parcelas</th>
-                                <th>Atrasadas</th>
+                                <th class="text-end">Número</th>
+                                <th class="text-end">Forma envio</th>
+                                <th class="text-end">Parcelas</th>
+                                <th class="text-end">Atrasadas</th>
                                 <th>Status</th>
                                 <th class="text-end coluna-acoes">Ações</th>
                             </tr>
