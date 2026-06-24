@@ -28,7 +28,7 @@ if (!isset($_SESSION["usuario_id"])) {
             </div>
 
             <div class="clientes-box">
-                <form id="clienteForm">
+                <form id="clienteForm" novalidate>
                     <input type="hidden" name="id" id="id">
 
                     <?php include 'includes/formulario_cliente.php'; ?>
@@ -47,6 +47,26 @@ if (!isset($_SESSION["usuario_id"])) {
 
         </div>
     </main>
+
+    <div class="modal fade" id="modalCadastrarParcelamento" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Cliente cadastrado</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    O cliente foi salvo com sucesso. Deseja cadastrar o parcelamento agora?
+                </div>
+                <div class="modal-footer">
+                    <a href="index.php" class="btn btn-secondary">Depois</a>
+                    <a href="#" class="btn btn-primary" id="btnCadastrarParcelamentoAgora">
+                        Cadastrar agora
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <?php include 'includes/modal_aviso.php'; ?>
 

@@ -1,9 +1,5 @@
 <?php
-$conn = new mysqli("localhost", "root", "", "crud_clientes");
-
-if ($conn->connect_error) {
-    die("Erro na conexão: " . $conn->connect_error);
-}
+require 'config.php';
 
 $token = $_GET['token'] ?? '';
 
@@ -11,15 +7,17 @@ if ($token === '') {
     die("Token inválido.");
 }
 
-$stmt = $conn->prepare("SELECT id FROM usuarios WHERE token_verificacao = ?");
-$stmt->bind_param("s", $token);
-$stmt->execute();
-$resultado = $stmt->get_result();
+$stmt = $pdo->prepare("SELECT id FROM usuarios WHERE token_verificacao = ?");
+$stmt->execute([$token]);
+$usuario = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if ($resultado->num_rows === 1) {
-    $stmt = $conn->prepare("UPDATE usuarios SET email_verificado = 1, token_verificacao = NULL WHERE token_verificacao = ?");
-    $stmt->bind_param("s", $token);
-    $stmt->execute();
+if ($usuario) {
+    $stmt = $pdo->prepare("
+        UPDATE usuarios
+        SET email_verificado = 1, token_verificacao = NULL
+        WHERE token_verificacao = ?
+    ");
+    $stmt->execute([$token]);
 ?>
     <!DOCTYPE html>
     <html lang="pt-br">

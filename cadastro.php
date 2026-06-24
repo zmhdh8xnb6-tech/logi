@@ -2,6 +2,33 @@
 require 'config.php';
 require 'mailer.php';
 
+function obterUrlBaseAplicacao(): string
+{
+    $urlConfigurada = getenv('APP_URL');
+
+    if (!empty($urlConfigurada)) {
+        return rtrim($urlConfigurada, '/');
+    }
+
+    $protocoloEncaminhado = strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '');
+    $httpsAtivo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || $protocoloEncaminhado === 'https';
+    $protocolo = $httpsAtivo ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'];
+    $pasta = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])), '/');
+
+    if ($pasta === '.' || $pasta === '/') {
+        $pasta = '';
+    }
+
+    return $protocolo . '://' . $host . $pasta;
+}
+
+$conn = new mysqli("localhost", "root", "", "crud_clientes");
+if ($conn->connect_error) {
+    die("Erro na conexão: " . $conn->connect_error);
+}
+
 $mensagem = $_SESSION["mensagem"] ?? "";
 $tipoMensagem = $_SESSION["tipoMensagem"] ?? "";
 
@@ -62,13 +89,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $stmt->bind_param("ssssss", $nome, $email, $telefone, $departamento, $senhaHash, $token);
 
     if ($stmt->execute()) {
-        $link = "http://localhost/projeto_ph/verificar_email.php?token=$token";
+        $link = obterUrlBaseAplicacao()
+            . '/verificar_email.php?token='
+            . rawurlencode($token);
+        $linkSeguro = htmlspecialchars($link, ENT_QUOTES, 'UTF-8');
 
         $mensagemEmail = "
             <h3>Confirme seu cadastro</h3>
             <p>Olá, " . htmlspecialchars($nome) . "</p>
             <p>Clique no link abaixo para ativar sua conta:</p>
-            <p><a href='$link'>Ativar conta</a></p>
+            <p><a href='$linkSeguro'>Ativar conta</a></p>
         ";
 
         $emailEnviado = enviarEmail($email, $nome, "Confirmação de cadastro", $mensagemEmail);
@@ -169,7 +199,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 </div>
 
-                <button type="submit" class="btn btn-primary w-100 btn-login mt-2">
+                <button type="submit" class="btn btn-primary w-100 btn-login mt-2" id="btnCadastrar">
                     Cadastrar
                 </button>
 

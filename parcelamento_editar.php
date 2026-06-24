@@ -16,6 +16,11 @@ if (!$parcelamento) {
     exit;
 }
 
+if (!empty($parcelamento['cancelado_em'])) {
+    header('Location: ' . urlCanceladosOrgaoParcelamento($parcelamento['orgao']));
+    exit;
+}
+
 $orgaosPermitidos = orgaosParcelamento();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -30,12 +35,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($acao === 'cancelar') {
+        $stmt = $pdo->prepare("
+            UPDATE parcelamentos
+            SET cancelado_em = NOW()
+            WHERE id = ?
+        ");
+        $stmt->execute([$id]);
+
+        header('Location: ' . urlCanceladosOrgaoParcelamento($parcelamento['orgao']) . '?cancelado=1');
+        exit;
+    }
+
     $orgao = trim($_POST['orgao'] ?? '');
     $numeroParcelamento = trim($_POST['numero_parcelamento'] ?? '');
     $formaEnvio = trim($_POST['forma_envio'] ?? '');
     $dataPrimeiraParcela = $_POST['data_primeira_parcela'] ?: null;
     $parcelasTotal = (int)($_POST['parcelas_total'] ?? 0);
-    $parcelasEmitidas = (int)($_POST['parcelas_emitidas'] ?? 0);
+    $parcelasEmitidas = parcelasEmitidasAtual([
+        'parcelas_total' => $parcelasTotal,
+        'data_primeira_parcela' => $dataPrimeiraParcela,
+        'parcelas_emitidas' => (int)($_POST['parcelas_emitidas'] ?? 0),
+    ]);
     $parcelasAtrasadas = (int)($_POST['parcelas_atrasadas'] ?? 0);
 
     if (
@@ -176,14 +197,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
 
                         <div class="col-md-3 mb-3">
-                            <label class="form-label">Parcelas emitidas manual</label>
+                            <label class="form-label">Parcelas emitidas</label>
                             <input
                                 type="number"
                                 class="form-control campo-obrigatorio"
                                 name="parcelas_emitidas"
                                 id="parcelas_emitidas"
                                 min="0"
-                                value="<?= (int)$parcelamento['parcelas_emitidas'] ?>">
+                                value="<?= parcelasEmitidasAtual($parcelamento) ?>"
+                                readonly>
                         </div>
 
                         <div class="col-md-3 mb-3">
@@ -200,14 +222,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
 
                     <div class="d-flex justify-content-between gap-2 mt-3">
-                        <button
-                            type="submit"
-                            name="acao"
-                            value="excluir"
-                            class="btn btn-danger"
-                            onclick="return confirm('Tem certeza que deseja excluir este parcelamento?');">
-                            Excluir
-                        </button>
+                        <div class="d-flex gap-2">
+                            <button
+                                type="button"
+                                class="btn btn-outline-danger"
+                                data-bs-toggle="modal"
+                                data-bs-target="#modalExcluirParcelamento">
+                                <i class="bi bi-trash"></i> Excluir
+                            </button>
+
+                            <button
+                                type="button"
+                                class="btn btn-warning"
+                                data-bs-toggle="modal"
+                                data-bs-target="#modalCancelarParcelamento">
+                                <i class="bi bi-x-circle"></i> Cancelar parcelamento
+                            </button>
+                        </div>
 
                         <button type="submit" name="acao" value="salvar" class="btn btn-success">
                             Salvar alterações
@@ -220,12 +251,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     </main>
 
+    <div class="modal fade" id="modalExcluirParcelamento" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Excluir parcelamento</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-1">Tem certeza que deseja excluir este parcelamento?</p>
+                    <small class="text-danger">Essa ação apaga o registro definitivamente.</small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Não</button>
+                    <form method="post">
+                        <input type="hidden" name="acao" value="excluir">
+                        <button type="submit" class="btn btn-danger">Sim, excluir</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalCancelarParcelamento" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Cancelar parcelamento</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    O parcelamento será retirado da lista ativa e enviado para a lista de cancelados. Deseja continuar?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Não</button>
+                    <form method="post">
+                        <input type="hidden" name="acao" value="cancelar">
+                        <button type="submit" class="btn btn-warning">Sim, cancelar</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
     <script>
-        document.getElementById('formParcelamentoEditar').addEventListener('submit', function(e) {
-            if (e.submitter && e.submitter.value === 'excluir') {
+        function atualizarParcelasEmitidas() {
+            const campoData = document.getElementById('data_primeira_parcela');
+            const campoTotal = document.getElementById('parcelas_total');
+            const campoEmitidas = document.getElementById('parcelas_emitidas');
+            const total = parseInt(campoTotal.value, 10);
+
+            if (!campoData.value || !total || total < 1) {
                 return;
             }
 
+            const partes = campoData.value.split('-').map(Number);
+            const inicio = new Date(partes[0], partes[1] - 1, partes[2]);
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+
+            if (hoje < inicio) {
+                campoEmitidas.value = 0;
+                return;
+            }
+
+            const meses = (hoje.getFullYear() - inicio.getFullYear()) * 12 +
+                (hoje.getMonth() - inicio.getMonth());
+
+            campoEmitidas.value = Math.min(meses + 1, total);
+        }
+
+        document.getElementById('data_primeira_parcela').addEventListener('change', atualizarParcelasEmitidas);
+        document.getElementById('parcelas_total').addEventListener('input', atualizarParcelasEmitidas);
+
+        document.getElementById('formParcelamentoEditar').addEventListener('submit', function(e) {
             let valido = true;
 
             document.querySelectorAll('.campo-obrigatorio').forEach(function(campo) {

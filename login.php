@@ -1,6 +1,12 @@
 <?php
 require 'config.php';
 
+
+$conn = new mysqli("localhost", "root", "", "crud_clientes");
+if ($conn->connect_error) {
+    die("Erro na conexão: " . $conn->connect_error);
+}
+
 if (isset($_SESSION["usuario_id"])) {
     header("Location: home.php");
     exit;
@@ -80,7 +86,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             <!-- LOGO -->
             <div class="text-center mb-4">
-                <img src="<?= $baseUrl ?>/assets/images/logo.svg" class="logo-img">
+                <img src="/projeto_ph/assets/images/logo.svg" class="logo-img">
             </div>
 
             <!-- FORM -->

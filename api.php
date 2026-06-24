@@ -1,6 +1,116 @@
 <?php
 require 'config.php';
 
+function validarInscricaoEstadualServidor(string $valor, string $uf): bool
+{
+    $normalizado = strtoupper(trim($valor));
+
+    if ($normalizado === '' || $normalizado === 'ISENTO') {
+        return true;
+    }
+
+    $numero = preg_replace('/\D/', '', $normalizado);
+    $uf = strtoupper(trim($uf));
+
+    if ($uf === 'DF') {
+        if (strlen($numero) !== 13 || !preg_match('/^(07|08)/', $numero)) {
+            return false;
+        }
+
+        $calcular = function (string $base, array $pesos): int {
+            $soma = 0;
+
+            foreach ($pesos as $indice => $peso) {
+                $soma += (int)$base[$indice] * $peso;
+            }
+
+            $digito = 11 - ($soma % 11);
+            return $digito >= 10 ? 0 : $digito;
+        };
+
+        $primeiro = $calcular(substr($numero, 0, 11), [4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+        $segundo = $calcular(substr($numero, 0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+
+        return $primeiro === (int)$numero[11] && $segundo === (int)$numero[12];
+    }
+
+    if ($uf === 'GO') {
+        if (strlen($numero) !== 9 || !preg_match('/^(10|11|15|20)/', $numero)) {
+            return false;
+        }
+
+        $base = substr($numero, 0, 8);
+        $pesos = [9, 8, 7, 6, 5, 4, 3, 2];
+        $soma = 0;
+
+        foreach ($pesos as $indice => $peso) {
+            $soma += (int)$base[$indice] * $peso;
+        }
+
+        $resto = $soma % 11;
+        $digito = 0;
+
+        if ($resto === 1) {
+            $faixa = (int)$base;
+            $digito = $faixa >= 10103105 && $faixa <= 10119997 ? 1 : 0;
+        } elseif ($resto > 1) {
+            $digito = 11 - $resto;
+        }
+
+        return $digito === (int)$numero[8];
+    }
+
+    return strlen($numero) >= 8 && strlen($numero) <= 14;
+}
+
+function salvarAlvarasCliente(PDO $pdo, int $clienteId, string $situacaoAlvara, array $dados): void
+{
+    $orgaos = [
+        'ibram' => 'INSTITUTO BRASÍLIA AMBIENTAL - IBRAM',
+        'cbmdf' => 'CORPO DE BOMBEIROS MILITAR DO DISTRITO FEDERAL - CBMDF',
+        'df_legal' => 'SECRETARIA DE ESTADO DE PROTEÇÃO DA ORDEM URBANÍSTICA DO DISTRITO FEDERAL - DF LEGAL',
+        'pcdf' => 'POLÍCIA CIVIL DO DISTRITO FEDERAL - PCDF',
+        'seagri' => 'SECRETARIA DE ESTADO DE AGRICULTURA, ABASTECIMENTO E DESENVOLVIMENTO RURAL - SEAGRI',
+        'seedf' => 'SECRETARIA DE EDUCAÇÃO DO DISTRITO FEDERAL - SEEDF',
+        'sudesc' => 'SUBSECRETARIA DO SISTEMA DE DEFESA CIVIL - SUDESC',
+        'visadf' => 'VIGILÂNCIA SANITÁRIA DO DISTRITO FEDERAL - VISADF',
+    ];
+
+    $pdo->prepare("DELETE FROM cliente_alvaras WHERE cliente_id = ?")->execute([$clienteId]);
+
+    if ($situacaoAlvara !== 'possui') {
+        return;
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO cliente_alvaras (
+            cliente_id,
+            orgao_codigo,
+            orgao_nome,
+            situacao,
+            vencimento
+        ) VALUES (?, ?, ?, ?, ?)
+    ");
+
+    foreach ($orgaos as $codigo => $nome) {
+        $situacao = $dados[$codigo]['situacao'] ?? '';
+
+        if (!in_array($situacao, ['com_vencimento', 'dispensado'], true)) {
+            continue;
+        }
+
+        $vencimento = $situacao === 'com_vencimento'
+            ? ($dados[$codigo]['vencimento'] ?? null)
+            : null;
+
+        if ($situacao === 'com_vencimento' && empty($vencimento)) {
+            throw new InvalidArgumentException('Vencimento de alvará não informado.');
+        }
+
+        $stmt->execute([$clienteId, $codigo, $nome, $situacao, $vencimento]);
+    }
+}
+
 $action = $_GET['action'] ?? '';
 
 if ($action === 'read') {
@@ -64,10 +174,99 @@ if ($action === 'create' || $action === 'update') {
     $alvara = $_POST['alvara'] ?? '';
     $contador = $_POST['contador'] ?? '';
     $cadastro_crf = $_POST['cadastro_crf'] ?? '';
+    $procuracao_receita_federal = $_POST['procuracao_receita_federal'] ?? '';
+    $vencimento_procuracao_receita_federal = !empty($_POST['vencimento_procuracao_receita_federal']) ? $_POST['vencimento_procuracao_receita_federal'] : null;
+    $procuracao_conectividade = $_POST['procuracao_conectividade'] ?? '';
+    $vencimento_procuracao_conectividade = !empty($_POST['vencimento_procuracao_conectividade']) ? $_POST['vencimento_procuracao_conectividade'] : null;
+    $procuracao_empregador_web = $_POST['procuracao_empregador_web'] ?? '';
+    $procuracao_fgts = $_POST['procuracao_fgts'] ?? '';
+    $vencimento_procuracao_fgts = !empty($_POST['vencimento_procuracao_fgts']) ? $_POST['vencimento_procuracao_fgts'] : null;
+    $procuracao_particular = $_POST['procuracao_particular'] ?? '';
+    $procuracao_sefaz = $_POST['procuracao_sefaz'] ?? '';
+    $contrato_prestacao_servicos = $_POST['contrato_prestacao_servicos'] ?? '';
+    $tributacao = $_POST['tributacao'] ?? '';
+    $possui_parcelamento = $_POST['possui_parcelamento'] ?? '';
+    $alvaras = is_array($_POST['alvaras'] ?? null) ? $_POST['alvaras'] : [];
 
     $vencimento_certificado = !empty($_POST['vencimento_certificado'])
         ? $_POST['vencimento_certificado']
         : null;
+
+    if (!validarInscricaoEstadualServidor($inscricao_estadual, $uf)) {
+        echo 'inscricao_estadual_invalida';
+        exit;
+    }
+
+    $controlesComVencimento = [
+        [$procuracao_receita_federal, $vencimento_procuracao_receita_federal],
+        [$procuracao_conectividade, $vencimento_procuracao_conectividade],
+        [$procuracao_fgts, $vencimento_procuracao_fgts],
+    ];
+
+    foreach ($controlesComVencimento as [$situacao, $vencimento]) {
+        if ($situacao === 'possui' && empty($vencimento)) {
+            echo 'vencimento_procuracao_obrigatorio';
+            exit;
+        }
+    }
+
+    $procuracoesObrigatorias = [
+        $procuracao_receita_federal,
+        $procuracao_conectividade,
+        $procuracao_empregador_web,
+        $procuracao_fgts,
+        $procuracao_particular,
+    ];
+
+    foreach ($procuracoesObrigatorias as $situacao) {
+        if (!in_array($situacao, ['possui', 'nao_possui'], true)) {
+            echo 'procuracoes_incompletas';
+            exit;
+        }
+    }
+
+    if (!in_array($procuracao_sefaz, ['possui', 'nao_possui', 'goias'], true)) {
+        echo 'procuracoes_incompletas';
+        exit;
+    }
+
+    if (!in_array($possui_parcelamento, ['possui', 'nao_possui'], true)) {
+        echo 'parcelamento_obrigatorio';
+        exit;
+    }
+
+    if (!in_array($alvara, ['possui', 'nao_possui', 'goias'], true)) {
+        echo 'alvara_obrigatorio';
+        exit;
+    }
+
+    if ($alvara === 'possui') {
+        $codigosOrgaosAlvara = [
+            'ibram',
+            'cbmdf',
+            'df_legal',
+            'pcdf',
+            'seagri',
+            'seedf',
+            'sudesc',
+            'visadf',
+        ];
+
+        foreach ($codigosOrgaosAlvara as $codigoOrgao) {
+            $situacao = $alvaras[$codigoOrgao]['situacao'] ?? '';
+            $vencimento = $alvaras[$codigoOrgao]['vencimento'] ?? null;
+
+            if (!in_array($situacao, ['com_vencimento', 'dispensado'], true)) {
+                echo 'alvaras_incompletos';
+                exit;
+            }
+
+            if ($situacao === 'com_vencimento' && empty($vencimento)) {
+                echo 'alvaras_incompletos';
+                exit;
+            }
+        }
+    }
 
     if ($id == '') {
         $stmt = $pdo->prepare("
@@ -93,9 +292,12 @@ if ($action === 'create' || $action === 'update') {
         exit;
     }
 
-    if ($id == '') {
+    try {
+        $pdo->beginTransaction();
 
-        $stmt = $pdo->prepare("
+        if ($id == '') {
+
+            $stmt = $pdo->prepare("
             INSERT INTO clientes (
                 codigo,
                 documento,
@@ -116,36 +318,62 @@ if ($action === 'create' || $action === 'update') {
                 cadastro_df_legal,
                 alvara,
                 contador,
-                cadastro_crf
+                cadastro_crf,
+                procuracao_receita_federal,
+                vencimento_procuracao_receita_federal,
+                procuracao_conectividade,
+                vencimento_procuracao_conectividade,
+                procuracao_empregador_web,
+                procuracao_fgts,
+                vencimento_procuracao_fgts,
+                procuracao_particular,
+                procuracao_sefaz,
+                contrato_prestacao_servicos,
+                tributacao,
+                possui_parcelamento
             )
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ");
 
-        $ok = $stmt->execute([
-            $codigo,
-            $documento,
-            $nome,
-            $nome_fantasia,
-            $endereco,
-            $numero_endereco,
-            $complemento,
-            $bairro,
-            $cidade,
-            $uf,
-            $cep,
-            $telefone,
-            $inscricao_estadual,
-            $nire,
-            $email,
-            $vencimento_certificado,
-            $cadastro_df_legal,
-            $alvara,
-            $contador,
-            $cadastro_crf
-        ]);
-    } else {
+            $ok = $stmt->execute([
+                $codigo,
+                $documento,
+                $nome,
+                $nome_fantasia,
+                $endereco,
+                $numero_endereco,
+                $complemento,
+                $bairro,
+                $cidade,
+                $uf,
+                $cep,
+                $telefone,
+                $inscricao_estadual,
+                $nire,
+                $email,
+                $vencimento_certificado,
+                $cadastro_df_legal,
+                $alvara,
+                $contador,
+                $cadastro_crf,
+                $procuracao_receita_federal,
+                $vencimento_procuracao_receita_federal,
+                $procuracao_conectividade,
+                $vencimento_procuracao_conectividade,
+                $procuracao_empregador_web,
+                $procuracao_fgts,
+                $vencimento_procuracao_fgts,
+                $procuracao_particular,
+                $procuracao_sefaz,
+                $contrato_prestacao_servicos,
+                $tributacao,
+                $possui_parcelamento
+            ]);
 
-        $stmt = $pdo->prepare("
+            $clienteIdSalvo = (int)$pdo->lastInsertId();
+        } else {
+
+            $stmt = $pdo->prepare("
             UPDATE clientes SET
                 codigo=?,
                 documento=?,
@@ -166,36 +394,73 @@ if ($action === 'create' || $action === 'update') {
                 cadastro_df_legal=?,
                 alvara=?,
                 contador=?,
-                cadastro_crf=?
+                cadastro_crf=?,
+                procuracao_receita_federal=?,
+                vencimento_procuracao_receita_federal=?,
+                procuracao_conectividade=?,
+                vencimento_procuracao_conectividade=?,
+                procuracao_empregador_web=?,
+                procuracao_fgts=?,
+                vencimento_procuracao_fgts=?,
+                procuracao_particular=?,
+                procuracao_sefaz=?,
+                contrato_prestacao_servicos=?,
+                tributacao=?,
+                possui_parcelamento=?
             WHERE id=?
         ");
 
-        $ok = $stmt->execute([
-            $codigo,
-            $documento,
-            $nome,
-            $nome_fantasia,
-            $endereco,
-            $numero_endereco,
-            $complemento,
-            $bairro,
-            $cidade,
-            $uf,
-            $cep,
-            $telefone,
-            $inscricao_estadual,
-            $nire,
-            $email,
-            $vencimento_certificado,
-            $cadastro_df_legal,
-            $alvara,
-            $contador,
-            $cadastro_crf,
-            $id
-        ]);
-    }
+            $ok = $stmt->execute([
+                $codigo,
+                $documento,
+                $nome,
+                $nome_fantasia,
+                $endereco,
+                $numero_endereco,
+                $complemento,
+                $bairro,
+                $cidade,
+                $uf,
+                $cep,
+                $telefone,
+                $inscricao_estadual,
+                $nire,
+                $email,
+                $vencimento_certificado,
+                $cadastro_df_legal,
+                $alvara,
+                $contador,
+                $cadastro_crf,
+                $procuracao_receita_federal,
+                $vencimento_procuracao_receita_federal,
+                $procuracao_conectividade,
+                $vencimento_procuracao_conectividade,
+                $procuracao_empregador_web,
+                $procuracao_fgts,
+                $vencimento_procuracao_fgts,
+                $procuracao_particular,
+                $procuracao_sefaz,
+                $contrato_prestacao_servicos,
+                $tributacao,
+                $possui_parcelamento,
+                $id
+            ]);
 
-    echo $ok ? 'ok' : 'erro';
+            $clienteIdSalvo = (int)$id;
+        }
+
+        salvarAlvarasCliente($pdo, $clienteIdSalvo, $alvara, $alvaras);
+        $pdo->commit();
+
+        echo $ok ? 'ok|' . $clienteIdSalvo : 'erro';
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        http_response_code(500);
+        echo 'erro';
+    }
     exit;
 }
 

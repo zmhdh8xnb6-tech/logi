@@ -1,5 +1,5 @@
 <?php
-session_start();
+require 'config.php';
 
 if (!isset($_SESSION["usuario_id"])) {
     header("Location: login.php");
@@ -12,7 +12,6 @@ if (!isset($_SESSION["usuario_id"])) {
 
 <head>
     <?php include 'includes/head.php'; ?>
-    <?php include 'includes/modal_cliente.php'; ?>
     <title>Clientes</title>
 </head>
 
@@ -21,7 +20,6 @@ if (!isset($_SESSION["usuario_id"])) {
     <?php include 'includes/sidebar.php'; ?>
 
     <main class="app-main">
-
         <div class="container-fluid">
 
             <div class="d-flex justify-content-between align-items-center mb-4">
@@ -53,6 +51,7 @@ if (!isset($_SESSION["usuario_id"])) {
                         </select>
                     </div>
                 </div>
+
                 <div class="table-responsive">
                     <table class="table align-middle" id="clientesTable">
                         <thead>
@@ -68,7 +67,6 @@ if (!isset($_SESSION["usuario_id"])) {
                                 <th class="text-end">Ações</th>
                             </tr>
                         </thead>
-
                         <tbody>
                             <tr>
                                 <td colspan="9" class="text-center text-muted py-4">
@@ -83,7 +81,6 @@ if (!isset($_SESSION["usuario_id"])) {
             </div>
 
         </div>
-
     </main>
 
     <?php include 'includes/modal_aviso.php'; ?>

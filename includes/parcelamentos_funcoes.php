@@ -11,6 +11,17 @@ function orgaosParcelamento(): array
     ];
 }
 
+function orgaosCanceladosParcelamento(): array
+{
+    return [
+        'Simples Nacional' => 'parcecancelados_simples.php',
+        'Previdência Social e Tributos' => 'parcecancelados_tributos.php',
+        'PGFN' => 'parcecancelados_pgfn.php',
+        'SEFAZ DF' => 'parcecancelados_sefazdf.php',
+        'SEFAZ GO' => 'parcecancelados_sefazgo.php',
+    ];
+}
+
 function urlOrgaoParcelamento(string $orgao): string
 {
     $orgaos = orgaosParcelamento();
@@ -18,8 +29,19 @@ function urlOrgaoParcelamento(string $orgao): string
     return $orgaos[$orgao] ?? 'parcelamentos.php';
 }
 
-function buscarParcelamentosPorOrgao(PDO $pdo, string $orgao): array
+function urlCanceladosOrgaoParcelamento(string $orgao): string
 {
+    $orgaos = orgaosCanceladosParcelamento();
+
+    return $orgaos[$orgao] ?? 'parcelamentos.php';
+}
+
+function buscarParcelamentosPorOrgao(PDO $pdo, string $orgao, bool $cancelados = false): array
+{
+    $filtroCancelamento = $cancelados
+        ? 'p.cancelado_em IS NOT NULL'
+        : 'p.cancelado_em IS NULL';
+
     $stmt = $pdo->prepare("
         SELECT
             p.*,
@@ -28,6 +50,7 @@ function buscarParcelamentosPorOrgao(PDO $pdo, string $orgao): array
         FROM parcelamentos p
         INNER JOIN clientes c ON c.id = p.cliente_id
         WHERE p.orgao = ?
+        AND {$filtroCancelamento}
         ORDER BY CAST(c.codigo AS UNSIGNED) ASC, c.nome ASC, p.id DESC
     ");
 
@@ -56,6 +79,10 @@ function buscarParcelamentoPorId(PDO $pdo, int $id): ?array
 
 function statusParcelamento(array $parcelamento): string
 {
+    if (!empty($parcelamento['cancelado_em'])) {
+        return 'Cancelado';
+    }
+
     $parcelasEmitidas = parcelasEmitidasAtual($parcelamento);
 
     if ((int)$parcelamento['parcelas_atrasadas'] > 0) {
@@ -97,11 +124,14 @@ function parcelasEmitidasAtual(array $parcelamento): int
     return min($meses + 1, $parcelasTotal);
 }
 
-function renderizarLinhasParcelamentos(array $parcelamentos): void
-{
+function renderizarLinhasParcelamentos(
+    array $parcelamentos,
+    bool $mostrarAcoes = true,
+    bool $mostrarReativar = false
+): void {
     if (count($parcelamentos) === 0): ?>
         <tr>
-            <td colspan="8" class="text-center text-muted py-4">
+            <td colspan="<?= $mostrarAcoes ? 8 : 7 ?>" class="text-center text-muted py-4">
                 Nenhum parcelamento cadastrado ainda.
             </td>
         </tr>
@@ -111,9 +141,15 @@ function renderizarLinhasParcelamentos(array $parcelamentos): void
     foreach ($parcelamentos as $parcelamento):
         $parcelasEmitidas = parcelasEmitidasAtual($parcelamento);
         $status = statusParcelamento($parcelamento);
-        $badge = $status === 'Atrasado'
-            ? 'danger'
-            : ($status === 'Concluído' ? 'secondary' : 'success');
+        $badge = 'success';
+
+        if ($status === 'Atrasado') {
+            $badge = 'danger';
+        } elseif ($status === 'Concluído') {
+            $badge = 'secondary';
+        } elseif ($status === 'Cancelado') {
+            $badge = 'dark';
+        }
     ?>
         <tr class="linha-cliente">
             <td>
@@ -143,13 +179,27 @@ function renderizarLinhasParcelamentos(array $parcelamentos): void
                     <?= $status ?>
                 </span>
             </td>
-            <td class="text-end coluna-acoes">
-                <a
-                    href="parcelamento_editar.php?id=<?= (int)$parcelamento['id'] ?>"
-                    class="btn btn-sm btn-outline-primary">
-                    <i class="bi bi-pencil"></i>
-                </a>
-            </td>
+            <?php if ($mostrarAcoes): ?>
+                <td class="text-end coluna-acoes">
+                    <?php if ($mostrarReativar): ?>
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-success"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalReativarParcelamento"
+                            data-parcelamento-id="<?= (int)$parcelamento['id'] ?>"
+                            data-cliente="<?= htmlspecialchars($parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome']) ?>">
+                            <i class="bi bi-arrow-counterclockwise"></i> Reativar
+                        </button>
+                    <?php else: ?>
+                        <a
+                            href="parcelamento_editar.php?id=<?= (int)$parcelamento['id'] ?>"
+                            class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                    <?php endif; ?>
+                </td>
+            <?php endif; ?>
         </tr>
 <?php endforeach;
 }

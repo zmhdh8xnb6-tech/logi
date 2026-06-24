@@ -46,12 +46,23 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'PGFN');
                 </div>
             <?php endif; ?>
 
+            <?php if (isset($_GET['reativado'])): ?>
+                <div class="alert alert-success alert-auto-dismiss fade show">
+                    Parcelamento reativado com sucesso.
+                </div>
+            <?php endif; ?>
+
             <div class="parcelamento-box">
                 <div class="cabecalho-lista d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">Lista de Parcelamentos</h5>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()" title="Imprimir dados">
-                        <i class="bi bi-printer"></i> Imprimir
-                    </button>
+                    <div class="d-flex gap-2">
+                        <a href="parcecancelados_pgfn.php" class="btn btn-sm btn-outline-warning">
+                            <i class="bi bi-archive"></i> Cancelados
+                        </a>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()" title="Imprimir dados">
+                            <i class="bi bi-printer"></i> Imprimir
+                        </button>
+                    </div>
                 </div>
 
                 <div class="orgao-impressao">Órgão: PGFN - Dívida Ativa</div>

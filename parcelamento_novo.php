@@ -17,7 +17,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $formaEnvio = trim($_POST['forma_envio'] ?? '');
     $dataPrimeiraParcela = $_POST['data_primeira_parcela'] ?? null;
     $parcelasTotal = (int)($_POST['parcelas_total'] ?? 0);
-    $parcelasEmitidas = (int)($_POST['parcelas_emitidas'] ?? 0);
+    $parcelasEmitidas = parcelasEmitidasAtual([
+        'parcelas_total' => $parcelasTotal,
+        'data_primeira_parcela' => $dataPrimeiraParcela,
+        'parcelas_emitidas' => 0,
+    ]);
     $parcelasAtrasadas = (int)($_POST['parcelas_atrasadas'] ?? 0);
 
     if (
@@ -243,7 +247,9 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 class="form-control"
                                 name="parcelas_emitidas"
                                 id="parcelas_emitidas"
-                                min="0">
+                                min="0"
+                                value="0"
+                                readonly>
 
                         </div>
 
@@ -286,6 +292,36 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </main>
 
     <script>
+        function atualizarParcelasEmitidas() {
+            const campoData = document.getElementById('data_primeira_parcela');
+            const campoTotal = document.getElementById('parcelas_total');
+            const campoEmitidas = document.getElementById('parcelas_emitidas');
+            const total = parseInt(campoTotal.value, 10);
+
+            if (!campoData.value || !total || total < 1) {
+                campoEmitidas.value = 0;
+                return;
+            }
+
+            const partes = campoData.value.split('-').map(Number);
+            const inicio = new Date(partes[0], partes[1] - 1, partes[2]);
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+
+            if (hoje < inicio) {
+                campoEmitidas.value = 0;
+                return;
+            }
+
+            const meses = (hoje.getFullYear() - inicio.getFullYear()) * 12 +
+                (hoje.getMonth() - inicio.getMonth());
+
+            campoEmitidas.value = Math.min(meses + 1, total);
+        }
+
+        document.getElementById('data_primeira_parcela').addEventListener('change', atualizarParcelasEmitidas);
+        document.getElementById('parcelas_total').addEventListener('input', atualizarParcelasEmitidas);
+
         const camposParcelamento = [
             'cliente_id',
             'orgao',

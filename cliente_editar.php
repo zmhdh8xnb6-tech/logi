@@ -21,6 +21,19 @@ if (!$cliente) {
     header("Location: index.php");
     exit;
 }
+
+$stmtAlvaras = $pdo->prepare("
+    SELECT orgao_codigo, situacao, vencimento
+    FROM cliente_alvaras
+    WHERE cliente_id = ?
+");
+$stmtAlvaras->execute([$id]);
+
+$alvarasCliente = [];
+
+foreach ($stmtAlvaras->fetchAll(PDO::FETCH_ASSOC) as $alvaraCliente) {
+    $alvarasCliente[$alvaraCliente['orgao_codigo']] = $alvaraCliente;
+}
 ?>
 
 <!DOCTYPE html>
@@ -46,7 +59,7 @@ if (!$cliente) {
             </div>
 
             <div class="clientes-box">
-                <form id="clienteForm">
+                <form id="clienteForm" novalidate>
                     <input type="hidden" name="id" id="id" value="<?= htmlspecialchars($cliente['id']) ?>">
 
                     <?php include 'includes/formulario_cliente.php'; ?>
@@ -88,6 +101,26 @@ if (!$cliente) {
             $('#alvara').val(<?= json_encode($cliente['alvara'] ?? '') ?>);
             $('#contador').val(<?= json_encode($cliente['contador'] ?? '') ?>);
             $('#cadastro_crf').val(<?= json_encode($cliente['cadastro_crf'] ?? '') ?>);
+            $('#procuracao_receita_federal').val(<?= json_encode($cliente['procuracao_receita_federal'] ?? '') ?>);
+            $('#vencimento_procuracao_receita_federal').val(<?= json_encode($cliente['vencimento_procuracao_receita_federal'] ?? '') ?>);
+            $('#procuracao_conectividade').val(<?= json_encode($cliente['procuracao_conectividade'] ?? '') ?>);
+            $('#vencimento_procuracao_conectividade').val(<?= json_encode($cliente['vencimento_procuracao_conectividade'] ?? '') ?>);
+            $('#procuracao_empregador_web').val(<?= json_encode($cliente['procuracao_empregador_web'] ?? '') ?>);
+            $('#procuracao_fgts').val(<?= json_encode($cliente['procuracao_fgts'] ?? '') ?>);
+            $('#vencimento_procuracao_fgts').val(<?= json_encode($cliente['vencimento_procuracao_fgts'] ?? '') ?>);
+            $('#procuracao_particular').val(<?= json_encode($cliente['procuracao_particular'] ?? '') ?>);
+            $('#procuracao_sefaz').val(<?= json_encode($cliente['procuracao_sefaz'] ?? '') ?>);
+            $('#contrato_prestacao_servicos').val(<?= json_encode($cliente['contrato_prestacao_servicos'] ?? '') ?>);
+            $('#tributacao').val(<?= json_encode($cliente['tributacao'] ?? '') ?>);
+            $('#possui_parcelamento').val(<?= json_encode($cliente['possui_parcelamento'] ?? '') ?>);
+
+            document.querySelectorAll('.controle-com-vencimento').forEach(function(campo) {
+                atualizarCampoVencimentoControle(campo);
+            });
+
+            $('#vencimento_procuracao_receita_federal').val(<?= json_encode($cliente['vencimento_procuracao_receita_federal'] ?? '') ?>);
+            $('#vencimento_procuracao_conectividade').val(<?= json_encode($cliente['vencimento_procuracao_conectividade'] ?? '') ?>);
+            $('#vencimento_procuracao_fgts').val(<?= json_encode($cliente['vencimento_procuracao_fgts'] ?? '') ?>);
 
             $('#cep').val(<?= json_encode($cliente['cep'] ?? '') ?>);
             $('#endereco').val(<?= json_encode($cliente['endereco'] ?? '') ?>);

@@ -16,6 +16,37 @@ if (!$cliente) {
     header("Location: index.php");
     exit;
 }
+
+$stmtAlvaras = $pdo->prepare("
+    SELECT orgao_nome, situacao, vencimento
+    FROM cliente_alvaras
+    WHERE cliente_id = ?
+    ORDER BY orgao_nome
+");
+$stmtAlvaras->execute([$id]);
+$alvarasCliente = $stmtAlvaras->fetchAll(PDO::FETCH_ASSOC);
+
+$rotulosControle = [
+    'possui' => 'Possui',
+    'nao_possui' => 'Não possui',
+    'goias' => 'Goiás',
+    'cadastrado' => 'Cadastrado',
+    'nao_cadastrado' => 'Não cadastrado',
+    'sim' => 'Sim',
+    'nao' => 'Não',
+    'simples_nacional' => 'Simples Nacional',
+    'lucro_presumido' => 'Lucro Presumido',
+    'lucro_real' => 'Lucro Real',
+    'mei' => 'Microempreendedor Individual',
+];
+
+$formatarControle = static function ($valor) use ($rotulosControle): string {
+    return $rotulosControle[$valor] ?? 'Não informado';
+};
+
+$formatarData = static function ($data): string {
+    return !empty($data) ? date('d/m/Y', strtotime($data)) : 'Não informado';
+};
 ?>
 
 <!DOCTYPE html>
@@ -69,33 +100,105 @@ if (!$cliente) {
                 <div class="row">
                     <div class="col-md-3 mb-2">
                         <small class="text-muted d-block">Cadastro DF Legal</small>
-                        <?= htmlspecialchars(
-                            ucfirst(str_replace('_', ' ', $cliente['cadastro_df_legal'] ?: 'Não informado'))
-                        ) ?>
+                        <?= htmlspecialchars($formatarControle($cliente['cadastro_df_legal'] ?? '')) ?>
                     </div>
 
                     <div class="col-md-3 mb-2">
                         <small class="text-muted d-block">Alvará</small>
-                        <?= htmlspecialchars(
-                            ucfirst(str_replace('_', ' ', $cliente['alvara'] ?: 'Não informado'))
-                        ) ?>
+                        <?= htmlspecialchars($formatarControle($cliente['alvara'] ?? '')) ?>
                     </div>
 
                     <div class="col-md-3 mb-2">
                         <small class="text-muted d-block">Contador</small>
-                        <?= htmlspecialchars(
-                            ucfirst(str_replace('_', ' ', $cliente['contador'] ?: 'Não informado'))
-                        ) ?>
+                        <?= htmlspecialchars($formatarControle($cliente['contador'] ?? '')) ?>
                     </div>
 
                     <div class="col-md-3 mb-2">
                         <small class="text-muted d-block">Cadastro CRF</small>
-                        <?= htmlspecialchars(
-                            ucfirst(str_replace('_', ' ', $cliente['cadastro_crf'] ?: 'Não informado'))
-                        ) ?>
+                        <?= htmlspecialchars($formatarControle($cliente['cadastro_crf'] ?? '')) ?>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">Procuração Receita Federal</small>
+                        <?= htmlspecialchars($formatarControle($cliente['procuracao_receita_federal'] ?? '')) ?>
+                        <?php if (($cliente['procuracao_receita_federal'] ?? '') === 'possui'): ?>
+                            - <?= htmlspecialchars($formatarData($cliente['vencimento_procuracao_receita_federal'] ?? null)) ?>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">Procuração Conectividade</small>
+                        <?= htmlspecialchars($formatarControle($cliente['procuracao_conectividade'] ?? '')) ?>
+                        <?php if (($cliente['procuracao_conectividade'] ?? '') === 'possui'): ?>
+                            - <?= htmlspecialchars($formatarData($cliente['vencimento_procuracao_conectividade'] ?? null)) ?>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">Procuração Empregador Web</small>
+                        <?= htmlspecialchars($formatarControle($cliente['procuracao_empregador_web'] ?? '')) ?>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">Procuração FGTS</small>
+                        <?= htmlspecialchars($formatarControle($cliente['procuracao_fgts'] ?? '')) ?>
+                        <?php if (($cliente['procuracao_fgts'] ?? '') === 'possui'): ?>
+                            - <?= htmlspecialchars($formatarData($cliente['vencimento_procuracao_fgts'] ?? null)) ?>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">Procuração Particular</small>
+                        <?= htmlspecialchars($formatarControle($cliente['procuracao_particular'] ?? '')) ?>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">Procuração SEFAZ</small>
+                        <?= htmlspecialchars($formatarControle($cliente['procuracao_sefaz'] ?? '')) ?>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">Contrato de Prestação de Serviços</small>
+                        <?= htmlspecialchars($formatarControle($cliente['contrato_prestacao_servicos'] ?? '')) ?>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">Tributação</small>
+                        <?= htmlspecialchars($formatarControle($cliente['tributacao'] ?? '')) ?>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">Parcelamentos</small>
+                        <?= htmlspecialchars($formatarControle($cliente['possui_parcelamento'] ?? '')) ?>
                     </div>
                 </div>
             </div>
+
+            <?php if (!empty($alvarasCliente)): ?>
+                <div class="clientes-box mt-4">
+                    <h5>Alvarás e licenças</h5>
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Órgão</th>
+                                    <th>Situação</th>
+                                    <th>Vencimento</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($alvarasCliente as $alvaraCliente): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($alvaraCliente['orgao_nome']) ?></td>
+                                        <td><?= $alvaraCliente['situacao'] === 'dispensado' ? 'Dispensado' : 'Com vencimento' ?></td>
+                                        <td><?= $alvaraCliente['situacao'] === 'dispensado' ? '-' : htmlspecialchars($formatarData($alvaraCliente['vencimento'])) ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            <?php endif; ?>
 
             <div class="clientes-box mt-4">
                 <h5>Endereço</h5>

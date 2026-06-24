@@ -76,7 +76,13 @@ $(document).ready(function () {
 
             success: function (resp) {
 
-                if (resp.trim() === 'ok') {
+                const resposta = resp.trim();
+                const respostaPartes = resposta.split('|');
+                const cadastroSalvo = respostaPartes[0] === 'ok';
+                const clienteIdSalvo = respostaPartes[1] || $('#id').val();
+                const possuiParcelamento = $('#possui_parcelamento').val();
+
+                if (cadastroSalvo) {
 
                     $('#btnSalvarCliente')
                         .prop('disabled', false)
@@ -95,6 +101,19 @@ $(document).ready(function () {
 
                     if (window.location.pathname.includes('cliente_novo.php')) {
 
+                        if (possuiParcelamento === 'possui') {
+                            const botaoParcelamento = document.getElementById('btnCadastrarParcelamentoAgora');
+                            botaoParcelamento.href =
+                                'parcelamento_novo.php?cliente_id=' + encodeURIComponent(clienteIdSalvo);
+
+                            const modalParcelamento = new bootstrap.Modal(
+                                document.getElementById('modalCadastrarParcelamento'),
+                                { backdrop: 'static', keyboard: false }
+                            );
+                            modalParcelamento.show();
+                            return;
+                        }
+
                         window.location.href = 'index.php';
 
                         return;
@@ -112,6 +131,33 @@ $(document).ready(function () {
                     $('#btnSalvarCliente')
                         .prop('disabled', false)
                         .html('Salvar');
+
+                } else if (resp.trim() === 'inscricao_estadual_invalida') {
+
+                    $('#inscricao_estadual').addClass('is-invalid').focus();
+                    mostrarAviso('Inscrição Estadual inválida para a UF informada.');
+
+                } else if (resp.trim() === 'vencimento_procuracao_obrigatorio') {
+
+                    mostrarAviso('Informe o vencimento das procurações marcadas como Possui.');
+
+                } else if (resp.trim() === 'procuracoes_incompletas') {
+
+                    mostrarAviso('Preencha a situação de todas as procurações.');
+
+                } else if (resp.trim() === 'alvaras_incompletos') {
+
+                    mostrarAviso('Preencha todos os órgãos do alvará com vencimento ou como dispensado.');
+
+                } else if (resp.trim() === 'parcelamento_obrigatorio') {
+
+                    $('#possui_parcelamento').addClass('is-invalid').focus();
+                    mostrarAviso('Informe se o cliente possui parcelamento.');
+
+                } else if (resp.trim() === 'alvara_obrigatorio') {
+
+                    $('#alvara').addClass('is-invalid').focus();
+                    mostrarAviso('Informe a situação do alvará.');
 
                 } else {
 
@@ -153,7 +199,175 @@ $(document).ready(function () {
         this.value = this.value.toUpperCase();
     });
 
+    $('#inscricao_estadual').on('input', function () {
+        const valor = this.value.toUpperCase();
+        this.value = valor === 'ISENTO'
+            ? valor
+            : valor.replace(/[^0-9.\/-]/g, '');
+        this.classList.remove('is-invalid');
+    });
+
+    $('#inscricao_estadual').on('blur', function () {
+        validarCampoInscricaoEstadual();
+    });
+
+    $('#uf').on('change blur', function () {
+        if ($('#inscricao_estadual').val().trim() !== '') {
+            validarCampoInscricaoEstadual();
+        }
+    });
+
+    $('#alvara').on('change', function () {
+        if (this.value === 'possui') {
+            document.querySelectorAll('.alvara-situacao').forEach(function (campo) {
+                campo.required = true;
+            });
+
+            const modal = new bootstrap.Modal(document.getElementById('modalAlvaras'));
+            modal.show();
+        } else {
+            document.querySelectorAll('.alvara-situacao').forEach(function (campo) {
+                campo.required = false;
+            });
+
+            $('.alvara-situacao').val('').trigger('change');
+        }
+    });
+
+    $(document).on('change', '.alvara-situacao', function () {
+        const campoVencimento = document.getElementById(this.dataset.vencimento);
+        const possuiVencimento = this.value === 'com_vencimento';
+
+        campoVencimento.disabled = !possuiVencimento;
+        campoVencimento.required = possuiVencimento;
+
+        if (!possuiVencimento) {
+            campoVencimento.value = '';
+            campoVencimento.classList.remove('is-invalid');
+        }
+    });
+
+    $(document).on('change', '.controle-com-vencimento', function () {
+        atualizarCampoVencimentoControle(this);
+    });
+
+    $('#btnConcluirAlvaras').on('click', function () {
+        if (!validarPreenchimentoAlvaras()) {
+            return;
+        }
+
+        const modal = bootstrap.Modal.getInstance(document.getElementById('modalAlvaras'));
+
+        if (modal) {
+            modal.hide();
+        }
+    });
+
 });
+
+function atualizarCampoVencimentoControle(campoSituacao) {
+    const campoVencimento = document.getElementById(campoSituacao.dataset.vencimento);
+    const possui = campoSituacao.value === 'possui';
+
+    campoVencimento.disabled = !possui;
+    campoVencimento.required = possui;
+
+    if (!possui) {
+        campoVencimento.value = '';
+        campoVencimento.classList.remove('is-invalid');
+    }
+}
+
+function validarPreenchimentoAlvaras() {
+    let valido = true;
+
+    document.querySelectorAll('.alvara-situacao').forEach(function (campoSituacao) {
+        const campoVencimento = document.getElementById(campoSituacao.dataset.vencimento);
+
+        if (campoSituacao.value === '') {
+            campoSituacao.classList.add('is-invalid');
+            valido = false;
+        } else {
+            campoSituacao.classList.remove('is-invalid');
+        }
+
+        if (campoSituacao.value === 'com_vencimento' && campoVencimento.value === '') {
+            campoVencimento.classList.add('is-invalid');
+            valido = false;
+        } else {
+            campoVencimento.classList.remove('is-invalid');
+        }
+    });
+
+    const alerta = document.getElementById('alertaAlvarasObrigatorios');
+    alerta.classList.toggle('d-none', valido);
+
+    return valido;
+}
+
+function digitoModulo11(numero, pesos) {
+    const soma = numero.split('').reduce(function (total, digito, indice) {
+        return total + Number(digito) * pesos[indice];
+    }, 0);
+    const resultado = 11 - (soma % 11);
+
+    return resultado >= 10 ? 0 : resultado;
+}
+
+function validarInscricaoEstadual(valor, uf) {
+    const normalizado = String(valor || '').trim().toUpperCase();
+
+    if (normalizado === '' || normalizado === 'ISENTO') {
+        return true;
+    }
+
+    const numero = normalizado.replace(/\D/g, '');
+    const estado = String(uf || '').trim().toUpperCase();
+
+    if (estado === 'DF') {
+        if (numero.length !== 13 || !/^(07|08)/.test(numero)) return false;
+
+        const primeiro = digitoModulo11(numero.slice(0, 11), [4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+        if (primeiro !== Number(numero[11])) return false;
+
+        const segundo = digitoModulo11(numero.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+        return segundo === Number(numero[12]);
+    }
+
+    if (estado === 'GO') {
+        if (numero.length !== 9 || !/^(10|11|15|20)/.test(numero)) return false;
+
+        const base = numero.slice(0, 8);
+        const soma = base.split('').reduce(function (total, digito, indice) {
+            return total + Number(digito) * [9, 8, 7, 6, 5, 4, 3, 2][indice];
+        }, 0);
+        const resto = soma % 11;
+        let digito = 0;
+
+        if (resto === 0) {
+            digito = 0;
+        } else if (resto === 1) {
+            const faixa = Number(base);
+            digito = faixa >= 10103105 && faixa <= 10119997 ? 1 : 0;
+        } else {
+            digito = 11 - resto;
+        }
+
+        return digito === Number(numero[8]);
+    }
+
+    return numero.length >= 8 && numero.length <= 14;
+}
+
+function validarCampoInscricaoEstadual() {
+    const campo = document.getElementById('inscricao_estadual');
+    const uf = document.getElementById('uf').value;
+    const valido = validarInscricaoEstadual(campo.value, uf);
+
+    campo.classList.toggle('is-invalid', !valido);
+
+    return valido;
+}
 
 function mostrarAviso(mensagem, campo = null) {
     $('#modalAvisoMensagem').text(mensagem);
@@ -341,30 +555,6 @@ function excluirCliente(id) {
     modal.show();
 }
 
-$('#btnConfirmarExclusao').on('click', function () {
-    if (!clienteParaExcluir) return;
-
-    const botao = $(this);
-
-    botao.prop('disabled', true)
-        .html('<span class="spinner-border spinner-border-sm me-1"></span> Excluindo...');
-
-    $.post('api.php?action=delete', { id: clienteParaExcluir }, function (resp) {
-        if (resp.trim() === 'ok') {
-            window.location.href = 'index.php';
-        } else {
-            mostrarAviso(resp);
-        }
-    }).fail(function (xhr) {
-        mostrarAviso('Erro: ' + xhr.responseText);
-    }).always(function () {
-        botao.prop('disabled', false).html('Excluir');
-
-        const modal = bootstrap.Modal.getInstance(document.getElementById('modalConfirmacao'));
-        modal.hide();
-    });
-});
-
 function validarFormulario() {
     limparValidacoes();
 
@@ -419,6 +609,62 @@ function validarFormulario() {
         }
 
         valido = false;
+    }
+
+    if (!validarCampoInscricaoEstadual()) {
+        if (primeiroCampoInvalido === null) {
+            primeiroCampoInvalido = '#inscricao_estadual';
+        }
+
+        valido = false;
+    }
+
+    document.querySelectorAll('.procuracao-obrigatoria').forEach(function (campo) {
+        if (campo.value === '') {
+            campo.classList.add('is-invalid');
+
+            if (primeiroCampoInvalido === null) {
+                primeiroCampoInvalido = '#' + campo.id;
+            }
+
+            valido = false;
+        }
+    });
+
+    document.querySelectorAll('.controle-interno-obrigatorio').forEach(function (campo) {
+        if (campo.value === '') {
+            campo.classList.add('is-invalid');
+
+            if (primeiroCampoInvalido === null) {
+                primeiroCampoInvalido = '#' + campo.id;
+            }
+
+            valido = false;
+        }
+    });
+
+    document.querySelectorAll('.controle-com-vencimento').forEach(function (campoSituacao) {
+        const campoVencimento = document.getElementById(campoSituacao.dataset.vencimento);
+
+        if (campoSituacao.value === 'possui' && campoVencimento.value === '') {
+            campoVencimento.classList.add('is-invalid');
+
+            if (primeiroCampoInvalido === null) {
+                primeiroCampoInvalido = '#' + campoVencimento.id;
+            }
+
+            valido = false;
+        }
+    });
+
+    const alvarasValidos = $('#alvara').val() !== 'possui'
+        || validarPreenchimentoAlvaras();
+
+    if (!alvarasValidos) {
+        valido = false;
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modalAlvaras'));
+        modal.show();
+        return false;
     }
 
     if (!valido && primeiroCampoInvalido !== null) {
@@ -545,11 +791,15 @@ function jsString(valor) {
     return JSON.stringify(valor || '');
 }
 
-document.getElementById('clienteModal').addEventListener('hidden.bs.modal', function () {
-    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
-    document.body.classList.remove('modal-open');
-    document.body.style = "";
-});
+const clienteModalEl = document.getElementById('clienteModal');
+
+if (clienteModalEl) {
+    clienteModalEl.addEventListener('hidden.bs.modal', function () {
+        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style = "";
+    });
+}
 
 function filtrarClientesNaTela() {
     const busca = $('#buscaCliente').val().toLowerCase().trim();
@@ -587,7 +837,8 @@ $(document).on('click', '#btnConfirmarExclusao', function () {
         mostrarAviso('Erro: ' + xhr.responseText);
     }).always(function () {
 
-        botao.prop('disabled', false).html('Excluir');
+        botao.prop('disabled', false)
+            .html('<i class="bi bi-trash"></i> Sim, excluir');
 
         const modalEl = document.getElementById('modalConfirmarExclusao');
         const modal = bootstrap.Modal.getInstance(modalEl);
