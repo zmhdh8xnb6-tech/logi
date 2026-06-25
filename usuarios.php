@@ -181,7 +181,7 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <div class="col-md-2 mb-3 position-relative">
                             <label class="form-label">Senha</label>
                             <input type="password" name="senha" id="senhaNovoUsuario" class="form-control pe-5" autocomplete="new-password" required>
-                            <button type="button" class="eye-btn" data-toggle-password="senhaNovoUsuario" title="Mostrar senha">
+                            <button type="button" class="eye-btn" onclick="toggleSenhaUsuario('senhaNovoUsuario', this)" title="Mostrar senha">
                                 <i class="bi bi-eye"></i>
                             </button>
                         </div>
@@ -308,7 +308,7 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                         <div class="col-md-4 mb-3 position-relative">
                                                             <label class="form-label">Nova senha</label>
                                                             <input type="password" name="senha" id="senhaUsuario<?= (int)$usuario['id'] ?>" class="form-control pe-5" placeholder="Deixe vazio para manter" autocomplete="new-password">
-                                                            <button type="button" class="eye-btn" data-toggle-password="senhaUsuario<?= (int)$usuario['id'] ?>" title="Mostrar senha">
+                                                            <button type="button" class="eye-btn" onclick="toggleSenhaUsuario('senhaUsuario<?= (int)$usuario['id'] ?>', this)" title="Mostrar senha">
                                                                 <i class="bi bi-eye"></i>
                                                             </button>
                                                         </div>
@@ -420,26 +420,24 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
             });
         });
 
-        document.querySelectorAll('[data-toggle-password]').forEach(function(botao) {
-            botao.addEventListener('click', function() {
-                const campo = document.getElementById(this.dataset.togglePassword);
-                const icone = this.querySelector('i');
+        function toggleSenhaUsuario(id, botao) {
+            const campo = document.getElementById(id);
+            const icone = botao.querySelector('i');
 
-                if (!campo) {
-                    return;
-                }
+            if (!campo) {
+                return;
+            }
 
-                if (campo.type === 'password') {
-                    campo.type = 'text';
-                    icone.classList.replace('bi-eye', 'bi-eye-slash');
-                    this.title = 'Ocultar senha';
-                } else {
-                    campo.type = 'password';
-                    icone.classList.replace('bi-eye-slash', 'bi-eye');
-                    this.title = 'Mostrar senha';
-                }
-            });
-        });
+            if (campo.type === 'password') {
+                campo.type = 'text';
+                icone.classList.replace('bi-eye', 'bi-eye-slash');
+                botao.title = 'Ocultar senha';
+            } else {
+                campo.type = 'password';
+                icone.classList.replace('bi-eye-slash', 'bi-eye');
+                botao.title = 'Mostrar senha';
+            }
+        }
     </script>
 </body>
 
