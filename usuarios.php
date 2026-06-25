@@ -144,7 +144,7 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
 
             <?php if ($mensagem): ?>
-                <div class="alert alert-<?= htmlspecialchars($tipoMensagem) ?>">
+                <div class="alert alert-<?= htmlspecialchars($tipoMensagem) ?> alert-auto-dismiss fade show">
                     <?= htmlspecialchars($mensagem) ?>
                 </div>
             <?php endif; ?>
@@ -152,33 +152,38 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <div class="clientes-box mb-4">
                 <h5 class="mb-3">Novo usuário</h5>
 
-                <form method="post">
+                <form method="post" autocomplete="off">
                     <input type="hidden" name="acao" value="criar">
+                    <input type="text" name="usuario_fake" autocomplete="username" class="d-none" tabindex="-1">
+                    <input type="password" name="senha_fake" autocomplete="new-password" class="d-none" tabindex="-1">
 
                     <div class="row">
                         <div class="col-md-3 mb-3">
                             <label class="form-label">Nome</label>
-                            <input type="text" name="nome" class="form-control" required>
+                            <input type="text" name="nome" class="form-control" autocomplete="off" required>
                         </div>
 
                         <div class="col-md-3 mb-3">
                             <label class="form-label">E-mail</label>
-                            <input type="email" name="email" class="form-control" required>
+                            <input type="email" name="email" class="form-control" autocomplete="new-email" required>
                         </div>
 
                         <div class="col-md-2 mb-3">
                             <label class="form-label">Telefone</label>
-                            <input type="text" name="telefone" class="form-control">
+                            <input type="text" name="telefone" class="form-control" autocomplete="off">
                         </div>
 
                         <div class="col-md-2 mb-3">
                             <label class="form-label">Departamento</label>
-                            <input type="text" name="departamento" class="form-control">
+                            <input type="text" name="departamento" class="form-control" autocomplete="off">
                         </div>
 
-                        <div class="col-md-2 mb-3">
+                        <div class="col-md-2 mb-3 position-relative">
                             <label class="form-label">Senha</label>
-                            <input type="password" name="senha" class="form-control" required>
+                            <input type="password" name="senha" id="senhaNovoUsuario" class="form-control pe-5" autocomplete="new-password" required>
+                            <button type="button" class="eye-btn" data-toggle-password="senhaNovoUsuario" title="Mostrar senha">
+                                <i class="bi bi-eye"></i>
+                            </button>
                         </div>
 
                         <div class="col-md-3 mb-3">
@@ -190,18 +195,27 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         </div>
 
                         <div class="col-md-3 mb-3 d-flex align-items-end">
-                            <div class="form-check">
-                                <input type="checkbox" name="ativo" value="1" class="form-check-input" id="novoAtivo" checked>
+                            <div class="form-check form-switch">
+                                <input type="checkbox" name="ativo" value="1" class="form-check-input" id="novoAtivo" role="switch" checked>
                                 <label class="form-check-label" for="novoAtivo">Usuário ativo</label>
                             </div>
                         </div>
                     </div>
 
-                    <div class="row">
+                    <div class="d-flex gap-2 mb-3">
+                        <button type="button" class="btn btn-sm btn-outline-primary btn-marcar-todas" data-target="#permissoesNovo">
+                            Marcar todas
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary btn-desmarcar-todas" data-target="#permissoesNovo">
+                            Desmarcar todas
+                        </button>
+                    </div>
+
+                    <div class="row" id="permissoesNovo">
                         <?php foreach ($modulos as $chave => $rotulo): ?>
                             <div class="col-md-3 mb-2">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="permissoes[]" value="<?= htmlspecialchars($chave) ?>" id="novo_<?= htmlspecialchars($chave) ?>">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input permissao-switch" type="checkbox" role="switch" name="permissoes[]" value="<?= htmlspecialchars($chave) ?>" id="novo_<?= htmlspecialchars($chave) ?>">
                                     <label class="form-check-label" for="novo_<?= htmlspecialchars($chave) ?>">
                                         <?= htmlspecialchars($rotulo) ?>
                                     </label>
@@ -258,9 +272,11 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <div class="modal fade" id="modalEditarUsuario<?= (int)$usuario['id'] ?>" tabindex="-1" aria-hidden="true">
                                     <div class="modal-dialog modal-lg modal-dialog-centered">
                                         <div class="modal-content">
-                                            <form method="post">
+                                            <form method="post" autocomplete="off">
                                                 <input type="hidden" name="acao" value="editar">
                                                 <input type="hidden" name="id" value="<?= (int)$usuario['id'] ?>">
+                                                <input type="text" name="usuario_fake" autocomplete="username" class="d-none" tabindex="-1">
+                                                <input type="password" name="senha_fake" autocomplete="new-password" class="d-none" tabindex="-1">
 
                                                 <div class="modal-header">
                                                     <h5 class="modal-title">Editar usuário</h5>
@@ -271,27 +287,30 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                     <div class="row">
                                                         <div class="col-md-6 mb-3">
                                                             <label class="form-label">Nome</label>
-                                                            <input type="text" name="nome" class="form-control" value="<?= htmlspecialchars($usuario['nome']) ?>" required>
+                                                            <input type="text" name="nome" class="form-control" value="<?= htmlspecialchars($usuario['nome']) ?>" autocomplete="off" required>
                                                         </div>
 
                                                         <div class="col-md-6 mb-3">
                                                             <label class="form-label">E-mail</label>
-                                                            <input type="email" name="email" class="form-control" value="<?= htmlspecialchars($usuario['email']) ?>" required>
+                                                            <input type="email" name="email" class="form-control" value="<?= htmlspecialchars($usuario['email']) ?>" autocomplete="new-email" required>
                                                         </div>
 
                                                         <div class="col-md-4 mb-3">
                                                             <label class="form-label">Telefone</label>
-                                                            <input type="text" name="telefone" class="form-control" value="<?= htmlspecialchars($usuario['telefone'] ?? '') ?>">
+                                                            <input type="text" name="telefone" class="form-control" value="<?= htmlspecialchars($usuario['telefone'] ?? '') ?>" autocomplete="off">
                                                         </div>
 
                                                         <div class="col-md-4 mb-3">
                                                             <label class="form-label">Departamento</label>
-                                                            <input type="text" name="departamento" class="form-control" value="<?= htmlspecialchars($usuario['departamento'] ?? '') ?>">
+                                                            <input type="text" name="departamento" class="form-control" value="<?= htmlspecialchars($usuario['departamento'] ?? '') ?>" autocomplete="off">
                                                         </div>
 
-                                                        <div class="col-md-4 mb-3">
+                                                        <div class="col-md-4 mb-3 position-relative">
                                                             <label class="form-label">Nova senha</label>
-                                                            <input type="password" name="senha" class="form-control" placeholder="Deixe vazio para manter">
+                                                            <input type="password" name="senha" id="senhaUsuario<?= (int)$usuario['id'] ?>" class="form-control pe-5" placeholder="Deixe vazio para manter" autocomplete="new-password">
+                                                            <button type="button" class="eye-btn" data-toggle-password="senhaUsuario<?= (int)$usuario['id'] ?>" title="Mostrar senha">
+                                                                <i class="bi bi-eye"></i>
+                                                            </button>
                                                         </div>
 
                                                         <div class="col-md-4 mb-3">
@@ -303,8 +322,8 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                         </div>
 
                                                         <div class="col-md-4 mb-3 d-flex align-items-end">
-                                                            <div class="form-check">
-                                                                <input type="checkbox" name="ativo" value="1" class="form-check-input" id="ativo<?= (int)$usuario['id'] ?>" <?= (int)$usuario['ativo'] === 1 ? 'checked' : '' ?>>
+                                                            <div class="form-check form-switch">
+                                                                <input type="checkbox" name="ativo" value="1" class="form-check-input" role="switch" id="ativo<?= (int)$usuario['id'] ?>" <?= (int)$usuario['ativo'] === 1 ? 'checked' : '' ?>>
                                                                 <label class="form-check-label" for="ativo<?= (int)$usuario['id'] ?>">Usuário ativo</label>
                                                             </div>
                                                         </div>
@@ -312,13 +331,23 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                                     <hr>
 
-                                                    <div class="row">
+                                                    <div class="d-flex gap-2 mb-3">
+                                                        <button type="button" class="btn btn-sm btn-outline-primary btn-marcar-todas" data-target="#permissoesUsuario<?= (int)$usuario['id'] ?>">
+                                                            Marcar todas
+                                                        </button>
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary btn-desmarcar-todas" data-target="#permissoesUsuario<?= (int)$usuario['id'] ?>">
+                                                            Desmarcar todas
+                                                        </button>
+                                                    </div>
+
+                                                    <div class="row" id="permissoesUsuario<?= (int)$usuario['id'] ?>">
                                                         <?php foreach ($modulos as $chave => $rotulo): ?>
                                                             <div class="col-md-4 mb-2">
-                                                                <div class="form-check">
+                                                                <div class="form-check form-switch">
                                                                     <input
-                                                                        class="form-check-input"
+                                                                        class="form-check-input permissao-switch"
                                                                         type="checkbox"
+                                                                        role="switch"
                                                                         name="permissoes[]"
                                                                         value="<?= htmlspecialchars($chave) ?>"
                                                                         id="perm<?= (int)$usuario['id'] ?>_<?= htmlspecialchars($chave) ?>"
@@ -349,6 +378,69 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        setTimeout(function() {
+            document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {
+                alerta.classList.remove('show');
+                setTimeout(function() {
+                    alerta.remove();
+                }, 200);
+            });
+        }, 4000);
+
+        document.querySelectorAll('.btn-marcar-todas').forEach(function(botao) {
+            botao.addEventListener('click', function() {
+                document.querySelectorAll(this.dataset.target + ' input[type="checkbox"]').forEach(function(campo) {
+                    campo.checked = true;
+                });
+            });
+        });
+
+        document.querySelectorAll('.btn-desmarcar-todas').forEach(function(botao) {
+            botao.addEventListener('click', function() {
+                document.querySelectorAll(this.dataset.target + ' input[type="checkbox"]').forEach(function(campo) {
+                    campo.checked = false;
+                });
+            });
+        });
+
+        window.addEventListener('pageshow', function() {
+            const formularioNovo = document.querySelector('form input[name="acao"][value="criar"]')?.closest('form');
+
+            if (!formularioNovo) {
+                return;
+            }
+
+            ['nome', 'email', 'telefone', 'departamento', 'senha'].forEach(function(nomeCampo) {
+                const campo = formularioNovo.querySelector('[name="' + nomeCampo + '"]');
+
+                if (campo) {
+                    campo.value = '';
+                }
+            });
+        });
+
+        document.querySelectorAll('[data-toggle-password]').forEach(function(botao) {
+            botao.addEventListener('click', function() {
+                const campo = document.getElementById(this.dataset.togglePassword);
+                const icone = this.querySelector('i');
+
+                if (!campo) {
+                    return;
+                }
+
+                if (campo.type === 'password') {
+                    campo.type = 'text';
+                    icone.classList.replace('bi-eye', 'bi-eye-slash');
+                    this.title = 'Ocultar senha';
+                } else {
+                    campo.type = 'password';
+                    icone.classList.replace('bi-eye-slash', 'bi-eye');
+                    this.title = 'Mostrar senha';
+                }
+            });
+        });
+    </script>
 </body>
 
 </html>
