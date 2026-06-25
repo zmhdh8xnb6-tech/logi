@@ -13,7 +13,7 @@ if (!isset($_SESSION['usuario_id'])) {
 <head>
     <?php include 'includes/head.php'; ?>
     <title>Logi - Início</title>
-    <link rel="stylesheet" href="assets/home.css">
+    <link rel="stylesheet" href="<?= assetUrl('assets/home.css') ?>">
 </head>
 
 <body class="app-layout">

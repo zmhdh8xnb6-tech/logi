@@ -11,8 +11,8 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, $orgaoCancelado, true);
 <head>
     <?php include 'includes/head.php'; ?>
     <title>Parcelamentos Cancelados</title>
-    <link rel="stylesheet" href="assets/home.css">
-    <link rel="stylesheet" href="assets/parcelamentos.css?v=<?= filemtime(__DIR__ . '/../assets/parcelamentos.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('assets/home.css') ?>">
+    <link rel="stylesheet" href="<?= assetUrl('assets/parcelamentos.css') ?>">
 </head>
 
 <body class="app-layout">
@@ -86,7 +86,7 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, $orgaoCancelado, true);
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Não</button>
-                    <form method="post" action="parcelamento_reativar.php">
+                    <form method="post" action="<?= htmlspecialchars($baseUrl) ?>/parcelamento_reativar.php">
                         <input type="hidden" name="id" id="parcelamentoIdReativar">
                         <button type="submit" class="btn btn-success">Sim, reativar</button>
                     </form>
