@@ -18,35 +18,54 @@
             <span>Início</span>
         </a>
 
-        <a href="parcelamentos.php" class="sidebar-link">
-            <i class="bi bi-cash-coin"></i>
-            <span>Parcelamentos</span>
-        </a>
+        <?php if (usuarioPode('parcelamentos')): ?>
+            <a href="parcelamentos.php" class="sidebar-link">
+                <i class="bi bi-cash-coin"></i>
+                <span>Parcelamentos</span>
+            </a>
+        <?php endif; ?>
 
-        <a href="certificados.php" class="sidebar-link" title="Certificado Digital">
-            <i class="bi bi-file-earmark-text"></i>
-            <span>Certificado Digital</span>
-        </a>
+        <?php if (usuarioPode('certificados')): ?>
+            <a href="certificados.php" class="sidebar-link" title="Certificado Digital">
+                <i class="bi bi-file-earmark-text"></i>
+                <span>Certificado Digital</span>
+            </a>
+        <?php endif; ?>
 
-        <a href="alvaras.php" class="sidebar-link">
-            <i class="bi bi-building"></i>
-            <span>Alvarás</span>
-        </a>
+        <?php if (usuarioPode('alvaras')): ?>
+            <a href="alvaras.php" class="sidebar-link">
+                <i class="bi bi-building"></i>
+                <span>Alvarás</span>
+            </a>
+        <?php endif; ?>
 
-        <a href="procuracoes.php" class="sidebar-link">
-            <i class="bi bi-journal-text"></i>
-            <span>Procurações</span>
-        </a>
+        <?php if (usuarioPode('procuracoes')): ?>
+            <a href="procuracoes.php" class="sidebar-link">
+                <i class="bi bi-journal-text"></i>
+                <span>Procurações</span>
+            </a>
+        <?php endif; ?>
 
-        <a href="index.php" class="sidebar-link">
-            <i class="bi bi-people"></i>
-            <span>Clientes</span>
-        </a>
+        <?php if (usuarioPode('clientes')): ?>
+            <a href="index.php" class="sidebar-link">
+                <i class="bi bi-people"></i>
+                <span>Clientes</span>
+            </a>
+        <?php endif; ?>
 
-        <a href="outros.php" class="sidebar-link">
-            <i class="bi bi-grid"></i>
-            <span>Outros Serviços</span>
-        </a>
+        <?php if (usuarioPode('outros')): ?>
+            <a href="outros.php" class="sidebar-link">
+                <i class="bi bi-grid"></i>
+                <span>Outros Serviços</span>
+            </a>
+        <?php endif; ?>
+
+        <?php if (usuarioPode('usuarios')): ?>
+            <a href="usuarios.php" class="sidebar-link">
+                <i class="bi bi-person-gear"></i>
+                <span>Usuários</span>
+            </a>
+        <?php endif; ?>
     </nav>
 
     <div class="sidebar-footer">
