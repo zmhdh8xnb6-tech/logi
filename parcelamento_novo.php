@@ -10,6 +10,8 @@ $orgaosPermitidos = [
     'SEFAZ GO' => 'parcelamento_sefazgo.php',
 ];
 
+$clienteSelecionadoId = (int)($_POST['cliente_id'] ?? $_GET['cliente_id'] ?? 0);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $clienteId = (int)($_POST['cliente_id'] ?? 0);
     $orgao = trim($_POST['orgao'] ?? '');
@@ -91,16 +93,20 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         <div class="container-fluid">
 
-            <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h3 class="mb-1">
+                        Novo Parcelamento
+                    </h3>
 
-                <h3 class="mb-1">
-                    Novo Parcelamento
-                </h3>
+                    <p class="text-muted mb-0">
+                        Cadastre um parcelamento para um cliente
+                    </p>
+                </div>
 
-                <p class="text-muted mb-0">
-                    Cadastre um parcelamento para um cliente
-                </p>
-
+                <a href="parcelamentos.php" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Voltar
+                </a>
             </div>
 
             <div class="clientes-box">
@@ -131,7 +137,9 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                 <?php foreach ($clientes as $c): ?>
 
-                                    <option value="<?= $c['id'] ?>">
+                                    <option
+                                        value="<?= $c['id'] ?>"
+                                        <?= (int)$c['id'] === $clienteSelecionadoId ? 'selected' : '' ?>>
 
                                         <?= $c['codigo'] ?>
                                         -

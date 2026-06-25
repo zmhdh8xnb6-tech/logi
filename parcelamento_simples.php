@@ -23,9 +23,15 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'Simples Nacional');
 
         <div class="container-fluid">
 
-            <div class="mb-4">
-                <h3 class="mb-1">Parcelamento Simples Nacional</h3>
-                <p class="text-muted mb-0">Acompanhe os parcelamentos dos clientes</p>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h3 class="mb-1">Parcelamento Simples Nacional</h3>
+                    <p class="text-muted mb-0">Acompanhe os parcelamentos dos clientes</p>
+                </div>
+
+                <a href="parcelamentos.php" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Voltar
+                </a>
             </div>
 
             <?php if (isset($_GET['salvo'])): ?>
