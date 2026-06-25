@@ -152,7 +152,7 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <div class="clientes-box mb-4">
                 <h5 class="mb-3">Novo usuário</h5>
 
-                <form method="post" autocomplete="off">
+                <form method="post" autocomplete="off" novalidate class="usuario-form">
                     <input type="hidden" name="acao" value="criar">
                     <input type="text" name="usuario_fake" autocomplete="username" class="d-none" tabindex="-1">
                     <input type="password" name="senha_fake" autocomplete="new-password" class="d-none" tabindex="-1">
@@ -161,11 +161,13 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <div class="col-md-3 mb-3">
                             <label class="form-label">Nome</label>
                             <input type="text" name="nome" class="form-control" autocomplete="off" required>
+                            <div class="invalid-feedback">Informe o nome.</div>
                         </div>
 
                         <div class="col-md-3 mb-3">
                             <label class="form-label">E-mail</label>
                             <input type="email" name="email" class="form-control" autocomplete="new-email" required>
+                            <div class="invalid-feedback">Informe um e-mail válido.</div>
                         </div>
 
                         <div class="col-md-2 mb-3">
@@ -184,6 +186,7 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <button type="button" class="eye-btn" onclick="toggleSenhaUsuario('senhaNovoUsuario', this)" title="Mostrar senha">
                                 <i class="bi bi-eye"></i>
                             </button>
+                            <div class="invalid-feedback">Informe uma senha com pelo menos 6 caracteres.</div>
                         </div>
 
                         <div class="col-md-3 mb-3">
@@ -272,7 +275,7 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <div class="modal fade" id="modalEditarUsuario<?= (int)$usuario['id'] ?>" tabindex="-1" aria-hidden="true">
                                     <div class="modal-dialog modal-lg modal-dialog-centered">
                                         <div class="modal-content">
-                                            <form method="post" autocomplete="off">
+                                            <form method="post" autocomplete="off" novalidate class="usuario-form">
                                                 <input type="hidden" name="acao" value="editar">
                                                 <input type="hidden" name="id" value="<?= (int)$usuario['id'] ?>">
                                                 <input type="text" name="usuario_fake" autocomplete="username" class="d-none" tabindex="-1">
@@ -288,11 +291,13 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                         <div class="col-md-6 mb-3">
                                                             <label class="form-label">Nome</label>
                                                             <input type="text" name="nome" class="form-control" value="<?= htmlspecialchars($usuario['nome']) ?>" autocomplete="off" required>
+                                                            <div class="invalid-feedback">Informe o nome.</div>
                                                         </div>
 
                                                         <div class="col-md-6 mb-3">
                                                             <label class="form-label">E-mail</label>
                                                             <input type="email" name="email" class="form-control" value="<?= htmlspecialchars($usuario['email']) ?>" autocomplete="new-email" required>
+                                                            <div class="invalid-feedback">Informe um e-mail válido.</div>
                                                         </div>
 
                                                         <div class="col-md-4 mb-3">
@@ -311,6 +316,7 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                             <button type="button" class="eye-btn" onclick="toggleSenhaUsuario('senhaUsuario<?= (int)$usuario['id'] ?>', this)" title="Mostrar senha">
                                                                 <i class="bi bi-eye"></i>
                                                             </button>
+                                                            <div class="invalid-feedback">A nova senha deve ter pelo menos 6 caracteres.</div>
                                                         </div>
 
                                                         <div class="col-md-4 mb-3">
@@ -417,6 +423,74 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 if (campo) {
                     campo.value = '';
                 }
+            });
+        });
+
+        function emailValido(valor) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
+        }
+
+        function marcarCampoInvalido(campo) {
+            campo.classList.add('is-invalid');
+            campo.classList.remove('is-valid');
+        }
+
+        function limparCampoInvalido(campo) {
+            campo.classList.remove('is-invalid');
+        }
+
+        document.querySelectorAll('.usuario-form').forEach(function(formulario) {
+            formulario.addEventListener('submit', function(e) {
+                let valido = true;
+                let primeiroInvalido = null;
+                const acao = formulario.querySelector('[name="acao"]')?.value || '';
+                const nome = formulario.querySelector('[name="nome"]');
+                const email = formulario.querySelector('[name="email"]');
+                const senha = formulario.querySelector('[name="senha"]');
+
+                [nome, email, senha].forEach(function(campo) {
+                    if (campo) {
+                        limparCampoInvalido(campo);
+                    }
+                });
+
+                if (nome && nome.value.trim() === '') {
+                    marcarCampoInvalido(nome);
+                    valido = false;
+                    primeiroInvalido = primeiroInvalido || nome;
+                }
+
+                if (email && !emailValido(email.value.trim())) {
+                    marcarCampoInvalido(email);
+                    valido = false;
+                    primeiroInvalido = primeiroInvalido || email;
+                }
+
+                if (senha) {
+                    const senhaObrigatoria = acao === 'criar';
+                    const senhaPreenchida = senha.value.trim() !== '';
+
+                    if ((senhaObrigatoria && !senhaPreenchida) || (senhaPreenchida && senha.value.length < 6)) {
+                        marcarCampoInvalido(senha);
+                        valido = false;
+                        primeiroInvalido = primeiroInvalido || senha;
+                    }
+                }
+
+                if (!valido) {
+                    e.preventDefault();
+                    primeiroInvalido?.focus();
+                }
+            });
+        });
+
+        document.querySelectorAll('.usuario-form input, .usuario-form select').forEach(function(campo) {
+            campo.addEventListener('input', function() {
+                limparCampoInvalido(campo);
+            });
+
+            campo.addEventListener('change', function() {
+                limparCampoInvalido(campo);
             });
         });
 

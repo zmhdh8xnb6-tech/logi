@@ -53,13 +53,6 @@
             </a>
         <?php endif; ?>
 
-        <?php if (usuarioPode('outros')): ?>
-            <a href="outros.php" class="sidebar-link">
-                <i class="bi bi-grid"></i>
-                <span>Outros Serviços</span>
-            </a>
-        <?php endif; ?>
-
         <?php if (usuarioPode('usuarios')): ?>
             <a href="usuarios.php" class="sidebar-link">
                 <i class="bi bi-person-gear"></i>

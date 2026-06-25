@@ -13,7 +13,6 @@ if (!function_exists('modulosSistema')) {
             'contratos' => 'Contrato de Prestação de Serviços',
             'paralisacoes' => 'Paralisações',
             'baixas' => 'Baixas',
-            'outros' => 'Outros Serviços',
             'usuarios' => 'Usuários e Permissões',
         ];
     }
