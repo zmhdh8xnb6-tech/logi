@@ -114,7 +114,7 @@ $(document).ready(function () {
                             return;
                         }
 
-                        window.location.href = 'index.php';
+                        window.location.href = 'clientes.php';
 
                         return;
                     }
@@ -828,7 +828,7 @@ $(document).on('click', '#btnConfirmarExclusao', function () {
     $.post('api.php?action=delete', { id: clienteParaExcluir }, function (resp) {
 
         if (resp.trim() === 'ok') {
-            window.location.href = 'index.php';
+            window.location.href = 'clientes.php';
         } else {
             mostrarAviso(resp);
         }

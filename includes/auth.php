@@ -46,6 +46,44 @@ if (!function_exists('permissoesUsuario')) {
     }
 }
 
+if (!function_exists('atualizarSessaoUsuario')) {
+    function atualizarSessaoUsuario(PDO $pdo): void
+    {
+        if (!usuarioLogado()) {
+            return;
+        }
+
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE id = ?");
+            $stmt->execute([$_SESSION['usuario_id']]);
+            $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$usuario) {
+                session_unset();
+                session_destroy();
+                header('Location: login.php');
+                exit;
+            }
+
+            $ativo = array_key_exists('ativo', $usuario) ? (int)$usuario['ativo'] : 1;
+
+            if ($ativo !== 1) {
+                session_unset();
+                session_destroy();
+                header('Location: login.php');
+                exit;
+            }
+
+            $_SESSION['usuario_nome'] = $usuario['nome'] ?? $_SESSION['usuario_nome'] ?? '';
+            $_SESSION['usuario_email'] = $usuario['email'] ?? $_SESSION['usuario_email'] ?? '';
+            $_SESSION['usuario_tipo'] = $usuario['tipo'] ?? 'usuario';
+            $_SESSION['usuario_permissoes'] = json_decode($usuario['permissoes'] ?? '[]', true) ?: [];
+        } catch (Throwable $e) {
+            return;
+        }
+    }
+}
+
 if (!function_exists('usuarioPode')) {
     function usuarioPode(string $modulo): bool
     {

@@ -47,7 +47,7 @@
         <?php endif; ?>
 
         <?php if (usuarioPode('clientes')): ?>
-            <a href="index.php" class="sidebar-link">
+            <a href="clientes.php" class="sidebar-link">
                 <i class="bi bi-people"></i>
                 <span>Clientes</span>
             </a>

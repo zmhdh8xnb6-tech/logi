@@ -28,6 +28,8 @@ try {
 
     $conn = new mysqli($host, $user, $pass, $db);
     $conn->set_charset('utf8mb4');
+
+    atualizarSessaoUsuario($pdo);
 } catch (PDOException $e) {
     die("Erro de conexão: " . $e->getMessage());
 }

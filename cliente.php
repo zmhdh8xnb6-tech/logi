@@ -1,10 +1,12 @@
 <?php
 require 'config.php';
 
+exigirPermissao('clientes');
+
 $id = $_GET['id'] ?? null;
 
 if (!$id) {
-    header("Location: index.php");
+    header("Location: clientes.php");
     exit;
 }
 
@@ -13,7 +15,7 @@ $stmt->execute([$id]);
 $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$cliente) {
-    header("Location: index.php");
+    header("Location: clientes.php");
     exit;
 }
 
@@ -64,7 +66,7 @@ $formatarData = static function ($data): string {
     <main class="app-main">
         <div class="container-fluid">
 
-            <a href="index.php" class="btn btn-outline-secondary mb-3">Voltar</a>
+            <a href="clientes.php" class="btn btn-outline-secondary mb-3">Voltar</a>
 
             <h3><?= htmlspecialchars($cliente['nome']) ?></h3>
             <p class="text-muted"><?= htmlspecialchars($cliente['documento']) ?></p>

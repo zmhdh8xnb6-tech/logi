@@ -22,7 +22,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         exit;
     }
 
-    $stmt = $conn->prepare("SELECT id, nome, email, senha, email_verificado, tipo, ativo, permissoes FROM usuarios WHERE email = ?");
+    $stmt = $conn->prepare("SELECT * FROM usuarios WHERE email = ?");
     $stmt->bind_param("s", $email);
     $stmt->execute();
     $resultado = $stmt->get_result();
@@ -44,7 +44,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             exit;
         }
 
-        if ((int)$usuario["ativo"] !== 1) {
+        $usuarioAtivo = array_key_exists("ativo", $usuario) ? (int)$usuario["ativo"] : 1;
+
+        if ($usuarioAtivo !== 1) {
             $_SESSION["mensagem"] = "Seu usuário ainda não foi liberado pelo administrador.";
             $_SESSION["tipoMensagem"] = "warning";
             header("Location: login.php");
@@ -54,7 +56,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $_SESSION["usuario_id"] = $usuario["id"];
         $_SESSION["usuario_nome"] = $usuario["nome"];
         $_SESSION["usuario_email"] = $usuario["email"];
-        $_SESSION["usuario_tipo"] = $usuario["tipo"] ?: "usuario";
+        $_SESSION["usuario_tipo"] = $usuario["tipo"] ?? "usuario";
         $_SESSION["usuario_permissoes"] = json_decode($usuario["permissoes"] ?? "[]", true) ?: [];
 
         header("Location: home.php");

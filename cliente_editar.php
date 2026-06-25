@@ -1,15 +1,12 @@
 <?php
 require 'config.php';
 
-if (!isset($_SESSION["usuario_id"])) {
-    header("Location: login.php");
-    exit;
-}
+exigirPermissao('clientes');
 
 $id = $_GET['id'] ?? null;
 
 if (!$id) {
-    header("Location: index.php");
+    header("Location: clientes.php");
     exit;
 }
 
@@ -18,7 +15,7 @@ $stmt->execute([$id]);
 $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$cliente) {
-    header("Location: index.php");
+    header("Location: clientes.php");
     exit;
 }
 

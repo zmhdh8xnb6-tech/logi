@@ -1,10 +1,7 @@
 <?php
 require 'config.php';
 
-if (!isset($_SESSION["usuario_id"])) {
-    header("Location: login.php");
-    exit;
-}
+exigirPermissao('clientes');
 ?>
 
 <!DOCTYPE html>
@@ -34,7 +31,7 @@ if (!isset($_SESSION["usuario_id"])) {
                     <?php include 'includes/formulario_cliente.php'; ?>
 
                     <div class="d-flex justify-content-end gap-2 mt-4">
-                        <a href="index.php" class="btn btn-secondary">
+                        <a href="clientes.php" class="btn btn-secondary">
                             Cancelar
                         </a>
 
@@ -59,7 +56,7 @@ if (!isset($_SESSION["usuario_id"])) {
                     O cliente foi salvo com sucesso. Deseja cadastrar o parcelamento agora?
                 </div>
                 <div class="modal-footer">
-                    <a href="index.php" class="btn btn-secondary">Depois</a>
+                    <a href="clientes.php" class="btn btn-secondary">Depois</a>
                     <a href="#" class="btn btn-primary" id="btnCadastrarParcelamentoAgora">
                         Cadastrar agora
                     </a>
