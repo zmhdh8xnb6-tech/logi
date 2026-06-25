@@ -18,6 +18,13 @@
             <span>Início</span>
         </a>
 
+        <?php if (usuarioPode('pendencias')): ?>
+            <a href="pendencias.php" class="sidebar-link">
+                <i class="bi bi-exclamation-triangle"></i>
+                <span>Pendências</span>
+            </a>
+        <?php endif; ?>
+
         <?php if (usuarioPode('parcelamentos')): ?>
             <a href="parcelamentos.php" class="sidebar-link">
                 <i class="bi bi-cash-coin"></i>

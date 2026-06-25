@@ -30,6 +30,16 @@ exigirLogin();
 
             <div class="row g-4">
 
+                <?php if (usuarioPode('pendencias')): ?>
+                    <div class="col-md-4">
+                        <div class="card-servico" onclick="location.href='pendencias.php'">
+                            <div class="icon">⚠️</div>
+                            <h5>Pendências</h5>
+                            <p>Resumo do que falta ou venceu</p>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
                 <?php if (usuarioPode('parcelamentos')): ?>
                     <div class="col-md-4">
                         <div class="card-servico" onclick="location.href='parcelamentos.php'">
