@@ -123,6 +123,10 @@ foreach ($clientes as $cliente) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro CRF não cadastrado', 'Pendente', 'warning');
     }
 
+    if (($cliente['cadastro_df_legal'] ?? '') === '' || ($cliente['cadastro_df_legal'] ?? '') === 'nao_cadastrado') {
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro DF Legal não cadastrado', 'Pendente', 'warning');
+    }
+
     if (($cliente['contrato_prestacao_servicos'] ?? '') === '' || ($cliente['contrato_prestacao_servicos'] ?? '') === 'nao_possui') {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Contrato de prestação de serviços não possui', 'Pendente', 'warning');
     }

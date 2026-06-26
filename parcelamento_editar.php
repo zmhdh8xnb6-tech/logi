@@ -2,6 +2,8 @@
 require 'config.php';
 require 'includes/parcelamentos_funcoes.php';
 
+exigirPermissao('parcelamentos');
+
 $id = (int)($_GET['id'] ?? 0);
 
 if ($id <= 0) {
@@ -18,6 +20,11 @@ if (!$parcelamento) {
 
 if (!empty($parcelamento['cancelado_em'])) {
     header('Location: ' . urlCanceladosOrgaoParcelamento($parcelamento['orgao']));
+    exit;
+}
+
+if (!empty($parcelamento['liquidado_em'])) {
+    header('Location: ' . urlLiquidadosOrgaoParcelamento($parcelamento['orgao']));
     exit;
 }
 

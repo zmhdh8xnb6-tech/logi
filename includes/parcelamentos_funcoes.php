@@ -22,6 +22,17 @@ function orgaosCanceladosParcelamento(): array
     ];
 }
 
+function orgaosLiquidadosParcelamento(): array
+{
+    return [
+        'Simples Nacional' => 'parcliquidados_simples.php',
+        'Previdência Social e Tributos' => 'parcliquidados_tributos.php',
+        'PGFN' => 'parcliquidados_pgfn.php',
+        'SEFAZ DF' => 'parcliquidados_sefazdf.php',
+        'SEFAZ GO' => 'parcliquidados_sefazgo.php',
+    ];
+}
+
 function urlOrgaoParcelamento(string $orgao): string
 {
     $orgaos = orgaosParcelamento();
@@ -36,11 +47,77 @@ function urlCanceladosOrgaoParcelamento(string $orgao): string
     return $orgaos[$orgao] ?? 'parcelamentos.php';
 }
 
-function buscarParcelamentosPorOrgao(PDO $pdo, string $orgao, bool $cancelados = false): array
+function urlLiquidadosOrgaoParcelamento(string $orgao): string
 {
-    $filtroCancelamento = $cancelados
-        ? 'p.cancelado_em IS NOT NULL'
-        : 'p.cancelado_em IS NULL';
+    $orgaos = orgaosLiquidadosParcelamento();
+
+    return $orgaos[$orgao] ?? 'parcelamentos.php';
+}
+
+function parcelamentosTemColuna(PDO $pdo, string $coluna): bool
+{
+    static $cache = [];
+
+    if (array_key_exists($coluna, $cache)) {
+        return $cache[$coluna];
+    }
+
+    try {
+        $stmt = $pdo->prepare("SHOW COLUMNS FROM parcelamentos LIKE ?");
+        $stmt->execute([$coluna]);
+        $cache[$coluna] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        $cache[$coluna] = false;
+    }
+
+    return $cache[$coluna];
+}
+
+function atualizarParcelamentosLiquidados(PDO $pdo): void
+{
+    if (!parcelamentosTemColuna($pdo, 'liquidado_em')) {
+        return;
+    }
+
+    $pdo->exec("
+        UPDATE parcelamentos
+        SET liquidado_em = NOW()
+        WHERE liquidado_em IS NULL
+          AND cancelado_em IS NULL
+          AND parcelas_total > 0
+          AND parcelas_atrasadas = 0
+          AND (
+              (data_primeira_parcela IS NULL AND parcelas_emitidas >= parcelas_total)
+              OR (
+                  data_primeira_parcela IS NOT NULL
+                  AND CURDATE() >= data_primeira_parcela
+                  AND LEAST(TIMESTAMPDIFF(MONTH, data_primeira_parcela, CURDATE()) + 1, parcelas_total) >= parcelas_total
+              )
+          )
+    ");
+}
+
+function buscarParcelamentosPorOrgao(
+    PDO $pdo,
+    string $orgao,
+    bool $cancelados = false,
+    bool $liquidados = false
+): array {
+    atualizarParcelamentosLiquidados($pdo);
+
+    $temLiquidadoEm = parcelamentosTemColuna($pdo, 'liquidado_em');
+
+    if ($liquidados) {
+        $filtroSituacao = $temLiquidadoEm
+            ? 'p.liquidado_em IS NOT NULL'
+            : '1 = 0';
+    } elseif ($cancelados) {
+        $filtroSituacao = 'p.cancelado_em IS NOT NULL';
+    } else {
+        $filtroSituacao = $temLiquidadoEm
+            ? 'p.cancelado_em IS NULL AND p.liquidado_em IS NULL'
+            : 'p.cancelado_em IS NULL';
+    }
 
     $stmt = $pdo->prepare("
         SELECT
@@ -50,7 +127,7 @@ function buscarParcelamentosPorOrgao(PDO $pdo, string $orgao, bool $cancelados =
         FROM parcelamentos p
         INNER JOIN clientes c ON c.id = p.cliente_id
         WHERE p.orgao = ?
-        AND {$filtroCancelamento}
+        AND {$filtroSituacao}
         ORDER BY CAST(c.codigo AS UNSIGNED) ASC, c.nome ASC, p.id DESC
     ");
 
@@ -83,6 +160,10 @@ function statusParcelamento(array $parcelamento): string
         return 'Cancelado';
     }
 
+    if (!empty($parcelamento['liquidado_em'])) {
+        return 'Liquidado';
+    }
+
     $parcelasEmitidas = parcelasEmitidasAtual($parcelamento);
 
     if ((int)$parcelamento['parcelas_atrasadas'] > 0) {
@@ -93,7 +174,7 @@ function statusParcelamento(array $parcelamento): string
         (int)$parcelamento['parcelas_total'] > 0 &&
         $parcelasEmitidas >= (int)$parcelamento['parcelas_total']
     ) {
-        return 'Concluído';
+        return 'Liquidado';
     }
 
     return 'Em dia';
@@ -127,7 +208,8 @@ function parcelasEmitidasAtual(array $parcelamento): int
 function renderizarLinhasParcelamentos(
     array $parcelamentos,
     bool $mostrarAcoes = true,
-    bool $mostrarReativar = false
+    bool $mostrarReativar = false,
+    bool $mostrarVoltarLiquidado = false
 ): void {
     if (count($parcelamentos) === 0): ?>
         <tr>
@@ -145,8 +227,8 @@ function renderizarLinhasParcelamentos(
 
         if ($status === 'Atrasado') {
             $badge = 'danger';
-        } elseif ($status === 'Concluído') {
-            $badge = 'secondary';
+        } elseif ($status === 'Liquidado') {
+            $badge = 'success';
         } elseif ($status === 'Cancelado') {
             $badge = 'dark';
         }
@@ -190,6 +272,16 @@ function renderizarLinhasParcelamentos(
                             data-parcelamento-id="<?= (int)$parcelamento['id'] ?>"
                             data-cliente="<?= htmlspecialchars($parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome']) ?>">
                             <i class="bi bi-arrow-counterclockwise"></i> Reativar
+                        </button>
+                    <?php elseif ($mostrarVoltarLiquidado): ?>
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-warning"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalVoltarLiquidado"
+                            data-parcelamento-id="<?= (int)$parcelamento['id'] ?>"
+                            data-cliente="<?= htmlspecialchars($parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome']) ?>">
+                            <i class="bi bi-arrow-counterclockwise"></i> Voltar
                         </button>
                     <?php else: ?>
                         <a

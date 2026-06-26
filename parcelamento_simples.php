@@ -2,6 +2,8 @@
 require 'config.php';
 require 'includes/parcelamentos_funcoes.php';
 
+exigirPermissao('parcelamentos');
+
 $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'Simples Nacional');
 ?>
 
@@ -58,12 +60,21 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'Simples Nacional');
                 </div>
             <?php endif; ?>
 
+            <?php if (isset($_GET['voltou_liquidado'])): ?>
+                <div class="alert alert-warning alert-auto-dismiss fade show">
+                    Parcelamento voltou para ativos como atrasado.
+                </div>
+            <?php endif; ?>
+
             <div class="parcelamento-box">
                 <div class="cabecalho-lista d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">Lista de Parcelamentos</h5>
                     <div class="d-flex gap-2">
                         <a href="parcecancelados_simples.php" class="btn btn-sm btn-outline-warning">
                             <i class="bi bi-archive"></i> Cancelados
+                        </a>
+                        <a href="parcliquidados_simples.php" class="btn btn-sm btn-outline-success">
+                            <i class="bi bi-check-circle"></i> Liquidados
                         </a>
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()" title="Imprimir dados">
                             <i class="bi bi-printer"></i> Imprimir
