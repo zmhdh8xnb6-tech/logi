@@ -1,6 +1,8 @@
 <?php
 require 'config.php';
 
+exigirPermissao('clientes');
+
 function validarInscricaoEstadualServidor(string $valor, string $uf): bool
 {
     $normalizado = strtoupper(trim($valor));
@@ -109,6 +111,30 @@ function salvarAlvarasCliente(PDO $pdo, int $clienteId, string $situacaoAlvara, 
 
         $stmt->execute([$clienteId, $codigo, $nome, $situacao, $vencimento]);
     }
+}
+
+function clienteTemColuna(PDO $pdo, string $coluna): bool
+{
+    static $cache = [];
+
+    if (array_key_exists($coluna, $cache)) {
+        return $cache[$coluna];
+    }
+
+    try {
+        $stmt = $pdo->prepare("SHOW COLUMNS FROM clientes LIKE ?");
+        $stmt->execute([$coluna]);
+        $cache[$coluna] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        $cache[$coluna] = false;
+    }
+
+    return $cache[$coluna];
+}
+
+function valorClienteMudou(array $clienteAtual, string $campo, ?string $novoValor): bool
+{
+    return trim((string)($clienteAtual[$campo] ?? '')) !== trim((string)$novoValor);
 }
 
 $action = $_GET['action'] ?? '';
@@ -372,6 +398,30 @@ if ($action === 'create' || $action === 'update') {
 
             $clienteIdSalvo = (int)$pdo->lastInsertId();
         } else {
+            $stmtClienteAtual = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+            $stmtClienteAtual->execute([$id]);
+            $clienteAtual = $stmtClienteAtual->fetch(PDO::FETCH_ASSOC) ?: [];
+
+            $mudouRazaoSocial = valorClienteMudou($clienteAtual, 'nome', $nome);
+            $mudouUf = valorClienteMudou($clienteAtual, 'uf', $uf);
+            $mudouEndereco = false;
+
+            foreach (['endereco', 'numero_endereco', 'complemento', 'bairro', 'cidade', 'uf', 'cep'] as $campoEndereco) {
+                $novoValorEndereco = [
+                    'endereco' => $endereco,
+                    'numero_endereco' => $numero_endereco,
+                    'complemento' => $complemento,
+                    'bairro' => $bairro,
+                    'cidade' => $cidade,
+                    'uf' => $uf,
+                    'cep' => $cep,
+                ][$campoEndereco];
+
+                if (valorClienteMudou($clienteAtual, $campoEndereco, $novoValorEndereco)) {
+                    $mudouEndereco = true;
+                    break;
+                }
+            }
 
             $stmt = $pdo->prepare("
             UPDATE clientes SET
@@ -447,6 +497,24 @@ if ($action === 'create' || $action === 'update') {
             ]);
 
             $clienteIdSalvo = (int)$id;
+
+            $atualizacoesPendencias = [];
+
+            if (($mudouRazaoSocial || $mudouEndereco) && clienteTemColuna($pdo, 'pendencia_alvara_funcionamento')) {
+                $atualizacoesPendencias[] = 'pendencia_alvara_funcionamento = 1';
+            }
+
+            if (($mudouRazaoSocial || $mudouUf) && clienteTemColuna($pdo, 'pendencia_certificado_digital')) {
+                $atualizacoesPendencias[] = 'pendencia_certificado_digital = 1';
+            }
+
+            if (!empty($atualizacoesPendencias)) {
+                $pdo->prepare("
+                UPDATE clientes
+                SET " . implode(', ', $atualizacoesPendencias) . "
+                WHERE id = ?
+            ")->execute([$clienteIdSalvo]);
+            }
         }
 
         salvarAlvarasCliente($pdo, $clienteIdSalvo, $alvara, $alvaras);

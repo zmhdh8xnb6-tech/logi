@@ -6,7 +6,7 @@ exigirPermissao('pendencias');
 $hoje = date('Y-m-d');
 $limiteAlerta = date('Y-m-d', strtotime('+30 days'));
 
-function adicionarPendencia(array &$pendencias, array &$resumo, array $cliente, string $tipo, string $descricao, string $status, string $nivel = 'danger'): void
+function adicionarPendencia(array &$pendencias, array &$resumo, array $cliente, string $tipo, string $descricao, string $status, string $nivel = 'danger', ?string $resolver = null, ?string $resolverUrl = null, array $resolverModal = []): void
 {
     $resumo[$tipo] = ($resumo[$tipo] ?? 0) + 1;
 
@@ -19,6 +19,9 @@ function adicionarPendencia(array &$pendencias, array &$resumo, array $cliente, 
         'status' => $status,
         'nivel' => $nivel,
         'cliente_id' => (int)($cliente['id'] ?? 0),
+        'resolver' => $resolver,
+        'resolver_url' => $resolverUrl,
+        'resolver_modal' => $resolverModal,
     ];
 }
 
@@ -29,6 +32,30 @@ function dataBr(?string $data): string
     }
 
     return date('d/m/Y', strtotime($data));
+}
+
+function modalCertificado(array $cliente): array
+{
+    return [
+        'modo' => 'certificado',
+        'titulo' => 'Resolver certificado',
+        'cliente' => trim(($cliente['codigo'] ?? '') . ' - ' . ($cliente['nome'] ?? '')),
+        'vencimento_atual' => $cliente['vencimento_certificado'] ?? '',
+    ];
+}
+
+function modalControle(array $cliente, string $titulo, string $campoStatus, array $opcoes, ?string $campoVencimento = null): array
+{
+    return [
+        'modo' => 'controle',
+        'titulo' => $titulo,
+        'cliente' => trim(($cliente['codigo'] ?? '') . ' - ' . ($cliente['nome'] ?? '')),
+        'campo_status' => $campoStatus,
+        'campo_vencimento' => $campoVencimento,
+        'status_atual' => $cliente[$campoStatus] ?? '',
+        'vencimento_atual' => $campoVencimento !== null ? ($cliente[$campoVencimento] ?? '') : '',
+        'opcoes' => $opcoes,
+    ];
 }
 
 $stmt = $pdo->query("
@@ -80,19 +107,42 @@ $procuracoes = [
 ];
 
 foreach ($clientes as $cliente) {
+    if (!empty($cliente['pendencia_certificado_digital'])) {
+        adicionarPendencia(
+            $pendencias,
+            $resumo,
+            $cliente,
+            'Certificado',
+            'Razão social ou UF alterada. Verificar necessidade de substituição do certificado digital.',
+            'A resolver',
+            'warning',
+            'certificado'
+        );
+    }
+
     if (empty($cliente['vencimento_certificado'])) {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado digital não informado', 'Não possui');
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado digital não informado', 'Não possui', 'danger', null, null, modalCertificado($cliente));
     } elseif ($cliente['vencimento_certificado'] < $hoje) {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado digital vencido em ' . dataBr($cliente['vencimento_certificado']), 'Vencido');
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado digital vencido em ' . dataBr($cliente['vencimento_certificado']), 'Vencido', 'danger', null, null, modalCertificado($cliente));
     } elseif ($cliente['vencimento_certificado'] <= $limiteAlerta) {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado vence em ' . dataBr($cliente['vencimento_certificado']), 'A vencer', 'warning');
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado vence em ' . dataBr($cliente['vencimento_certificado']), 'A vencer', 'warning', null, null, modalCertificado($cliente));
     }
 
     foreach ($procuracoes as $procuracao) {
         $status = $cliente[$procuracao['status']] ?? '';
+        $opcoesProcuracao = $procuracao['status'] === 'procuracao_sefaz'
+            ? ['possui' => 'Possui', 'nao_possui' => 'Não possui', 'goias' => 'Goiás']
+            : ['possui' => 'Possui', 'nao_possui' => 'Não possui'];
+        $modalProcuracao = modalControle(
+            $cliente,
+            'Resolver ' . $procuracao['nome'],
+            $procuracao['status'],
+            $opcoesProcuracao,
+            $procuracao['vencimento']
+        );
 
         if ($status === '' || $status === 'nao_possui') {
-            adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', $procuracao['nome'] . ' não informada ou não possui', 'Não possui');
+            adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', $procuracao['nome'] . ' não informada ou não possui', 'Não possui', 'danger', null, null, $modalProcuracao);
             continue;
         }
 
@@ -100,11 +150,11 @@ foreach ($clientes as $cliente) {
             $vencimento = $cliente[$procuracao['vencimento']] ?? null;
 
             if (empty($vencimento)) {
-                adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', $procuracao['nome'] . ' sem vencimento', 'Sem data');
+                adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', $procuracao['nome'] . ' sem vencimento', 'Sem data', 'danger', null, null, $modalProcuracao);
             } elseif ($vencimento < $hoje) {
-                adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', $procuracao['nome'] . ' vencida em ' . dataBr($vencimento), 'Vencida');
+                adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', $procuracao['nome'] . ' vencida em ' . dataBr($vencimento), 'Vencida', 'danger', null, null, $modalProcuracao);
             } elseif ($vencimento <= $limiteAlerta) {
-                adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', $procuracao['nome'] . ' vence em ' . dataBr($vencimento), 'A vencer', 'warning');
+                adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', $procuracao['nome'] . ' vence em ' . dataBr($vencimento), 'A vencer', 'warning', null, null, $modalProcuracao);
             }
         }
     }
@@ -112,23 +162,36 @@ foreach ($clientes as $cliente) {
     $alvara = $cliente['alvara'] ?? '';
 
     if ($alvara === '' || $alvara === 'nao_possui') {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Alvará', 'Alvará não informado ou não possui', 'Não possui');
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Alvará', 'Alvará não informado ou não possui', 'Não possui', 'danger', null, 'cliente_editar.php?id=' . (int)$cliente['id']);
+    }
+
+    if (!empty($cliente['pendencia_alvara_funcionamento'])) {
+        adicionarPendencia(
+            $pendencias,
+            $resumo,
+            $cliente,
+            'Alvará',
+            'Razão social, endereço ou UF alterado. Verificar impacto no alvará de funcionamento.',
+            'A resolver',
+            'warning',
+            'alvara'
+        );
     }
 
     if (($cliente['contador'] ?? '') === '' || ($cliente['contador'] ?? '') === 'nao') {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Contador não informado ou marcado como não', 'Pendente', 'warning');
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Contador não informado ou marcado como não', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver contador', 'contador', ['sim' => 'Sim', 'nao' => 'Não']));
     }
 
     if (($cliente['cadastro_crf'] ?? '') === '' || ($cliente['cadastro_crf'] ?? '') === 'nao_cadastrado') {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro CRF não cadastrado', 'Pendente', 'warning');
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro CRF não cadastrado', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro CRF', 'cadastro_crf', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado']));
     }
 
     if (($cliente['cadastro_df_legal'] ?? '') === '' || ($cliente['cadastro_df_legal'] ?? '') === 'nao_cadastrado') {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro DF Legal não cadastrado', 'Pendente', 'warning');
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro DF Legal não cadastrado', 'Pendente', 'warning', null, 'cliente_editar.php?id=' . (int)$cliente['id']);
     }
 
     if (($cliente['contrato_prestacao_servicos'] ?? '') === '' || ($cliente['contrato_prestacao_servicos'] ?? '') === 'nao_possui') {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Contrato de prestação de serviços não possui', 'Pendente', 'warning');
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Contrato de prestação de serviços não possui', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver contrato de prestação de serviços', 'contrato_prestacao_servicos', ['possui' => 'Possui', 'nao_possui' => 'Não possui']));
     }
 }
 
@@ -159,7 +222,9 @@ try {
             'Alvará',
             $alvaraCliente['orgao_nome'] . ' - vencimento em ' . dataBr($alvaraCliente['vencimento']),
             $status,
-            $nivel
+            $nivel,
+            null,
+            'cliente_editar.php?id=' . (int)$alvaraCliente['cliente_id']
         );
     }
 } catch (Throwable $e) {
@@ -222,11 +287,17 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
                 </a>
             </div>
 
+            <?php if (isset($_GET['resolvido'])): ?>
+                <div class="alert alert-success alert-auto-dismiss fade show">
+                    Pendência resolvida com sucesso.
+                </div>
+            <?php endif; ?>
+
             <div class="row g-3 mb-4">
                 <div class="col-md-3">
                     <div class="pendencia-card">
                         <div class="text-muted small">Total</div>
-                        <div class="pendencia-numero"><?= $totalPendencias ?></div>
+                        <div class="pendencia-numero" id="totalPendenciasNumero"><?= $totalPendencias ?></div>
                         <div class="text-muted small">pendências encontradas</div>
                     </div>
                 </div>
@@ -236,7 +307,7 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
                         <div class="pendencia-card">
                             <div class="d-flex justify-content-between mb-2">
                                 <strong><?= htmlspecialchars($tipo) ?></strong>
-                                <span><?= (int)$quantidade ?></span>
+                                <span class="quantidade-resumo" data-resumo-tipo="<?= htmlspecialchars($tipo) ?>"><?= (int)$quantidade ?></span>
                             </div>
                             <div class="grafico-barra">
                                 <span style="width: <?= $maiorResumo > 0 ? (int)(($quantidade / $maiorResumo) * 100) : 0 ?>%"></span>
@@ -294,9 +365,37 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
                                         </span>
                                     </td>
                                     <td class="text-end">
-                                        <a href="cliente.php?id=<?= (int)$pendencia['cliente_id'] ?>" class="btn btn-outline-primary btn-sm">
-                                            <i class="bi bi-eye"></i>
-                                        </a>
+                                        <div class="d-flex justify-content-end gap-2">
+                                            <?php if (!empty($pendencia['resolver'])): ?>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-outline-success btn-sm btn-resolver-pendencia"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#modalResolverPendencia"
+                                                    data-cliente-id="<?= (int)$pendencia['cliente_id'] ?>"
+                                                    data-tipo="<?= htmlspecialchars($pendencia['resolver']) ?>"
+                                                    data-cliente="<?= htmlspecialchars($pendencia['codigo'] . ' - ' . $pendencia['nome']) ?>"
+                                                    data-descricao="<?= htmlspecialchars($pendencia['descricao']) ?>">
+                                                    <i class="bi bi-check2-circle"></i> Resolver
+                                                </button>
+                                            <?php elseif (!empty($pendencia['resolver_modal'])): ?>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-outline-success btn-sm btn-editar-pendencia"
+                                                    data-cliente-id="<?= (int)$pendencia['cliente_id'] ?>"
+                                                    data-modal="<?= htmlspecialchars(json_encode($pendencia['resolver_modal'], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>">
+                                                    <i class="bi bi-check2-circle"></i> Resolver
+                                                </button>
+                                            <?php else: ?>
+                                                <a href="<?= htmlspecialchars($pendencia['resolver_url'] ?? ('cliente.php?id=' . (int)$pendencia['cliente_id'])) ?>" class="btn btn-outline-success btn-sm">
+                                                    <i class="bi bi-check2-circle"></i> Resolver
+                                                </a>
+                                            <?php endif; ?>
+
+                                            <a href="cliente.php?id=<?= (int)$pendencia['cliente_id'] ?>" class="btn btn-outline-primary btn-sm">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -307,7 +406,288 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
         </div>
     </main>
 
+    <div class="modal fade" id="modalResolverPendencia" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Resolver pendência</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-1">Confirma que esta pendência já foi resolvida?</p>
+                    <strong id="clientePendenciaResolver" class="d-block mb-2"></strong>
+                    <span id="descricaoPendenciaResolver" class="text-muted"></span>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Não</button>
+                    <form method="post" action="pendencia_resolver.php" class="m-0">
+                        <input type="hidden" name="cliente_id" id="clienteIdPendenciaResolver">
+                        <input type="hidden" name="tipo" id="tipoPendenciaResolver">
+                        <button type="submit" class="btn btn-success">Sim, resolver</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalEditarPendencia" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="tituloModalEditarPendencia">Resolver pendência</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="modalPendenciaClienteId">
+                    <input type="hidden" id="modalPendenciaModo">
+                    <input type="hidden" id="modalPendenciaCampoStatus">
+                    <input type="hidden" id="modalPendenciaCampoVencimento">
+
+                    <div class="mb-3">
+                        <label class="form-label">Cliente</label>
+                        <input type="text" class="form-control" id="modalPendenciaCliente" disabled>
+                    </div>
+
+                    <div class="mb-3 d-none" id="grupoModalPendenciaStatus">
+                        <label for="modalPendenciaStatus" class="form-label">Situação</label>
+                        <select class="form-select" id="modalPendenciaStatus"></select>
+                    </div>
+
+                    <div class="mb-3" id="grupoModalPendenciaVencimento">
+                        <label for="modalPendenciaVencimento" class="form-label">Vencimento</label>
+                        <input type="date" class="form-control" id="modalPendenciaVencimento">
+                        <div class="form-text" id="textoAjudaModalPendencia"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success" id="btnSalvarModalPendencia">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
     <script>
+        let botaoPendenciaAtual = null;
+        let configuracaoPendenciaAtual = null;
+
+        document.getElementById('modalResolverPendencia').addEventListener('show.bs.modal', function(event) {
+            const botao = event.relatedTarget;
+
+            document.getElementById('clienteIdPendenciaResolver').value = botao.dataset.clienteId;
+            document.getElementById('tipoPendenciaResolver').value = botao.dataset.tipo;
+            document.getElementById('clientePendenciaResolver').textContent = botao.dataset.cliente;
+            document.getElementById('descricaoPendenciaResolver').textContent = botao.dataset.descricao;
+        });
+
+        function atualizarResumoPendencia(linha) {
+            const tipo = linha.dataset.tipo;
+            const total = document.getElementById('totalPendenciasNumero');
+            total.textContent = Math.max(Number(total.textContent) - 1, 0);
+
+            document.querySelectorAll('.quantidade-resumo').forEach(function(item) {
+                if (item.dataset.resumoTipo === tipo) {
+                    item.textContent = Math.max(Number(item.textContent) - 1, 0);
+                }
+            });
+        }
+
+        function removerLinhaPendencia(botao) {
+            const linha = botao.closest('.linha-pendencia');
+            atualizarResumoPendencia(linha);
+            linha.remove();
+
+            if (document.querySelectorAll('.linha-pendencia').length === 0) {
+                const tbody = document.querySelector('table tbody');
+                const linhaVazia = document.createElement('tr');
+                linhaVazia.innerHTML = '<td colspan="5" class="text-center text-muted py-4">Nenhuma pendência encontrada.</td>';
+                tbody.appendChild(linhaVazia);
+            }
+        }
+
+        function preencherOpcoesPendencia(opcoes, valorAtual) {
+            const select = document.getElementById('modalPendenciaStatus');
+            select.innerHTML = '<option value="">Selecione</option>';
+
+            Object.keys(opcoes || {}).forEach(function(valor) {
+                const option = document.createElement('option');
+                option.value = valor;
+                option.textContent = opcoes[valor];
+                select.appendChild(option);
+            });
+
+            select.value = valorAtual || '';
+        }
+
+        function atualizarVencimentoPendencia() {
+            const modo = document.getElementById('modalPendenciaModo').value;
+            const campoVencimento = document.getElementById('modalPendenciaCampoVencimento').value;
+            const status = document.getElementById('modalPendenciaStatus').value;
+            const grupoVencimento = document.getElementById('grupoModalPendenciaVencimento');
+            const vencimento = document.getElementById('modalPendenciaVencimento');
+
+            if (modo === 'certificado') {
+                grupoVencimento.classList.remove('d-none');
+                vencimento.disabled = false;
+                return;
+            }
+
+            if (campoVencimento === '') {
+                grupoVencimento.classList.add('d-none');
+                vencimento.value = '';
+                return;
+            }
+
+            grupoVencimento.classList.remove('d-none');
+            vencimento.disabled = status !== 'possui';
+
+            if (status !== 'possui') {
+                vencimento.value = '';
+                vencimento.classList.remove('is-invalid');
+            }
+        }
+
+        function vencimentoForaDoPrazoDePendencia(vencimento) {
+            if (!vencimento) {
+                return false;
+            }
+
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+            hoje.setDate(hoje.getDate() + 30);
+
+            const partes = vencimento.split('-');
+            const data = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+
+            return data > hoje;
+        }
+
+        function pendenciaFoiResolvida(modo, status, vencimento, campoVencimento) {
+            if (modo === 'certificado') {
+                return vencimentoForaDoPrazoDePendencia(vencimento);
+            }
+
+            if (['nao', 'nao_possui', 'nao_cadastrado', ''].includes(status)) {
+                return false;
+            }
+
+            if (campoVencimento !== '' && status === 'possui') {
+                return vencimentoForaDoPrazoDePendencia(vencimento);
+            }
+
+            return true;
+        }
+
+        document.querySelectorAll('.btn-editar-pendencia').forEach(function(botao) {
+            botao.addEventListener('click', function() {
+                botaoPendenciaAtual = this;
+                configuracaoPendenciaAtual = JSON.parse(this.dataset.modal);
+
+                const modo = configuracaoPendenciaAtual.modo || '';
+
+                document.getElementById('tituloModalEditarPendencia').textContent = configuracaoPendenciaAtual.titulo || 'Resolver pendência';
+                document.getElementById('modalPendenciaClienteId').value = this.dataset.clienteId;
+                document.getElementById('modalPendenciaModo').value = modo;
+                document.getElementById('modalPendenciaCampoStatus').value = configuracaoPendenciaAtual.campo_status || '';
+                document.getElementById('modalPendenciaCampoVencimento').value = configuracaoPendenciaAtual.campo_vencimento || '';
+                document.getElementById('modalPendenciaCliente').value = configuracaoPendenciaAtual.cliente || '';
+                document.getElementById('modalPendenciaVencimento').value = configuracaoPendenciaAtual.vencimento_atual || '';
+                document.getElementById('modalPendenciaStatus').classList.remove('is-invalid');
+                document.getElementById('modalPendenciaVencimento').classList.remove('is-invalid');
+
+                if (modo === 'certificado') {
+                    document.getElementById('grupoModalPendenciaStatus').classList.add('d-none');
+                    document.getElementById('textoAjudaModalPendencia').textContent = 'Deixe em branco para marcar como não possui.';
+                } else {
+                    document.getElementById('grupoModalPendenciaStatus').classList.remove('d-none');
+                    document.getElementById('textoAjudaModalPendencia').textContent = '';
+                    preencherOpcoesPendencia(configuracaoPendenciaAtual.opcoes || {}, configuracaoPendenciaAtual.status_atual || '');
+                }
+
+                atualizarVencimentoPendencia();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('modalEditarPendencia')).show();
+            });
+        });
+
+        document.getElementById('modalPendenciaStatus').addEventListener('change', atualizarVencimentoPendencia);
+
+        document.getElementById('btnSalvarModalPendencia').addEventListener('click', function() {
+            const modo = document.getElementById('modalPendenciaModo').value;
+            const clienteId = document.getElementById('modalPendenciaClienteId').value;
+            const status = document.getElementById('modalPendenciaStatus').value;
+            const vencimento = document.getElementById('modalPendenciaVencimento').value;
+            const campoStatus = document.getElementById('modalPendenciaCampoStatus').value;
+            const campoVencimento = document.getElementById('modalPendenciaCampoVencimento').value;
+
+            document.getElementById('modalPendenciaStatus').classList.remove('is-invalid');
+            document.getElementById('modalPendenciaVencimento').classList.remove('is-invalid');
+
+            if (modo === 'controle') {
+                if (status === '') {
+                    document.getElementById('modalPendenciaStatus').classList.add('is-invalid');
+                    document.getElementById('modalPendenciaStatus').focus();
+                    return;
+                }
+
+                if (campoVencimento !== '' && status === 'possui' && vencimento === '') {
+                    document.getElementById('modalPendenciaVencimento').classList.add('is-invalid');
+                    document.getElementById('modalPendenciaVencimento').focus();
+                    return;
+                }
+            }
+
+            this.disabled = true;
+            this.innerHTML = 'Salvando...';
+
+            const destino = modo === 'certificado' ? 'api_certificados.php' : 'api_controles.php';
+            const dados = new URLSearchParams();
+            dados.append('id', clienteId);
+
+            if (modo === 'certificado') {
+                dados.append('vencimento_certificado', vencimento);
+            } else {
+                dados.append('campo_status', campoStatus);
+                dados.append('status', status);
+                dados.append('campo_vencimento', campoVencimento);
+                dados.append('vencimento', vencimento);
+            }
+
+            fetch(destino, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: dados.toString()
+                })
+                .then(response => response.text())
+                .then(resp => {
+                    if (resp.trim() === 'ok') {
+                        if (pendenciaFoiResolvida(modo, status, vencimento, campoVencimento)) {
+                            bootstrap.Modal.getInstance(document.getElementById('modalEditarPendencia')).hide();
+                            removerLinhaPendencia(botaoPendenciaAtual);
+                        } else {
+                            document.getElementById('textoAjudaModalPendencia').textContent = 'Salvo, mas essa informação ainda continua como pendência.';
+                        }
+                    } else if (resp.trim() === 'vencimento_obrigatorio') {
+                        document.getElementById('modalPendenciaVencimento').classList.add('is-invalid');
+                        document.getElementById('modalPendenciaVencimento').focus();
+                    } else {
+                        this.innerHTML = 'Erro';
+                    }
+                })
+                .catch(() => {
+                    this.innerHTML = 'Erro';
+                })
+                .finally(() => {
+                    setTimeout(() => {
+                        this.disabled = false;
+                        this.innerHTML = 'Salvar';
+                    }, 600);
+                });
+        });
+
         function filtrarPendencias() {
             const busca = document.getElementById('buscaPendencia').value.toLowerCase();
             const tipo = document.getElementById('filtroTipoPendencia').value;
@@ -324,6 +704,15 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
 
         document.getElementById('buscaPendencia').addEventListener('input', filtrarPendencias);
         document.getElementById('filtroTipoPendencia').addEventListener('change', filtrarPendencias);
+
+        setTimeout(function() {
+            document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {
+                alerta.classList.remove('show');
+                setTimeout(function() {
+                    alerta.remove();
+                }, 200);
+            });
+        }, 4000);
     </script>
 </body>
 
