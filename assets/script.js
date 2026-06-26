@@ -1,5 +1,7 @@
 let paginaAtual = 1;
 let limitePorPagina = 10;
+let documentoDuplicado = false;
+let ultimaConsultaDocumento = '';
 
 $(document).ready(function () {
     aplicarMascaras();
@@ -43,15 +45,21 @@ $(document).ready(function () {
 
     $('#documento').on('blur', function () {
         const documento = $(this).val().replace(/\D/g, '');
+        const documentoFormatado = $(this).val().trim();
 
         if (documento.length === 0) {
+            documentoDuplicado = false;
             return;
         }
 
         if (!validarCpfOuCnpj(documento)) {
             $('#documento').addClass('is-invalid');
             mostrarAviso('CPF ou CNPJ inválido.', '#documento');
+            documentoDuplicado = false;
+            return;
         }
+
+        verificarDocumentoDuplicado(documentoFormatado);
     });
 
     $('#clienteForm').on('submit', function (e) {
@@ -199,6 +207,11 @@ $(document).ready(function () {
         this.value = this.value.toUpperCase();
     });
 
+    $('#documento').on('input', function () {
+        documentoDuplicado = false;
+        ultimaConsultaDocumento = '';
+    });
+
     $('#inscricao_estadual').on('input', function () {
         const valor = this.value.toUpperCase();
         this.value = valor === 'ISENTO'
@@ -249,6 +262,87 @@ $(document).ready(function () {
 
     $(document).on('change', '.controle-com-vencimento', function () {
         atualizarCampoVencimentoControle(this);
+    });
+
+    const controlesConferencia = {
+        cadastro_df_legal: {
+            valor: 'cadastrado',
+            prefixo: 'df_legal',
+            titulo: 'Conferir cadastro DF Legal',
+            socio: false
+        },
+        cadastro_crf: {
+            valor: 'cadastrado',
+            prefixo: 'crf',
+            titulo: 'Conferir Cadastro CRF',
+            socio: false
+        },
+        procuracao_particular: {
+            valor: 'possui',
+            prefixo: 'procuracao_particular',
+            titulo: 'Conferir Procuração Particular',
+            socio: true
+        }
+    };
+
+    function abrirModalConferenciaCadastro(config) {
+        const modalEl = document.getElementById('modalConferenciaCadastro');
+
+        if (!modalEl) {
+            return;
+        }
+
+        $('#prefixoConferenciaCadastro').val(config.prefixo);
+        $('#tituloModalConferenciaCadastro').text(config.titulo);
+        $('#grupoModalSocioCorreto').toggleClass('d-none', !config.socio);
+        $('#alertaConferenciaCadastro').addClass('d-none');
+
+        $(`input[name="modal_razao_social_correta"][value="${$('#' + config.prefixo + '_razao_social_correta').val() || 'sim'}"]`).prop('checked', true);
+        $(`input[name="modal_endereco_correto"][value="${$('#' + config.prefixo + '_endereco_correto').val() || 'sim'}"]`).prop('checked', true);
+
+        if (config.socio) {
+            $(`input[name="modal_socio_correto"][value="${$('#' + config.prefixo + '_socio_correto').val() || 'sim'}"]`).prop('checked', true);
+        } else {
+            $('input[name="modal_socio_correto"]').prop('checked', false);
+        }
+
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+
+    Object.keys(controlesConferencia).forEach(function (campoId) {
+        $('#' + campoId).on('change', function () {
+            const config = controlesConferencia[campoId];
+
+            if (this.value === config.valor) {
+                abrirModalConferenciaCadastro(config);
+            } else {
+                $('#' + config.prefixo + '_razao_social_correta').val('sim');
+                $('#' + config.prefixo + '_endereco_correto').val('sim');
+                $('#' + config.prefixo + '_socio_correto').val('sim');
+            }
+        });
+    });
+
+    $('#btnConcluirConferenciaCadastro').on('click', function () {
+        const prefixo = $('#prefixoConferenciaCadastro').val();
+        const razao = $('input[name="modal_razao_social_correta"]:checked').val();
+        const endereco = $('input[name="modal_endereco_correto"]:checked').val();
+        const precisaSocio = !$('#grupoModalSocioCorreto').hasClass('d-none');
+        const socio = $('input[name="modal_socio_correto"]:checked').val();
+
+        if (!razao || !endereco || (precisaSocio && !socio)) {
+            $('#alertaConferenciaCadastro').removeClass('d-none');
+            return;
+        }
+
+        $('#' + prefixo + '_razao_social_correta').val(razao);
+        $('#' + prefixo + '_endereco_correto').val(endereco);
+
+        if (precisaSocio) {
+            $('#' + prefixo + '_socio_correto').val(socio);
+        }
+
+        bootstrap.Modal.getInstance(document.getElementById('modalConferenciaCadastro')).hide();
     });
 
     $('#btnConcluirAlvaras').on('click', function () {
@@ -585,6 +679,12 @@ function validarFormulario() {
     const telefone = $('#telefone').val().replace(/\D/g, '');
     const email = $('#email').val().trim();
 
+    if (documentoDuplicado) {
+        $('#documento').addClass('is-invalid');
+        mostrarAviso('Já existe um cliente cadastrado com este CPF/CNPJ.', '#documento');
+        return false;
+    }
+
     if (documento !== '' && !validarCpfOuCnpj(documento)) {
         $('#documento').addClass('is-invalid');
         mostrarAviso('CPF ou CNPJ inválido.', '#documento');
@@ -672,6 +772,39 @@ function validarFormulario() {
     }
 
     return valido;
+}
+
+function verificarDocumentoDuplicado(documentoFormatado) {
+    const id = $('#id').val() || '';
+
+    if (documentoFormatado === '' || documentoFormatado === ultimaConsultaDocumento) {
+        return;
+    }
+
+    ultimaConsultaDocumento = documentoFormatado;
+
+    $.getJSON('api.php?action=check_documento', {
+        documento: documentoFormatado,
+        id: id
+    }).done(function (resposta) {
+        if (resposta.duplicado) {
+            documentoDuplicado = true;
+            $('#documento').addClass('is-invalid');
+
+            const cliente = resposta.cliente || {};
+            const nomeCliente = cliente.codigo && cliente.nome
+                ? cliente.codigo + ' - ' + cliente.nome
+                : 'cliente já cadastrado';
+
+            mostrarAviso(
+                'Já existe um cliente cadastrado com este CPF/CNPJ: ' + nomeCliente + '.',
+                '#documento'
+            );
+        } else {
+            documentoDuplicado = false;
+            $('#documento').removeClass('is-invalid');
+        }
+    });
 }
 
 function validarEmail(email) {

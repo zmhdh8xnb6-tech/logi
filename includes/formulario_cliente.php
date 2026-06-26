@@ -91,6 +91,8 @@ $alvarasCliente = $alvarasCliente ?? [];
                 <option value="nao_cadastrado">Não cadastrado</option>
                 <option value="goias">Goiás</option>
             </select>
+            <input type="hidden" name="df_legal_razao_social_correta" id="df_legal_razao_social_correta" value="sim">
+            <input type="hidden" name="df_legal_endereco_correto" id="df_legal_endereco_correto" value="sim">
         </div>
 
         <div class="col-md-3 mb-3">
@@ -120,6 +122,8 @@ $alvarasCliente = $alvarasCliente ?? [];
                 <option value="cadastrado">Cadastrado</option>
                 <option value="nao_cadastrado">Não cadastrado</option>
             </select>
+            <input type="hidden" name="crf_razao_social_correta" id="crf_razao_social_correta" value="sim">
+            <input type="hidden" name="crf_endereco_correto" id="crf_endereco_correto" value="sim">
         </div>
 
         <div class="col-md-3 mb-3">
@@ -180,6 +184,9 @@ $alvarasCliente = $alvarasCliente ?? [];
                 <option value="possui">Possui</option>
                 <option value="nao_possui">Não possui</option>
             </select>
+            <input type="hidden" name="procuracao_particular_razao_social_correta" id="procuracao_particular_razao_social_correta" value="sim">
+            <input type="hidden" name="procuracao_particular_endereco_correto" id="procuracao_particular_endereco_correto" value="sim">
+            <input type="hidden" name="procuracao_particular_socio_correto" id="procuracao_particular_socio_correto" value="sim">
         </div>
 
         <div class="col-md-3 mb-3">
@@ -226,6 +233,67 @@ $alvarasCliente = $alvarasCliente ?? [];
             <div class="invalid-feedback">Informe se o cliente possui parcelamento.</div>
         </div>
 
+    </div>
+</div>
+
+<div class="modal fade" id="modalConferenciaCadastro" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="tituloModalConferenciaCadastro">Conferir dados</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+                <input type="hidden" id="prefixoConferenciaCadastro">
+
+                <div class="mb-3">
+                    <label class="form-label d-block">Razão social está correta?</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input conferencia-cadastro" type="radio" name="modal_razao_social_correta" id="modal_razao_social_sim" value="sim">
+                        <label class="form-check-label" for="modal_razao_social_sim">Sim</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input conferencia-cadastro" type="radio" name="modal_razao_social_correta" id="modal_razao_social_nao" value="nao">
+                        <label class="form-check-label" for="modal_razao_social_nao">Não</label>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label d-block">Endereço está correto?</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input conferencia-cadastro" type="radio" name="modal_endereco_correto" id="modal_endereco_sim" value="sim">
+                        <label class="form-check-label" for="modal_endereco_sim">Sim</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input conferencia-cadastro" type="radio" name="modal_endereco_correto" id="modal_endereco_nao" value="nao">
+                        <label class="form-check-label" for="modal_endereco_nao">Não</label>
+                    </div>
+                </div>
+
+                <div class="mb-3 d-none" id="grupoModalSocioCorreto">
+                    <label class="form-label d-block">Sócio está correto?</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input conferencia-cadastro" type="radio" name="modal_socio_correto" id="modal_socio_sim" value="sim">
+                        <label class="form-check-label" for="modal_socio_sim">Sim</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input conferencia-cadastro" type="radio" name="modal_socio_correto" id="modal_socio_nao" value="nao">
+                        <label class="form-check-label" for="modal_socio_nao">Não</label>
+                    </div>
+                    <div class="form-text">Por enquanto o sistema ainda não cadastra sócios, então isso fica como pendência operacional.</div>
+                </div>
+
+                <div class="alert alert-danger d-none mb-0" id="alertaConferenciaCadastro">
+                    Responda todas as perguntas antes de concluir.
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" id="btnConcluirConferenciaCadastro">Concluir</button>
+            </div>
+        </div>
     </div>
 </div>
 

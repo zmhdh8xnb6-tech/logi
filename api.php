@@ -137,6 +137,40 @@ function valorClienteMudou(array $clienteAtual, string $campo, ?string $novoValo
     return trim((string)($clienteAtual[$campo] ?? '')) !== trim((string)$novoValor);
 }
 
+function conferenciaDadosIncorreta(array $dados, string $prefixo, bool $verificarSocio = false): bool
+{
+    $campos = [
+        $prefixo . '_razao_social_correta',
+        $prefixo . '_endereco_correto',
+    ];
+
+    if ($verificarSocio) {
+        $campos[] = $prefixo . '_socio_correto';
+    }
+
+    foreach ($campos as $campo) {
+        if (($dados[$campo] ?? 'sim') === 'nao') {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function atualizarPendenciaControleDados(PDO $pdo, int $clienteId, string $coluna, bool $pendente): void
+{
+    if (!clienteTemColuna($pdo, $coluna)) {
+        return;
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE clientes
+        SET {$coluna} = ?
+        WHERE id = ?
+    ");
+    $stmt->execute([$pendente ? 1 : 0, $clienteId]);
+}
+
 $action = $_GET['action'] ?? '';
 
 if ($action === 'read') {
@@ -174,6 +208,28 @@ if ($action === 'read') {
         "limit" => $limit
     ]);
 
+    exit;
+}
+
+if ($action === 'check_documento') {
+    $documento = $_GET['documento'] ?? '';
+    $id = (int)($_GET['id'] ?? 0);
+
+    $stmt = $pdo->prepare("
+        SELECT id, codigo, nome, documento
+        FROM clientes
+        WHERE documento = ?
+          AND id <> ?
+        LIMIT 1
+    ");
+    $stmt->execute([$documento, $id]);
+    $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'duplicado' => (bool)$cliente,
+        'cliente' => $cliente ?: null,
+    ]);
     exit;
 }
 
@@ -518,6 +574,28 @@ if ($action === 'create' || $action === 'update') {
         }
 
         salvarAlvarasCliente($pdo, $clienteIdSalvo, $alvara, $alvaras);
+
+        atualizarPendenciaControleDados(
+            $pdo,
+            $clienteIdSalvo,
+            'pendencia_df_legal_dados',
+            $cadastro_df_legal === 'cadastrado' && conferenciaDadosIncorreta($_POST, 'df_legal')
+        );
+
+        atualizarPendenciaControleDados(
+            $pdo,
+            $clienteIdSalvo,
+            'pendencia_crf_dados',
+            $cadastro_crf === 'cadastrado' && conferenciaDadosIncorreta($_POST, 'crf')
+        );
+
+        atualizarPendenciaControleDados(
+            $pdo,
+            $clienteIdSalvo,
+            'pendencia_procuracao_particular_dados',
+            $procuracao_particular === 'possui' && conferenciaDadosIncorreta($_POST, 'procuracao_particular', true)
+        );
+
         $pdo->commit();
 
         echo $ok ? 'ok|' . $clienteIdSalvo : 'erro';

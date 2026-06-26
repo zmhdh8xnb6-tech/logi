@@ -44,7 +44,7 @@ function modalCertificado(array $cliente): array
     ];
 }
 
-function modalControle(array $cliente, string $titulo, string $campoStatus, array $opcoes, ?string $campoVencimento = null): array
+function modalControle(array $cliente, string $titulo, string $campoStatus, array $opcoes, ?string $campoVencimento = null, bool $conferirDados = false, bool $conferirSocio = false): array
 {
     return [
         'modo' => 'controle',
@@ -55,6 +55,8 @@ function modalControle(array $cliente, string $titulo, string $campoStatus, arra
         'status_atual' => $cliente[$campoStatus] ?? '',
         'vencimento_atual' => $campoVencimento !== null ? ($cliente[$campoVencimento] ?? '') : '',
         'opcoes' => $opcoes,
+        'conferir_dados' => $conferirDados,
+        'conferir_socio' => $conferirSocio,
     ];
 }
 
@@ -138,7 +140,9 @@ foreach ($clientes as $cliente) {
             'Resolver ' . $procuracao['nome'],
             $procuracao['status'],
             $opcoesProcuracao,
-            $procuracao['vencimento']
+            $procuracao['vencimento'],
+            $procuracao['status'] === 'procuracao_particular',
+            $procuracao['status'] === 'procuracao_particular'
         );
 
         if ($status === '' || $status === 'nao_possui') {
@@ -183,11 +187,23 @@ foreach ($clientes as $cliente) {
     }
 
     if (($cliente['cadastro_crf'] ?? '') === '' || ($cliente['cadastro_crf'] ?? '') === 'nao_cadastrado') {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro CRF não cadastrado', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro CRF', 'cadastro_crf', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado']));
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro CRF não cadastrado', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro CRF', 'cadastro_crf', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado'], null, true));
+    }
+
+    if (!empty($cliente['pendencia_crf_dados'])) {
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro CRF com razão social ou endereço incorreto', 'A resolver', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro CRF', 'cadastro_crf', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado'], null, true));
     }
 
     if (($cliente['cadastro_df_legal'] ?? '') === '' || ($cliente['cadastro_df_legal'] ?? '') === 'nao_cadastrado') {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro DF Legal não cadastrado', 'Pendente', 'warning', null, 'cliente_editar.php?id=' . (int)$cliente['id']);
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro DF Legal não cadastrado', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro DF Legal', 'cadastro_df_legal', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado', 'goias' => 'Goiás'], null, true));
+    }
+
+    if (!empty($cliente['pendencia_df_legal_dados'])) {
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro DF Legal com razão social ou endereço incorreto', 'A resolver', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro DF Legal', 'cadastro_df_legal', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado', 'goias' => 'Goiás'], null, true));
+    }
+
+    if (!empty($cliente['pendencia_procuracao_particular_dados'])) {
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', 'Procuração Particular com razão social, endereço ou sócio incorreto', 'A resolver', 'warning', null, null, modalControle($cliente, 'Resolver Procuração Particular', 'procuracao_particular', ['possui' => 'Possui', 'nao_possui' => 'Não possui'], null, true, true));
     }
 
     if (($cliente['contrato_prestacao_servicos'] ?? '') === '' || ($cliente['contrato_prestacao_servicos'] ?? '') === 'nao_possui') {
@@ -310,7 +326,10 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
                                 <span class="quantidade-resumo" data-resumo-tipo="<?= htmlspecialchars($tipo) ?>"><?= (int)$quantidade ?></span>
                             </div>
                             <div class="grafico-barra">
-                                <span style="width: <?= $maiorResumo > 0 ? (int)(($quantidade / $maiorResumo) * 100) : 0 ?>%"></span>
+                                <span
+                                    data-barra-tipo="<?= htmlspecialchars($tipo) ?>"
+                                    style="width: <?= $maiorResumo > 0 ? (int)(($quantidade / $maiorResumo) * 100) : 0 ?>%">
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -458,6 +477,45 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
                         <input type="date" class="form-control" id="modalPendenciaVencimento">
                         <div class="form-text" id="textoAjudaModalPendencia"></div>
                     </div>
+
+                    <div class="d-none" id="grupoModalPendenciaConferencia">
+                        <div class="mb-3">
+                            <label class="form-label d-block">Razão social está correta?</label>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="pendencia_razao_social_correta" id="pendencia_razao_social_sim" value="sim" checked>
+                                <label class="form-check-label" for="pendencia_razao_social_sim">Sim</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="pendencia_razao_social_correta" id="pendencia_razao_social_nao" value="nao">
+                                <label class="form-check-label" for="pendencia_razao_social_nao">Não</label>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label d-block">Endereço está correto?</label>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="pendencia_endereco_correto" id="pendencia_endereco_sim" value="sim" checked>
+                                <label class="form-check-label" for="pendencia_endereco_sim">Sim</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="pendencia_endereco_correto" id="pendencia_endereco_nao" value="nao">
+                                <label class="form-check-label" for="pendencia_endereco_nao">Não</label>
+                            </div>
+                        </div>
+
+                        <div class="mb-3 d-none" id="grupoModalPendenciaSocio">
+                            <label class="form-label d-block">Sócio está correto?</label>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="pendencia_socio_correto" id="pendencia_socio_sim" value="sim" checked>
+                                <label class="form-check-label" for="pendencia_socio_sim">Sim</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="pendencia_socio_correto" id="pendencia_socio_nao" value="nao">
+                                <label class="form-check-label" for="pendencia_socio_nao">Não</label>
+                            </div>
+                            <div class="form-text">Por enquanto o sistema ainda não cadastra sócios, então isso fica como pendência operacional.</div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -490,6 +548,28 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
             document.querySelectorAll('.quantidade-resumo').forEach(function(item) {
                 if (item.dataset.resumoTipo === tipo) {
                     item.textContent = Math.max(Number(item.textContent) - 1, 0);
+                }
+            });
+
+            atualizarBarrasResumo();
+        }
+
+        function atualizarBarrasResumo() {
+            const quantidades = Array.from(document.querySelectorAll('.quantidade-resumo'));
+            const maiorQuantidade = quantidades.reduce(function(maior, item) {
+                return Math.max(maior, Number(item.textContent) || 0);
+            }, 0);
+
+            quantidades.forEach(function(item) {
+                const tipo = item.dataset.resumoTipo;
+                const quantidade = Number(item.textContent) || 0;
+                const barra = Array.from(document.querySelectorAll('[data-barra-tipo]')).find(function(elemento) {
+                    return elemento.dataset.barraTipo === tipo;
+                });
+                const largura = maiorQuantidade > 0 ? Math.round((quantidade / maiorQuantidade) * 100) : 0;
+
+                if (barra) {
+                    barra.style.width = largura + '%';
                 }
             });
         }
@@ -573,6 +653,14 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
                 return false;
             }
 
+            if ((configuracaoPendenciaAtual.conferir_dados || false) && (
+                    document.querySelector('input[name="pendencia_razao_social_correta"]:checked').value === 'nao' ||
+                    document.querySelector('input[name="pendencia_endereco_correto"]:checked').value === 'nao' ||
+                    ((configuracaoPendenciaAtual.conferir_socio || false) && document.querySelector('input[name="pendencia_socio_correto"]:checked').value === 'nao')
+                )) {
+                return false;
+            }
+
             if (campoVencimento !== '' && status === 'possui') {
                 return vencimentoForaDoPrazoDePendencia(vencimento);
             }
@@ -596,6 +684,11 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
                 document.getElementById('modalPendenciaVencimento').value = configuracaoPendenciaAtual.vencimento_atual || '';
                 document.getElementById('modalPendenciaStatus').classList.remove('is-invalid');
                 document.getElementById('modalPendenciaVencimento').classList.remove('is-invalid');
+                document.getElementById('grupoModalPendenciaConferencia').classList.toggle('d-none', !(configuracaoPendenciaAtual.conferir_dados || false));
+                document.getElementById('grupoModalPendenciaSocio').classList.toggle('d-none', !(configuracaoPendenciaAtual.conferir_socio || false));
+                document.getElementById('pendencia_razao_social_sim').checked = true;
+                document.getElementById('pendencia_endereco_sim').checked = true;
+                document.getElementById('pendencia_socio_sim').checked = true;
 
                 if (modo === 'certificado') {
                     document.getElementById('grupoModalPendenciaStatus').classList.add('d-none');
@@ -652,6 +745,9 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
                 dados.append('status', status);
                 dados.append('campo_vencimento', campoVencimento);
                 dados.append('vencimento', vencimento);
+                dados.append('razao_social_correta', (configuracaoPendenciaAtual.conferir_dados || false) ? document.querySelector('input[name="pendencia_razao_social_correta"]:checked').value : 'sim');
+                dados.append('endereco_correto', (configuracaoPendenciaAtual.conferir_dados || false) ? document.querySelector('input[name="pendencia_endereco_correto"]:checked').value : 'sim');
+                dados.append('socio_correto', (configuracaoPendenciaAtual.conferir_socio || false) ? document.querySelector('input[name="pendencia_socio_correto"]:checked').value : 'sim');
             }
 
             fetch(destino, {

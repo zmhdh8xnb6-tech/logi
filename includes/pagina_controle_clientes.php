@@ -3,9 +3,10 @@ if (!isset($titulo, $subtitulo, $campoStatus, $opcoesStatus)) {
     exit('Configuracao da pagina nao informada.');
 }
 
-if (!isset($_SESSION['usuario_id'])) {
-    header('Location: login.php');
-    exit;
+if (isset($moduloPermissao)) {
+    exigirPermissao($moduloPermissao);
+} else {
+    exigirLogin();
 }
 
 $campoVencimento = $campoVencimento ?? null;
@@ -13,6 +14,8 @@ $mostrarVencimento = $campoVencimento !== null;
 $placeholderBusca = $placeholderBusca ?? 'Buscar por codigo, cliente ou CNPJ...';
 $tituloTabela = $tituloTabela ?? 'Clientes';
 $voltarUrl = $voltarUrl ?? (strpos($campoStatus, 'procuracao_') === 0 ? 'procuracoes.php' : 'home.php');
+$mostrarConferenciaDados = in_array($campoStatus, ['cadastro_crf', 'procuracao_particular'], true);
+$mostrarConferenciaSocio = $campoStatus === 'procuracao_particular';
 
 $camposPermitidos = [
     'contador',
@@ -266,6 +269,49 @@ function formatarDiasControle(?string $vencimento): string
                             <input type="date" class="form-control" id="modalControleVencimento">
                         </div>
                     <?php endif; ?>
+
+                    <?php if ($mostrarConferenciaDados): ?>
+                        <div id="grupoConferenciaDadosControle">
+                            <div class="mb-3">
+                                <label class="form-label d-block">Razão social está correta?</label>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="controle_razao_social_correta" id="controle_razao_social_sim" value="sim" checked>
+                                    <label class="form-check-label" for="controle_razao_social_sim">Sim</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="controle_razao_social_correta" id="controle_razao_social_nao" value="nao">
+                                    <label class="form-check-label" for="controle_razao_social_nao">Não</label>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label d-block">Endereço está correto?</label>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="controle_endereco_correto" id="controle_endereco_sim" value="sim" checked>
+                                    <label class="form-check-label" for="controle_endereco_sim">Sim</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="controle_endereco_correto" id="controle_endereco_nao" value="nao">
+                                    <label class="form-check-label" for="controle_endereco_nao">Não</label>
+                                </div>
+                            </div>
+
+                            <?php if ($mostrarConferenciaSocio): ?>
+                                <div class="mb-3">
+                                    <label class="form-label d-block">Sócio está correto?</label>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="controle_socio_correto" id="controle_socio_sim" value="sim" checked>
+                                        <label class="form-check-label" for="controle_socio_sim">Sim</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="controle_socio_correto" id="controle_socio_nao" value="nao">
+                                        <label class="form-check-label" for="controle_socio_nao">Não</label>
+                                    </div>
+                                    <div class="form-text">Por enquanto o sistema ainda não cadastra sócios, então isso fica como pendência operacional.</div>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="modal-footer">
@@ -283,6 +329,8 @@ function formatarDiasControle(?string $vencimento): string
         const campoVencimentoControle = <?= json_encode($campoVencimento) ?>;
         const opcoesStatusControle = <?= json_encode($opcoesStatus) ?>;
         const possuiVencimentoControle = <?= $mostrarVencimento ? 'true' : 'false' ?>;
+        const possuiConferenciaDadosControle = <?= $mostrarConferenciaDados ? 'true' : 'false' ?>;
+        const possuiConferenciaSocioControle = <?= $mostrarConferenciaSocio ? 'true' : 'false' ?>;
         let linhaControleAtual = null;
         let botaoControleAtual = null;
 
@@ -383,6 +431,15 @@ function formatarDiasControle(?string $vencimento): string
 
                 document.getElementById('modalControleStatus').classList.remove('is-invalid');
 
+                if (possuiConferenciaDadosControle) {
+                    document.getElementById('controle_razao_social_sim').checked = true;
+                    document.getElementById('controle_endereco_sim').checked = true;
+
+                    if (possuiConferenciaSocioControle) {
+                        document.getElementById('controle_socio_sim').checked = true;
+                    }
+                }
+
                 const modal = new bootstrap.Modal(document.getElementById('modalEditarControle'));
                 modal.show();
             });
@@ -425,7 +482,10 @@ function formatarDiasControle(?string $vencimento): string
                         '&campo_status=' + encodeURIComponent(campoStatusControle) +
                         '&status=' + encodeURIComponent(status) +
                         '&campo_vencimento=' + encodeURIComponent(campoVencimentoControle || '') +
-                        '&vencimento=' + encodeURIComponent(vencimento)
+                        '&vencimento=' + encodeURIComponent(vencimento) +
+                        '&razao_social_correta=' + encodeURIComponent(possuiConferenciaDadosControle ? document.querySelector('input[name="controle_razao_social_correta"]:checked').value : 'sim') +
+                        '&endereco_correto=' + encodeURIComponent(possuiConferenciaDadosControle ? document.querySelector('input[name="controle_endereco_correto"]:checked').value : 'sim') +
+                        '&socio_correto=' + encodeURIComponent(possuiConferenciaSocioControle ? document.querySelector('input[name="controle_socio_correto"]:checked').value : 'sim')
                 })
                 .then(response => response.text())
                 .then(resp => {
