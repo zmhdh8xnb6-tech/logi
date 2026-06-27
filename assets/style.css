@@ -173,15 +173,15 @@ body {
     background-color: transparent;
 }
 
-.linha-cliente {
+.clientes-box tbody tr {
     transition: 0.2s ease;
 }
 
-.linha-cliente td {
+.clientes-box tbody tr td {
     transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-.linha-cliente:hover td {
+.clientes-box tbody tr:hover td {
     background-color: #e9f2ff !important;
     cursor: pointer;
 }

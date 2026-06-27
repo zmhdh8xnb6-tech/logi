@@ -138,6 +138,56 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
             border-radius: 5px;
         }
 
+        .consulta-orgaos-tabela {
+            table-layout: fixed;
+        }
+
+        .consulta-orgaos-tabela th:first-child {
+            width: 46%;
+        }
+
+        .consulta-orgaos-tabela th:nth-child(2) {
+            width: 18%;
+        }
+
+        .consulta-orgaos-tabela th:nth-child(3) {
+            width: 17%;
+        }
+
+        .consulta-orgaos-tabela th:nth-child(4) {
+            width: 19%;
+        }
+
+        .consulta-orgaos-tabela td {
+            padding-top: 14px;
+            padding-bottom: 14px;
+        }
+
+        .consulta-orgaos-tabela tbody tr:hover td {
+            background: #f4f8ff;
+            cursor: pointer;
+        }
+
+        .consulta-orgao-sigla {
+            display: block;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #212529;
+        }
+
+        .consulta-orgao-nome {
+            display: block;
+            margin-top: 2px;
+            color: #6c757d;
+            font-size: 0.78rem;
+            line-height: 1.3;
+        }
+
+        .consulta-prazo {
+            min-width: 92px;
+            text-align: center;
+        }
+
         @media (max-width: 768px) {
             .modal-alvaras-tabela th:first-child {
                 min-width: 280px;
@@ -266,18 +316,20 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                     <div>
                         <h5 class="modal-title">Órgãos do alvará</h5>
                         <small class="text-muted" id="modalConsultaCliente"></small>
+                        <div class="small text-muted mt-1" id="resumoConsultaOrgaos"></div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                 </div>
 
                 <div class="modal-body">
                     <div class="table-responsive">
-                        <table class="table align-middle mb-0">
+                        <table class="table align-middle consulta-orgaos-tabela mb-0">
                             <thead>
                                 <tr>
                                     <th>Órgão</th>
                                     <th>Situação</th>
                                     <th>Vencimento</th>
+                                    <th>Prazo</th>
                                 </tr>
                             </thead>
                             <tbody id="listaConsultaOrgaos"></tbody>
@@ -587,9 +639,78 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
             return partes[2] + '/' + partes[1] + '/' + partes[0];
         }
 
+        function prazoVencimento(data) {
+            if (!data) {
+                return {
+                    texto: 'Sem data',
+                    classe: 'bg-danger'
+                };
+            }
+
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+
+            const partes = data.split('-');
+            const vencimento = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+            const dias = Math.round((vencimento - hoje) / 86400000);
+
+            if (dias < 0) {
+                const atraso = Math.abs(dias);
+                return {
+                    texto: 'Vencido há ' + atraso + (atraso === 1 ? ' dia' : ' dias'),
+                    classe: 'bg-dark'
+                };
+            }
+
+            if (dias === 0) {
+                return {
+                    texto: 'Vence hoje',
+                    classe: 'bg-danger'
+                };
+            }
+
+            if (dias <= 14) {
+                return {
+                    texto: dias + (dias === 1 ? ' dia' : ' dias'),
+                    classe: 'bg-danger'
+                };
+            }
+
+            if (dias <= 30) {
+                return {
+                    texto: dias + ' dias',
+                    classe: 'bg-warning text-dark'
+                };
+            }
+
+            return {
+                texto: dias + ' dias',
+                classe: 'bg-success'
+            };
+        }
+
+        function partesNomeOrgao(nome) {
+            const separador = nome.lastIndexOf(' - ');
+
+            if (separador === -1) {
+                return {
+                    sigla: nome,
+                    nome: ''
+                };
+            }
+
+            return {
+                sigla: nome.substring(separador + 3),
+                nome: nome.substring(0, separador)
+            };
+        }
+
         function abrirConsultaOrgaos(botao) {
             const alvaras = JSON.parse(botao.dataset.alvaras || '{}');
             const lista = document.getElementById('listaConsultaOrgaos');
+            let totalVencimentos = 0;
+            let totalDispensados = 0;
+            let totalPendentes = 0;
 
             document.getElementById('modalConsultaCliente').textContent = botao.dataset.cliente;
             lista.innerHTML = '';
@@ -598,22 +719,45 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                 const alvara = alvaras[codigo] || {};
                 const possuiVencimento = alvara.situacao === 'com_vencimento';
                 const dispensado = alvara.situacao === 'dispensado';
+                const partesNome = partesNomeOrgao(nome);
                 const textoSituacao = possuiVencimento ?
                     'Com vencimento' :
                     (dispensado ? 'Dispensado' : 'Não informado');
                 const classeSituacao = possuiVencimento ?
                     'bg-primary' :
                     (dispensado ? 'bg-success' : 'bg-danger');
+                const prazo = possuiVencimento ?
+                    prazoVencimento(alvara.vencimento) :
+                    {
+                        texto: dispensado ? 'Não se aplica' : 'Pendente',
+                        classe: dispensado ? 'bg-secondary' : 'bg-danger'
+                    };
                 const linha = document.createElement('tr');
 
+                totalVencimentos += possuiVencimento ? 1 : 0;
+                totalDispensados += dispensado ? 1 : 0;
+                totalPendentes += !possuiVencimento && !dispensado ? 1 : 0;
+
                 linha.innerHTML =
-                    '<td></td>' +
+                    '<td><span class="consulta-orgao-sigla"></span><span class="consulta-orgao-nome"></span></td>' +
                     '<td><span class="badge ' + classeSituacao + '">' + textoSituacao + '</span></td>' +
-                    '<td>' + (possuiVencimento ? formatarData(alvara.vencimento) : '-') + '</td>';
-                linha.querySelector('td').textContent = nome;
+                    '<td>' + (possuiVencimento ? formatarData(alvara.vencimento) : '-') + '</td>' +
+                    '<td><span class="badge consulta-prazo ' + prazo.classe + '">' + prazo.texto + '</span></td>';
+                linha.querySelector('.consulta-orgao-sigla').textContent = partesNome.sigla;
+                linha.querySelector('.consulta-orgao-nome').textContent = partesNome.nome;
                 lista.appendChild(linha);
             });
 
+            const partesResumo = [
+                totalVencimentos + (totalVencimentos === 1 ? ' com vencimento' : ' com vencimento'),
+                totalDispensados + (totalDispensados === 1 ? ' dispensado' : ' dispensados')
+            ];
+
+            if (totalPendentes > 0) {
+                partesResumo.push(totalPendentes + (totalPendentes === 1 ? ' pendente' : ' pendentes'));
+            }
+
+            document.getElementById('resumoConsultaOrgaos').textContent = partesResumo.join(' • ');
             modalConsultaOrgaos.show();
         }
 
