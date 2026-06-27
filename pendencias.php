@@ -60,12 +60,56 @@ function modalControle(array $cliente, string $titulo, string $campoStatus, arra
     ];
 }
 
+function modalAlvaraDf(array $cliente, array $alvaras): array
+{
+    return [
+        'modo' => 'alvara_df',
+        'titulo' => 'Resolver alvarás DF e DF Legal',
+        'cliente' => trim(($cliente['codigo'] ?? '') . ' - ' . ($cliente['nome'] ?? '')),
+        'alvara_atual' => $cliente['alvara'] ?? '',
+        'df_legal_atual' => $cliente['cadastro_df_legal'] ?? '',
+        'alvaras' => $alvaras,
+    ];
+}
+
+$orgaosAlvaraDf = [
+    'ibram' => 'INSTITUTO BRASÍLIA AMBIENTAL - IBRAM',
+    'cbmdf' => 'CORPO DE BOMBEIROS MILITAR DO DISTRITO FEDERAL - CBMDF',
+    'df_legal' => 'SECRETARIA DE ESTADO DE PROTEÇÃO DA ORDEM URBANÍSTICA DO DISTRITO FEDERAL - DF LEGAL',
+    'pcdf' => 'POLÍCIA CIVIL DO DISTRITO FEDERAL - PCDF',
+    'seagri' => 'SECRETARIA DE ESTADO DE AGRICULTURA, ABASTECIMENTO E DESENVOLVIMENTO RURAL - SEAGRI',
+    'seedf' => 'SECRETARIA DE EDUCAÇÃO DO DISTRITO FEDERAL - SEEDF',
+    'sudesc' => 'SUBSECRETARIA DO SISTEMA DE DEFESA CIVIL - SUDESC',
+    'visadf' => 'VIGILÂNCIA SANITÁRIA DO DISTRITO FEDERAL - VISADF',
+];
+
 $stmt = $pdo->query("
     SELECT *
     FROM clientes
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$clientesPorId = [];
+$alvarasPorCliente = [];
+
+foreach ($clientes as $cliente) {
+    $clientesPorId[(int)$cliente['id']] = $cliente;
+}
+
+try {
+    $stmtTodosAlvaras = $pdo->query("
+        SELECT cliente_id, orgao_codigo, situacao, vencimento
+        FROM cliente_alvaras
+    ");
+
+    foreach ($stmtTodosAlvaras->fetchAll(PDO::FETCH_ASSOC) as $alvaraCliente) {
+        $alvarasPorCliente[(int)$alvaraCliente['cliente_id']][$alvaraCliente['orgao_codigo']] = [
+            'situacao' => $alvaraCliente['situacao'],
+            'vencimento' => $alvaraCliente['vencimento'] ?? '',
+        ];
+    }
+} catch (Throwable $e) {
+}
 
 $pendencias = [];
 $resumo = [
@@ -164,9 +208,24 @@ foreach ($clientes as $cliente) {
     }
 
     $alvara = $cliente['alvara'] ?? '';
+    $modalAlvaraCliente = modalAlvaraDf(
+        $cliente,
+        $alvarasPorCliente[(int)$cliente['id']] ?? []
+    );
 
     if ($alvara === '' || $alvara === 'nao_possui') {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Alvará', 'Alvará não informado ou não possui', 'Não possui', 'danger', null, 'cliente_editar.php?id=' . (int)$cliente['id']);
+        adicionarPendencia(
+            $pendencias,
+            $resumo,
+            $cliente,
+            'Alvará',
+            'Alvará não informado ou não possui',
+            'Não possui',
+            'danger',
+            null,
+            null,
+            strtoupper($cliente['uf'] ?? '') === 'GO' ? [] : $modalAlvaraCliente
+        );
     }
 
     if (!empty($cliente['pendencia_alvara_funcionamento'])) {
@@ -178,7 +237,9 @@ foreach ($clientes as $cliente) {
             'Razão social, endereço ou UF alterado. Verificar impacto no alvará de funcionamento.',
             'A resolver',
             'warning',
-            'alvara'
+            null,
+            null,
+            strtoupper($cliente['uf'] ?? '') === 'GO' ? [] : $modalAlvaraCliente
         );
     }
 
@@ -236,17 +297,22 @@ try {
 
     foreach ($stmtAlvarasIncompletos->fetchAll(PDO::FETCH_ASSOC) as $clienteAlvara) {
         $faltantes = 8 - (int)$clienteAlvara['total_preenchido'];
+        $clienteCompleto = $clientesPorId[(int)$clienteAlvara['id']] ?? $clienteAlvara;
 
         adicionarPendencia(
             $pendencias,
             $resumo,
-            $clienteAlvara,
+            $clienteCompleto,
             'Alvará',
             $faltantes . ($faltantes === 1 ? ' órgão sem vencimento ou dispensa' : ' órgãos sem vencimento ou dispensa'),
             'Incompleto',
             'danger',
             null,
-            'alvaras_df.php'
+            null,
+            modalAlvaraDf(
+                $clienteCompleto,
+                $alvarasPorCliente[(int)$clienteAlvara['id']] ?? []
+            )
         );
     }
 
@@ -263,6 +329,7 @@ try {
     foreach ($stmtAlvaras->fetchAll(PDO::FETCH_ASSOC) as $alvaraCliente) {
         $nivel = $alvaraCliente['vencimento'] < $hoje ? 'danger' : 'warning';
         $status = $alvaraCliente['vencimento'] < $hoje ? 'Vencido' : 'A vencer';
+        $clienteCompleto = $clientesPorId[(int)$alvaraCliente['cliente_id']] ?? $alvaraCliente;
 
         adicionarPendencia(
             $pendencias,
@@ -278,7 +345,11 @@ try {
             $status,
             $nivel,
             null,
-            'cliente_editar.php?id=' . (int)$alvaraCliente['cliente_id']
+            null,
+            modalAlvaraDf(
+                $clienteCompleto,
+                $alvarasPorCliente[(int)$alvaraCliente['cliente_id']] ?? []
+            )
         );
     }
 } catch (Throwable $e) {
@@ -320,6 +391,60 @@ $limiteGraficoPendencias = 15;
             display: block;
             height: 100%;
             background: #0d6efd;
+        }
+
+        #modalPendenciaAlvaraDf .modal-content {
+            overflow: hidden;
+        }
+
+        #formPendenciaAlvaraDf {
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 2rem);
+            min-height: 0;
+        }
+
+        #formPendenciaAlvaraDf .modal-header,
+        #formPendenciaAlvaraDf .modal-footer {
+            flex-shrink: 0;
+        }
+
+        #formPendenciaAlvaraDf .modal-body {
+            min-height: 0;
+            overflow-y: scroll;
+            scrollbar-gutter: stable;
+        }
+
+        #formPendenciaAlvaraDf .modal-body::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        #formPendenciaAlvaraDf .modal-body::-webkit-scrollbar-thumb {
+            background: #adb5bd;
+            border: 2px solid #f1f3f5;
+            border-radius: 5px;
+        }
+
+        .tabela-pendencia-alvara th:first-child {
+            min-width: 420px;
+        }
+
+        .tabela-pendencia-alvara th:nth-child(2) {
+            width: 190px;
+        }
+
+        .tabela-pendencia-alvara th:nth-child(3) {
+            width: 180px;
+        }
+
+        @media (max-width: 768px) {
+            #formPendenciaAlvaraDf {
+                max-height: calc(100dvh - 1rem);
+            }
+
+            .tabela-pendencia-alvara th:first-child {
+                min-width: 280px;
+            }
         }
     </style>
 </head>
@@ -563,11 +688,238 @@ $limiteGraficoPendencias = 15;
         </div>
     </div>
 
+    <div class="modal fade" id="modalPendenciaAlvaraDf" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <form id="formPendenciaAlvaraDf" novalidate>
+                    <div class="modal-header">
+                        <div>
+                            <h5 class="modal-title">Resolver alvarás DF e DF Legal</h5>
+                            <small class="text-muted" id="pendenciaAlvaraCliente"></small>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <input type="hidden" name="cliente_id" id="pendenciaAlvaraClienteId">
+                        <div class="alert alert-danger d-none" id="alertaPendenciaAlvara"></div>
+
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-5">
+                                <label for="pendenciaSituacaoAlvara" class="form-label">Situação dos alvarás</label>
+                                <select class="form-select" name="alvara" id="pendenciaSituacaoAlvara">
+                                    <option value="">Selecione</option>
+                                    <option value="possui">Possui</option>
+                                    <option value="nao_possui">Não possui</option>
+                                    <option value="goias">Goiás</option>
+                                </select>
+                                <div class="invalid-feedback">Informe a situação dos alvarás.</div>
+                            </div>
+
+                            <div class="col-md-5">
+                                <label for="pendenciaCadastroDfLegal" class="form-label">Cadastro DF Legal</label>
+                                <select class="form-select" name="cadastro_df_legal" id="pendenciaCadastroDfLegal">
+                                    <option value="">Selecione</option>
+                                    <option value="cadastrado">Cadastrado</option>
+                                    <option value="nao_cadastrado">Não cadastrado</option>
+                                    <option value="goias">Goiás</option>
+                                </select>
+                                <div class="invalid-feedback">Informe a situação do cadastro DF Legal.</div>
+                            </div>
+                        </div>
+
+                        <div id="grupoPendenciaConferenciaDfLegal" class="border rounded p-3 mb-4 d-none">
+                            <h6 class="fw-bold mb-3">Conferência do cadastro DF Legal</h6>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <span class="d-block mb-2">A razão social está correta?</span>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="df_legal_razao_social_correta" id="pendenciaDfLegalRazaoSim" value="sim" checked>
+                                        <label class="form-check-label" for="pendenciaDfLegalRazaoSim">Sim</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="df_legal_razao_social_correta" id="pendenciaDfLegalRazaoNao" value="nao">
+                                        <label class="form-check-label" for="pendenciaDfLegalRazaoNao">Não</label>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <span class="d-block mb-2">O endereço está correto?</span>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="df_legal_endereco_correto" id="pendenciaDfLegalEnderecoSim" value="sim" checked>
+                                        <label class="form-check-label" for="pendenciaDfLegalEnderecoSim">Sim</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="df_legal_endereco_correto" id="pendenciaDfLegalEnderecoNao" value="nao">
+                                        <label class="form-check-label" for="pendenciaDfLegalEnderecoNao">Não</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="grupoPendenciaOrgaosAlvara" class="d-none">
+                            <h6 class="fw-bold mb-1">Órgãos e vencimentos</h6>
+                            <p class="text-muted small">Para cada órgão, informe o vencimento ou marque como dispensado.</p>
+
+                            <div class="table-responsive">
+                                <table class="table align-middle tabela-pendencia-alvara mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Órgão</th>
+                                            <th>Situação</th>
+                                            <th>Vencimento</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($orgaosAlvaraDf as $codigoOrgao => $nomeOrgao): ?>
+                                            <tr>
+                                                <td><?= htmlspecialchars($nomeOrgao) ?></td>
+                                                <td>
+                                                    <select
+                                                        class="form-select pendencia-orgao-situacao"
+                                                        name="alvaras[<?= htmlspecialchars($codigoOrgao) ?>][situacao]"
+                                                        data-codigo="<?= htmlspecialchars($codigoOrgao) ?>"
+                                                        data-vencimento="pendenciaAlvaraVencimento_<?= htmlspecialchars($codigoOrgao) ?>">
+                                                        <option value="">Selecione</option>
+                                                        <option value="com_vencimento">Com vencimento</option>
+                                                        <option value="dispensado">Dispensado</option>
+                                                    </select>
+                                                    <div class="invalid-feedback">Informe a situação.</div>
+                                                </td>
+                                                <td>
+                                                    <input
+                                                        type="date"
+                                                        class="form-control pendencia-orgao-vencimento"
+                                                        name="alvaras[<?= htmlspecialchars($codigoOrgao) ?>][vencimento]"
+                                                        id="pendenciaAlvaraVencimento_<?= htmlspecialchars($codigoOrgao) ?>"
+                                                        disabled>
+                                                    <div class="invalid-feedback">Informe o vencimento.</div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-success" id="btnSalvarPendenciaAlvara">Salvar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
         let botaoPendenciaAtual = null;
         let configuracaoPendenciaAtual = null;
+        const modalPendenciaAlvaraDf = bootstrap.Modal.getOrCreateInstance(document.getElementById('modalPendenciaAlvaraDf'));
+        const formPendenciaAlvaraDf = document.getElementById('formPendenciaAlvaraDf');
+        const campoPendenciaSituacaoAlvara = document.getElementById('pendenciaSituacaoAlvara');
+        const campoPendenciaCadastroDfLegal = document.getElementById('pendenciaCadastroDfLegal');
+        const grupoPendenciaOrgaosAlvara = document.getElementById('grupoPendenciaOrgaosAlvara');
+        const grupoPendenciaConferenciaDfLegal = document.getElementById('grupoPendenciaConferenciaDfLegal');
+        const alertaPendenciaAlvara = document.getElementById('alertaPendenciaAlvara');
+
+        function atualizarVencimentoOrgaoPendencia(campoSituacao, darFoco = false) {
+            const campoData = document.getElementById(campoSituacao.dataset.vencimento);
+            const possuiVencimento = campoSituacao.value === 'com_vencimento';
+
+            campoData.disabled = !possuiVencimento;
+            campoData.classList.remove('is-invalid');
+
+            if (!possuiVencimento) {
+                campoData.value = '';
+            } else if (darFoco) {
+                campoData.focus();
+            }
+        }
+
+        function atualizarModalPendenciaAlvara() {
+            const possui = campoPendenciaSituacaoAlvara.value === 'possui';
+            grupoPendenciaOrgaosAlvara.classList.toggle('d-none', !possui);
+            grupoPendenciaConferenciaDfLegal.classList.toggle(
+                'd-none',
+                campoPendenciaCadastroDfLegal.value !== 'cadastrado'
+            );
+
+            document.querySelectorAll('.pendencia-orgao-situacao').forEach(function(campo) {
+                campo.disabled = !possui;
+                const campoData = document.getElementById(campo.dataset.vencimento);
+                campoData.disabled = !possui || campo.value !== 'com_vencimento';
+            });
+        }
+
+        function abrirModalPendenciaAlvara(botao, configuracao) {
+            document.getElementById('pendenciaAlvaraClienteId').value = botao.dataset.clienteId;
+            document.getElementById('pendenciaAlvaraCliente').textContent = configuracao.cliente || '';
+            campoPendenciaSituacaoAlvara.value = configuracao.alvara_atual || '';
+            campoPendenciaCadastroDfLegal.value = configuracao.df_legal_atual || '';
+            campoPendenciaSituacaoAlvara.classList.remove('is-invalid');
+            campoPendenciaCadastroDfLegal.classList.remove('is-invalid');
+            document.getElementById('pendenciaDfLegalRazaoSim').checked = true;
+            document.getElementById('pendenciaDfLegalEnderecoSim').checked = true;
+            alertaPendenciaAlvara.classList.add('d-none');
+
+            const alvaras = configuracao.alvaras || {};
+
+            document.querySelectorAll('.pendencia-orgao-situacao').forEach(function(campo) {
+                const alvara = alvaras[campo.dataset.codigo] || {};
+                campo.value = alvara.situacao || '';
+                campo.classList.remove('is-invalid');
+
+                const campoData = document.getElementById(campo.dataset.vencimento);
+                campoData.value = alvara.vencimento || '';
+                campoData.classList.remove('is-invalid');
+                atualizarVencimentoOrgaoPendencia(campo);
+            });
+
+            atualizarModalPendenciaAlvara();
+            modalPendenciaAlvaraDf.show();
+        }
+
+        function validarModalPendenciaAlvara() {
+            let valido = true;
+            let primeiroInvalido = null;
+
+            [campoPendenciaSituacaoAlvara, campoPendenciaCadastroDfLegal].forEach(function(campo) {
+                const invalido = campo.value === '';
+                campo.classList.toggle('is-invalid', invalido);
+
+                if (invalido) {
+                    valido = false;
+                    primeiroInvalido = primeiroInvalido || campo;
+                }
+            });
+
+            if (campoPendenciaSituacaoAlvara.value === 'possui') {
+                document.querySelectorAll('.pendencia-orgao-situacao').forEach(function(campo) {
+                    const campoData = document.getElementById(campo.dataset.vencimento);
+                    const situacaoInvalida = campo.value === '';
+                    const dataInvalida = campo.value === 'com_vencimento' && campoData.value === '';
+
+                    campo.classList.toggle('is-invalid', situacaoInvalida);
+                    campoData.classList.toggle('is-invalid', dataInvalida);
+
+                    if (situacaoInvalida || dataInvalida) {
+                        valido = false;
+                        primeiroInvalido = primeiroInvalido || (situacaoInvalida ? campo : campoData);
+                    }
+                });
+            }
+
+            if (!valido) {
+                alertaPendenciaAlvara.textContent = 'Preencha os campos obrigatórios destacados em vermelho.';
+                alertaPendenciaAlvara.classList.remove('d-none');
+                primeiroInvalido?.focus();
+            }
+
+            return valido;
+        }
 
         document.getElementById('modalResolverPendencia').addEventListener('show.bs.modal', function(event) {
             const botao = event.relatedTarget;
@@ -713,6 +1065,11 @@ $limiteGraficoPendencias = 15;
 
                 const modo = configuracaoPendenciaAtual.modo || '';
 
+                if (modo === 'alvara_df') {
+                    abrirModalPendenciaAlvara(this, configuracaoPendenciaAtual);
+                    return;
+                }
+
                 document.getElementById('tituloModalEditarPendencia').textContent = configuracaoPendenciaAtual.titulo || 'Resolver pendência';
                 document.getElementById('modalPendenciaClienteId').value = this.dataset.clienteId;
                 document.getElementById('modalPendenciaModo').value = modo;
@@ -740,6 +1097,54 @@ $limiteGraficoPendencias = 15;
                 atualizarVencimentoPendencia();
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('modalEditarPendencia')).show();
             });
+        });
+
+        campoPendenciaSituacaoAlvara.addEventListener('change', atualizarModalPendenciaAlvara);
+        campoPendenciaCadastroDfLegal.addEventListener('change', atualizarModalPendenciaAlvara);
+
+        document.querySelectorAll('.pendencia-orgao-situacao').forEach(function(campo) {
+            campo.addEventListener('change', function() {
+                this.classList.remove('is-invalid');
+                atualizarVencimentoOrgaoPendencia(this, true);
+            });
+        });
+
+        formPendenciaAlvaraDf.addEventListener('submit', function(evento) {
+            evento.preventDefault();
+
+            if (!validarModalPendenciaAlvara()) {
+                return;
+            }
+
+            const botaoSalvar = document.getElementById('btnSalvarPendenciaAlvara');
+            const textoOriginal = botaoSalvar.innerHTML;
+            botaoSalvar.disabled = true;
+            botaoSalvar.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Salvando';
+
+            fetch('api_alvaras_df.php', {
+                    method: 'POST',
+                    body: new FormData(formPendenciaAlvaraDf)
+                })
+                .then(function(resposta) {
+                    return resposta.json();
+                })
+                .then(function(resposta) {
+                    if (!resposta.sucesso) {
+                        alertaPendenciaAlvara.textContent = resposta.mensagem;
+                        alertaPendenciaAlvara.classList.remove('d-none');
+                        return;
+                    }
+
+                    window.location.href = 'pendencias.php?resolvido=1';
+                })
+                .catch(function() {
+                    alertaPendenciaAlvara.textContent = 'Não foi possível comunicar com o servidor.';
+                    alertaPendenciaAlvara.classList.remove('d-none');
+                })
+                .finally(function() {
+                    botaoSalvar.disabled = false;
+                    botaoSalvar.innerHTML = textoOriginal;
+                });
         });
 
         document.getElementById('modalPendenciaStatus').addEventListener('change', function() {

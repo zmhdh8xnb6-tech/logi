@@ -1,8 +1,6 @@
 <?php
 require 'config.php';
 
-exigirPermissao('alvaras');
-
 header('Content-Type: application/json; charset=utf-8');
 
 function responderAlvara(bool $sucesso, string $mensagem, array $dados = []): void
@@ -12,6 +10,13 @@ function responderAlvara(bool $sucesso, string $mensagem, array $dados = []): vo
         JSON_UNESCAPED_UNICODE
     );
     exit;
+}
+
+exigirLogin();
+
+if (!usuarioPode('alvaras') && !usuarioPode('pendencias')) {
+    http_response_code(403);
+    responderAlvara(false, 'Você não possui permissão para alterar os alvarás.');
 }
 
 function dataAlvaraValida(string $data): bool
