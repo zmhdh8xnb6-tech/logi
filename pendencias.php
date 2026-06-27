@@ -212,6 +212,44 @@ foreach ($clientes as $cliente) {
 }
 
 try {
+    $stmtAlvarasIncompletos = $pdo->query("
+        SELECT
+            c.id,
+            c.codigo,
+            c.nome,
+            c.documento,
+            COUNT(DISTINCT CASE
+                WHEN ca.orgao_codigo IN ('ibram', 'cbmdf', 'df_legal', 'pcdf', 'seagri', 'seedf', 'sudesc', 'visadf')
+                 AND (
+                    ca.situacao = 'dispensado'
+                    OR (ca.situacao = 'com_vencimento' AND ca.vencimento IS NOT NULL)
+                 )
+                THEN ca.orgao_codigo
+            END) AS total_preenchido
+        FROM clientes c
+        LEFT JOIN cliente_alvaras ca ON ca.cliente_id = c.id
+        WHERE c.alvara = 'possui'
+        GROUP BY c.id, c.codigo, c.nome, c.documento
+        HAVING total_preenchido < 8
+        ORDER BY CAST(c.codigo AS UNSIGNED) ASC, c.nome ASC
+    ");
+
+    foreach ($stmtAlvarasIncompletos->fetchAll(PDO::FETCH_ASSOC) as $clienteAlvara) {
+        $faltantes = 8 - (int)$clienteAlvara['total_preenchido'];
+
+        adicionarPendencia(
+            $pendencias,
+            $resumo,
+            $clienteAlvara,
+            'Alvará',
+            $faltantes . ($faltantes === 1 ? ' órgão sem vencimento ou dispensa' : ' órgãos sem vencimento ou dispensa'),
+            'Incompleto',
+            'danger',
+            null,
+            'alvaras_df.php'
+        );
+    }
+
     $stmtAlvaras = $pdo->query("
         SELECT ca.*, c.codigo, c.nome, c.documento
         FROM cliente_alvaras ca
@@ -247,7 +285,7 @@ try {
 }
 
 $totalPendencias = count($pendencias);
-$maiorResumo = max(array_values($resumo)) ?: 1;
+$limiteGraficoPendencias = 15;
 ?>
 
 <!DOCTYPE html>
@@ -328,7 +366,7 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
                             <div class="grafico-barra">
                                 <span
                                     data-barra-tipo="<?= htmlspecialchars($tipo) ?>"
-                                    style="width: <?= $maiorResumo > 0 ? (int)(($quantidade / $maiorResumo) * 100) : 0 ?>%">
+                                    style="width: <?= min(100, (int)(($quantidade / $limiteGraficoPendencias) * 100)) ?>%">
                                 </span>
                             </div>
                         </div>
@@ -556,9 +594,7 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
 
         function atualizarBarrasResumo() {
             const quantidades = Array.from(document.querySelectorAll('.quantidade-resumo'));
-            const maiorQuantidade = quantidades.reduce(function(maior, item) {
-                return Math.max(maior, Number(item.textContent) || 0);
-            }, 0);
+            const limiteGraficoPendencias = <?= $limiteGraficoPendencias ?>;
 
             quantidades.forEach(function(item) {
                 const tipo = item.dataset.resumoTipo;
@@ -566,7 +602,7 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
                 const barra = Array.from(document.querySelectorAll('[data-barra-tipo]')).find(function(elemento) {
                     return elemento.dataset.barraTipo === tipo;
                 });
-                const largura = maiorQuantidade > 0 ? Math.round((quantidade / maiorQuantidade) * 100) : 0;
+                const largura = Math.min(100, Math.round((quantidade / limiteGraficoPendencias) * 100));
 
                 if (barra) {
                     barra.style.width = largura + '%';
@@ -601,7 +637,7 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
             select.value = valorAtual || '';
         }
 
-        function atualizarVencimentoPendencia() {
+        function atualizarVencimentoPendencia(darFoco = false) {
             const modo = document.getElementById('modalPendenciaModo').value;
             const campoVencimento = document.getElementById('modalPendenciaCampoVencimento').value;
             const status = document.getElementById('modalPendenciaStatus').value;
@@ -623,7 +659,9 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
             grupoVencimento.classList.remove('d-none');
             vencimento.disabled = status !== 'possui';
 
-            if (status !== 'possui') {
+            if (status === 'possui' && darFoco) {
+                vencimento.focus();
+            } else if (status !== 'possui') {
                 vencimento.value = '';
                 vencimento.classList.remove('is-invalid');
             }
@@ -704,7 +742,9 @@ $maiorResumo = max(array_values($resumo)) ?: 1;
             });
         });
 
-        document.getElementById('modalPendenciaStatus').addEventListener('change', atualizarVencimentoPendencia);
+        document.getElementById('modalPendenciaStatus').addEventListener('change', function() {
+            atualizarVencimentoPendencia(true);
+        });
 
         document.getElementById('btnSalvarModalPendencia').addEventListener('click', function() {
             const modo = document.getElementById('modalPendenciaModo').value;

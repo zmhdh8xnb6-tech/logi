@@ -394,7 +394,7 @@ function formatarDiasControle(?string $vencimento): string
             return '<span class="badge bg-success">' + diferenca + ' dias</span>';
         }
 
-        function atualizarCampoVencimentoModal() {
+        function atualizarCampoVencimentoModal(darFoco = false) {
             if (!possuiVencimentoControle) {
                 return;
             }
@@ -404,6 +404,9 @@ function formatarDiasControle(?string $vencimento): string
 
             if (status === 'possui') {
                 campoVencimento.disabled = false;
+                if (darFoco) {
+                    campoVencimento.focus();
+                }
             } else {
                 campoVencimento.value = '';
                 campoVencimento.disabled = true;
@@ -411,7 +414,9 @@ function formatarDiasControle(?string $vencimento): string
             }
         }
 
-        document.getElementById('modalControleStatus').addEventListener('change', atualizarCampoVencimentoModal);
+        document.getElementById('modalControleStatus').addEventListener('change', function() {
+            atualizarCampoVencimentoModal(true);
+        });
 
         document.querySelectorAll('.btn-editar-controle').forEach(function(botao) {
             botao.addEventListener('click', function() {

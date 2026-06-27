@@ -254,7 +254,9 @@ $(document).ready(function () {
         campoVencimento.disabled = !possuiVencimento;
         campoVencimento.required = possuiVencimento;
 
-        if (!possuiVencimento) {
+        if (possuiVencimento) {
+            campoVencimento.focus();
+        } else {
             campoVencimento.value = '';
             campoVencimento.classList.remove('is-invalid');
         }
@@ -366,7 +368,9 @@ function atualizarCampoVencimentoControle(campoSituacao) {
     campoVencimento.disabled = !possui;
     campoVencimento.required = possui;
 
-    if (!possui) {
+    if (possui) {
+        campoVencimento.focus();
+    } else {
         campoVencimento.value = '';
         campoVencimento.classList.remove('is-invalid');
     }
