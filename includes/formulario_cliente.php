@@ -23,6 +23,15 @@ $alvarasCliente = $alvarasCliente ?? [];
             <input type="text" class="form-control" name="codigo" id="codigo">
         </div>
 
+        <div class="col-md-3 mb-3">
+            <label for="tipo_atendimento" class="form-label">Tipo de atendimento</label>
+            <select class="form-select" name="tipo_atendimento" id="tipo_atendimento" required>
+                <option value="completo">Cliente completo</option>
+                <option value="somente_parcelamento">Somente parcelamento</option>
+            </select>
+            <div class="invalid-feedback">Informe o tipo de atendimento.</div>
+        </div>
+
         <div class="col-md-2 mb-3">
             <label for="documento" class="form-label">CPF / CNPJ</label>
             <input type="text" class="form-control" name="documento" id="documento">
@@ -48,7 +57,7 @@ $alvarasCliente = $alvarasCliente ?? [];
             <input type="text" class="form-control" name="telefone" id="telefone">
         </div>
 
-        <div class="col-md-2 mb-3">
+        <div class="col-md-2 mb-3 campo-cliente-completo">
             <label for="inscricao_estadual" class="form-label">Inscrição Estadual</label>
             <input
                 type="text"
@@ -61,11 +70,11 @@ $alvarasCliente = $alvarasCliente ?? [];
             </div>
         </div>
 
-        <div class="col-md-2 mb-3">
+        <div class="col-md-2 mb-3 campo-cliente-completo">
             <label for="nire" class="form-label">NIRE</label>
             <input type="text" class="form-control" name="nire" id="nire">
         </div>
-        <div class="col-md-2 mb-3">
+        <div class="col-md-2 mb-3 campo-cliente-completo">
             <label for="vencimento_certificado" class="form-label">
                 Vencimento Certificado Digital
             </label>
@@ -78,7 +87,7 @@ $alvarasCliente = $alvarasCliente ?? [];
     </div>
 </div>
 
-<div class="border rounded p-3 mb-3">
+<div class="border rounded p-3 mb-3 secao-cliente-completo">
     <h6 class="mb-3 fw-bold">Controles internos</h6>
 
     <div class="row">
@@ -219,8 +228,14 @@ $alvarasCliente = $alvarasCliente ?? [];
             </select>
         </div>
 
-        <div class="col-md-3 mb-3">
-            <label for="possui_parcelamento" class="form-label">Parcelamentos</label>
+    </div>
+</div>
+
+<div class="border rounded p-3 mb-3">
+    <h6 class="mb-3 fw-bold">Parcelamentos</h6>
+    <div class="row">
+        <div class="col-md-4 mb-1">
+            <label for="possui_parcelamento" class="form-label">O cliente possui parcelamento?</label>
             <select
                 class="form-select controle-interno-obrigatorio"
                 name="possui_parcelamento"
@@ -232,7 +247,6 @@ $alvarasCliente = $alvarasCliente ?? [];
             </select>
             <div class="invalid-feedback">Informe se o cliente possui parcelamento.</div>
         </div>
-
     </div>
 </div>
 
@@ -366,7 +380,7 @@ $alvarasCliente = $alvarasCliente ?? [];
 </div>
 
 <!-- ENDEREÇO -->
-<div class="border rounded p-3 mb-3">
+<div class="border rounded p-3 mb-3 secao-cliente-completo">
     <h6 class="mb-3 fw-bold">Endereço</h6>
 
     <div class="col-md-1 mb-3">

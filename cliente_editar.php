@@ -86,6 +86,9 @@ foreach ($stmtAlvaras->fetchAll(PDO::FETCH_ASSOC) as $alvaraCliente) {
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             $('#codigo').val(<?= json_encode($cliente['codigo'] ?? '') ?>);
+            $('#tipo_atendimento')
+                .val(<?= json_encode($cliente['tipo_atendimento'] ?? 'completo') ?>)
+                .trigger('change');
             $('#documento').val(<?= json_encode($cliente['documento'] ?? '') ?>);
             $('#nome').val(<?= json_encode($cliente['nome'] ?? '') ?>);
             $('#nome_fantasia').val(<?= json_encode($cliente['nome_fantasia'] ?? '') ?>);
@@ -126,6 +129,7 @@ foreach ($stmtAlvaras->fetchAll(PDO::FETCH_ASSOC) as $alvaraCliente) {
             $('#bairro').val(<?= json_encode($cliente['bairro'] ?? '') ?>);
             $('#cidade').val(<?= json_encode($cliente['cidade'] ?? '') ?>);
             $('#uf').val(<?= json_encode($cliente['uf'] ?? '') ?>);
+            atualizarTipoAtendimento();
         });
     </script>
 

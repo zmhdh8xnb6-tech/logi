@@ -1,9 +1,12 @@
 <?php
 require 'config.php';
 
+exigirPermissao('certificados');
+
 $stmt = $pdo->query("
     SELECT *
     FROM clientes
+    WHERE COALESCE(tipo_atendimento, 'completo') <> 'somente_parcelamento'
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 

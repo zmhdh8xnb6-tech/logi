@@ -49,6 +49,8 @@ $formatarControle = static function ($valor) use ($rotulosControle): string {
 $formatarData = static function ($data): string {
     return !empty($data) ? date('d/m/Y', strtotime($data)) : 'Não informado';
 };
+
+$somenteParcelamento = ($cliente['tipo_atendimento'] ?? 'completo') === 'somente_parcelamento';
 ?>
 
 <!DOCTYPE html>
@@ -70,6 +72,9 @@ $formatarData = static function ($data): string {
 
             <h3><?= htmlspecialchars($cliente['nome']) ?></h3>
             <p class="text-muted"><?= htmlspecialchars($cliente['documento']) ?></p>
+            <span class="badge <?= $somenteParcelamento ? 'bg-info text-dark' : 'bg-success' ?> mb-3">
+                <?= $somenteParcelamento ? 'Somente parcelamento' : 'Cliente completo' ?>
+            </span>
 
             <div class="d-flex gap-2 mb-4">
                 <a href="cliente_editar.php?id=<?= (int)$cliente['id'] ?>" class="btn btn-primary">
@@ -87,96 +92,103 @@ $formatarData = static function ($data): string {
                 <p><strong>Nome Fantasia:</strong> <?= htmlspecialchars($cliente['nome_fantasia'] ?? '') ?></p>
                 <p><strong>E-mail:</strong> <?= htmlspecialchars($cliente['email'] ?? '') ?></p>
                 <p><strong>Telefone:</strong> <?= htmlspecialchars($cliente['telefone'] ?? '') ?></p>
-                <p><strong>Inscrição Estadual:</strong> <?= htmlspecialchars($cliente['inscricao_estadual'] ?? '') ?></p>
-                <p><strong>NIRE:</strong> <?= htmlspecialchars($cliente['nire'] ?? '') ?></p>
-                <p>
-                    <strong>Vencimento Certificado Digital:</strong>
-                    <?= !empty($cliente['vencimento_certificado'])
-                        ? date('d/m/Y', strtotime($cliente['vencimento_certificado']))
-                        : 'Não cadastrado'; ?>
-                </p>
+                <?php if (!$somenteParcelamento): ?>
+                    <p><strong>Inscrição Estadual:</strong> <?= htmlspecialchars($cliente['inscricao_estadual'] ?? '') ?></p>
+                    <p><strong>NIRE:</strong> <?= htmlspecialchars($cliente['nire'] ?? '') ?></p>
+                    <p>
+                        <strong>Vencimento Certificado Digital:</strong>
+                        <?= !empty($cliente['vencimento_certificado'])
+                            ? date('d/m/Y', strtotime($cliente['vencimento_certificado']))
+                            : 'Não cadastrado'; ?>
+                    </p>
+                <?php endif; ?>
                 <hr>
 
-                <h6 class="mt-3 mb-3">Controles internos</h6>
+                <?php if ($somenteParcelamento): ?>
+                    <h6 class="mt-3 mb-2">Parcelamentos</h6>
+                    <span class="badge bg-success">Possui</span>
+                <?php else: ?>
+                    <h6 class="mt-3 mb-3">Controles internos</h6>
 
-                <div class="row">
-                    <div class="col-md-3 mb-2">
-                        <small class="text-muted d-block">Cadastro DF Legal</small>
-                        <?= htmlspecialchars($formatarControle($cliente['cadastro_df_legal'] ?? '')) ?>
-                    </div>
+                    <div class="row">
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted d-block">Cadastro DF Legal</small>
+                            <?= htmlspecialchars($formatarControle($cliente['cadastro_df_legal'] ?? '')) ?>
+                        </div>
 
-                    <div class="col-md-3 mb-2">
-                        <small class="text-muted d-block">Alvará</small>
-                        <?= htmlspecialchars($formatarControle($cliente['alvara'] ?? '')) ?>
-                    </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted d-block">Alvará</small>
+                            <?= htmlspecialchars($formatarControle($cliente['alvara'] ?? '')) ?>
+                        </div>
 
-                    <div class="col-md-3 mb-2">
-                        <small class="text-muted d-block">Contador</small>
-                        <?= htmlspecialchars($formatarControle($cliente['contador'] ?? '')) ?>
-                    </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted d-block">Contador</small>
+                            <?= htmlspecialchars($formatarControle($cliente['contador'] ?? '')) ?>
+                        </div>
 
-                    <div class="col-md-3 mb-2">
-                        <small class="text-muted d-block">Cadastro CRF</small>
-                        <?= htmlspecialchars($formatarControle($cliente['cadastro_crf'] ?? '')) ?>
-                    </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted d-block">Cadastro CRF</small>
+                            <?= htmlspecialchars($formatarControle($cliente['cadastro_crf'] ?? '')) ?>
+                        </div>
 
-                    <div class="col-md-3 mb-2">
-                        <small class="text-muted d-block">Procuração Receita Federal</small>
-                        <?= htmlspecialchars($formatarControle($cliente['procuracao_receita_federal'] ?? '')) ?>
-                        <?php if (($cliente['procuracao_receita_federal'] ?? '') === 'possui'): ?>
-                            - <?= htmlspecialchars($formatarData($cliente['vencimento_procuracao_receita_federal'] ?? null)) ?>
-                        <?php endif; ?>
-                    </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted d-block">Procuração Receita Federal</small>
+                            <?= htmlspecialchars($formatarControle($cliente['procuracao_receita_federal'] ?? '')) ?>
+                            <?php if (($cliente['procuracao_receita_federal'] ?? '') === 'possui'): ?>
+                                - <?= htmlspecialchars($formatarData($cliente['vencimento_procuracao_receita_federal'] ?? null)) ?>
+                            <?php endif; ?>
+                        </div>
 
-                    <div class="col-md-3 mb-2">
-                        <small class="text-muted d-block">Procuração Conectividade</small>
-                        <?= htmlspecialchars($formatarControle($cliente['procuracao_conectividade'] ?? '')) ?>
-                        <?php if (($cliente['procuracao_conectividade'] ?? '') === 'possui'): ?>
-                            - <?= htmlspecialchars($formatarData($cliente['vencimento_procuracao_conectividade'] ?? null)) ?>
-                        <?php endif; ?>
-                    </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted d-block">Procuração Conectividade</small>
+                            <?= htmlspecialchars($formatarControle($cliente['procuracao_conectividade'] ?? '')) ?>
+                            <?php if (($cliente['procuracao_conectividade'] ?? '') === 'possui'): ?>
+                                - <?= htmlspecialchars($formatarData($cliente['vencimento_procuracao_conectividade'] ?? null)) ?>
+                            <?php endif; ?>
+                        </div>
 
-                    <div class="col-md-3 mb-2">
-                        <small class="text-muted d-block">Procuração Empregador Web</small>
-                        <?= htmlspecialchars($formatarControle($cliente['procuracao_empregador_web'] ?? '')) ?>
-                    </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted d-block">Procuração Empregador Web</small>
+                            <?= htmlspecialchars($formatarControle($cliente['procuracao_empregador_web'] ?? '')) ?>
+                        </div>
 
-                    <div class="col-md-3 mb-2">
-                        <small class="text-muted d-block">Procuração FGTS</small>
-                        <?= htmlspecialchars($formatarControle($cliente['procuracao_fgts'] ?? '')) ?>
-                        <?php if (($cliente['procuracao_fgts'] ?? '') === 'possui'): ?>
-                            - <?= htmlspecialchars($formatarData($cliente['vencimento_procuracao_fgts'] ?? null)) ?>
-                        <?php endif; ?>
-                    </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted d-block">Procuração FGTS</small>
+                            <?= htmlspecialchars($formatarControle($cliente['procuracao_fgts'] ?? '')) ?>
+                            <?php if (($cliente['procuracao_fgts'] ?? '') === 'possui'): ?>
+                                - <?= htmlspecialchars($formatarData($cliente['vencimento_procuracao_fgts'] ?? null)) ?>
+                            <?php endif; ?>
+                        </div>
 
-                    <div class="col-md-3 mb-2">
-                        <small class="text-muted d-block">Procuração Particular</small>
-                        <?= htmlspecialchars($formatarControle($cliente['procuracao_particular'] ?? '')) ?>
-                    </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted d-block">Procuração Particular</small>
+                            <?= htmlspecialchars($formatarControle($cliente['procuracao_particular'] ?? '')) ?>
+                        </div>
 
-                    <div class="col-md-3 mb-2">
-                        <small class="text-muted d-block">Procuração SEFAZ</small>
-                        <?= htmlspecialchars($formatarControle($cliente['procuracao_sefaz'] ?? '')) ?>
-                    </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted d-block">Procuração SEFAZ</small>
+                            <?= htmlspecialchars($formatarControle($cliente['procuracao_sefaz'] ?? '')) ?>
+                        </div>
 
-                    <div class="col-md-3 mb-2">
-                        <small class="text-muted d-block">Contrato de Prestação de Serviços</small>
-                        <?= htmlspecialchars($formatarControle($cliente['contrato_prestacao_servicos'] ?? '')) ?>
-                    </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted d-block">Contrato de Prestação de Serviços</small>
+                            <?= htmlspecialchars($formatarControle($cliente['contrato_prestacao_servicos'] ?? '')) ?>
+                        </div>
 
-                    <div class="col-md-3 mb-2">
-                        <small class="text-muted d-block">Tributação</small>
-                        <?= htmlspecialchars($formatarControle($cliente['tributacao'] ?? '')) ?>
-                    </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted d-block">Tributação</small>
+                            <?= htmlspecialchars($formatarControle($cliente['tributacao'] ?? '')) ?>
+                        </div>
 
-                    <div class="col-md-3 mb-2">
-                        <small class="text-muted d-block">Parcelamentos</small>
-                        <?= htmlspecialchars($formatarControle($cliente['possui_parcelamento'] ?? '')) ?>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted d-block">Parcelamentos</small>
+                            <?= htmlspecialchars($formatarControle($cliente['possui_parcelamento'] ?? '')) ?>
+                        </div>
                     </div>
-                </div>
+                <?php endif; ?>
             </div>
 
-            <?php if (!empty($alvarasCliente)): ?>
+            <?php if (!$somenteParcelamento && !empty($alvarasCliente)): ?>
                 <div class="clientes-box mt-4">
                     <h5>Alvarás e licenças</h5>
                     <div class="table-responsive">
@@ -202,14 +214,16 @@ $formatarData = static function ($data): string {
                 </div>
             <?php endif; ?>
 
-            <div class="clientes-box mt-4">
-                <h5>Endereço</h5>
-                <p><strong>CEP:</strong> <?= htmlspecialchars($cliente['cep'] ?? '') ?></p>
-                <p><strong>Endereço:</strong> <?= htmlspecialchars($cliente['endereco'] ?? '') ?>, <?= htmlspecialchars($cliente['numero_endereco'] ?? '') ?></p>
-                <p><strong>Complemento:</strong> <?= htmlspecialchars($cliente['complemento'] ?? '') ?></p>
-                <p><strong>Bairro:</strong> <?= htmlspecialchars($cliente['bairro'] ?? '') ?></p>
-                <p><strong>Cidade/UF:</strong> <?= htmlspecialchars($cliente['cidade'] ?? '') ?> / <?= htmlspecialchars($cliente['uf'] ?? '') ?></p>
-            </div>
+            <?php if (!$somenteParcelamento): ?>
+                <div class="clientes-box mt-4">
+                    <h5>Endereço</h5>
+                    <p><strong>CEP:</strong> <?= htmlspecialchars($cliente['cep'] ?? '') ?></p>
+                    <p><strong>Endereço:</strong> <?= htmlspecialchars($cliente['endereco'] ?? '') ?>, <?= htmlspecialchars($cliente['numero_endereco'] ?? '') ?></p>
+                    <p><strong>Complemento:</strong> <?= htmlspecialchars($cliente['complemento'] ?? '') ?></p>
+                    <p><strong>Bairro:</strong> <?= htmlspecialchars($cliente['bairro'] ?? '') ?></p>
+                    <p><strong>Cidade/UF:</strong> <?= htmlspecialchars($cliente['cidade'] ?? '') ?> / <?= htmlspecialchars($cliente['uf'] ?? '') ?></p>
+                </div>
+            <?php endif; ?>
 
         </div>
     </main>

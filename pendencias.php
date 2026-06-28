@@ -93,6 +93,10 @@ $clientesPorId = [];
 $alvarasPorCliente = [];
 
 foreach ($clientes as $cliente) {
+    if (($cliente['tipo_atendimento'] ?? 'completo') === 'somente_parcelamento') {
+        continue;
+    }
+
     $clientesPorId[(int)$cliente['id']] = $cliente;
 }
 
@@ -290,6 +294,7 @@ try {
         FROM clientes c
         LEFT JOIN cliente_alvaras ca ON ca.cliente_id = c.id
         WHERE c.alvara = 'possui'
+          AND COALESCE(c.tipo_atendimento, 'completo') <> 'somente_parcelamento'
         GROUP BY c.id, c.codigo, c.nome, c.documento
         HAVING total_preenchido < 8
         ORDER BY CAST(c.codigo AS UNSIGNED) ASC, c.nome ASC
@@ -323,6 +328,7 @@ try {
         WHERE ca.situacao = 'com_vencimento'
           AND ca.vencimento IS NOT NULL
           AND ca.vencimento <= " . $pdo->quote($limiteAlerta) . "
+          AND COALESCE(c.tipo_atendimento, 'completo') <> 'somente_parcelamento'
         ORDER BY ca.vencimento ASC
     ");
 

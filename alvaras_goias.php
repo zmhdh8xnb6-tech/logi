@@ -6,9 +6,12 @@ exigirPermissao('alvaras');
 $stmt = $pdo->query("
     SELECT id, codigo, documento, nome, uf, alvara, cadastro_df_legal
     FROM clientes
-    WHERE uf = 'GO'
-       OR alvara = 'goias'
-       OR cadastro_df_legal = 'goias'
+    WHERE COALESCE(tipo_atendimento, 'completo') <> 'somente_parcelamento'
+      AND (
+        uf = 'GO'
+        OR alvara = 'goias'
+        OR cadastro_df_legal = 'goias'
+      )
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 $clientesGoias = $stmt->fetchAll(PDO::FETCH_ASSOC);

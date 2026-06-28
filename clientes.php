@@ -56,6 +56,7 @@ exigirPermissao('clientes');
                                 <th>Código</th>
                                 <th>CPF/CNPJ</th>
                                 <th>Razão Social</th>
+                                <th>Atendimento</th>
                                 <th>Nome Fantasia</th>
                                 <th>Cidade</th>
                                 <th>UF</th>
@@ -66,7 +67,7 @@ exigirPermissao('clientes');
                         </thead>
                         <tbody>
                             <tr>
-                                <td colspan="9" class="text-center text-muted py-4">
+                                <td colspan="10" class="text-center text-muted py-4">
                                     Nenhum cliente cadastrado ainda.
                                 </td>
                             </tr>

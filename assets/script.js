@@ -89,6 +89,7 @@ $(document).ready(function () {
                 const cadastroSalvo = respostaPartes[0] === 'ok';
                 const clienteIdSalvo = respostaPartes[1] || $('#id').val();
                 const possuiParcelamento = $('#possui_parcelamento').val();
+                const tipoAtendimento = $('#tipo_atendimento').val();
 
                 if (cadastroSalvo) {
 
@@ -108,6 +109,12 @@ $(document).ready(function () {
                     $('#id').val('');
 
                     if (window.location.pathname.includes('cliente_novo.php')) {
+
+                        if (tipoAtendimento === 'somente_parcelamento') {
+                            window.location.href =
+                                'parcelamento_novo.php?cliente_id=' + encodeURIComponent(clienteIdSalvo);
+                            return;
+                        }
 
                         if (possuiParcelamento === 'possui') {
                             const botaoParcelamento = document.getElementById('btnCadastrarParcelamentoAgora');
@@ -162,6 +169,16 @@ $(document).ready(function () {
                     $('#possui_parcelamento').addClass('is-invalid').focus();
                     mostrarAviso('Informe se o cliente possui parcelamento.');
 
+                } else if (resp.trim() === 'parcelamento_exigido') {
+
+                    $('#possui_parcelamento').addClass('is-invalid').focus();
+                    mostrarAviso('O cliente de somente parcelamento precisa possuir um parcelamento.');
+
+                } else if (resp.trim() === 'tipo_atendimento_obrigatorio') {
+
+                    $('#tipo_atendimento').addClass('is-invalid').focus();
+                    mostrarAviso('Informe o tipo de atendimento do cliente.');
+
                 } else if (resp.trim() === 'alvara_obrigatorio') {
 
                     $('#alvara').addClass('is-invalid').focus();
@@ -202,6 +219,9 @@ $(document).ready(function () {
     $('#buscaCliente, #filtroUf').on('input change', function () {
         filtrarClientesNaTela();
     });
+
+    $('#tipo_atendimento').on('change', atualizarTipoAtendimento);
+    atualizarTipoAtendimento();
 
     $(document).on('input', '#nome_fantasia', function () {
         this.value = this.value.toUpperCase();
@@ -496,7 +516,7 @@ function carregarClientes(page = 1) {
         if (clientes.length === 0) {
             $('#clientesTable tbody').html(`
                 <tr>
-                    <td colspan="9" class="text-center text-muted py-4">
+                    <td colspan="10" class="text-center text-muted py-4">
                         Nenhum cliente cadastrado ainda.
                     </td>
                 </tr>
@@ -507,15 +527,20 @@ function carregarClientes(page = 1) {
         }
 
         clientes.forEach(cliente => {
+            const somenteParcelamento = cliente.tipo_atendimento === 'somente_parcelamento';
+            const atendimento = somenteParcelamento ? 'Somente parcelamento' : 'Completo';
+            const classeAtendimento = somenteParcelamento ? 'bg-info text-dark' : 'bg-success';
+
             linhas += `
 <tr class="linha-cliente"
-    data-busca="${escapeHtml(`${cliente.codigo} ${cliente.documento} ${cliente.nome} ${cliente.nome_fantasia} ${cliente.email}`).toLowerCase()}"
+    data-busca="${escapeHtml(`${cliente.codigo} ${cliente.documento} ${cliente.nome} ${cliente.nome_fantasia} ${cliente.email} ${atendimento}`).toLowerCase()}"
     data-uf="${escapeHtml(cliente.uf)}"
     onclick="window.location.href='cliente.php?id=${cliente.id}'">
 
     <td>${escapeHtml(cliente.codigo)}</td>
     <td>${escapeHtml(cliente.documento)}</td>
     <td>${escapeHtml(cliente.nome)}</td>
+    <td><span class="badge ${classeAtendimento}">${atendimento}</span></td>
     <td>${escapeHtml(cliente.nome_fantasia)}</td>
     <td>${escapeHtml(cliente.cidade)}</td>
     <td>${escapeHtml(cliente.uf)}</td>
@@ -672,12 +697,18 @@ function validarFormulario() {
     }
 
     validarObrigatorio('#codigo');
+    validarObrigatorio('#tipo_atendimento');
     validarObrigatorio('#documento');
     validarObrigatorio('#nome');
-    validarObrigatorio('#cep');
-    validarObrigatorio('#numero_endereco');
     validarObrigatorio('#telefone');
     validarObrigatorio('#email');
+
+    const somenteParcelamento = $('#tipo_atendimento').val() === 'somente_parcelamento';
+
+    if (!somenteParcelamento) {
+        validarObrigatorio('#cep');
+        validarObrigatorio('#numero_endereco');
+    }
 
     const documento = $('#documento').val().replace(/\D/g, '');
     const telefone = $('#telefone').val().replace(/\D/g, '');
@@ -715,7 +746,7 @@ function validarFormulario() {
         valido = false;
     }
 
-    if (!validarCampoInscricaoEstadual()) {
+    if (!somenteParcelamento && !validarCampoInscricaoEstadual()) {
         if (primeiroCampoInvalido === null) {
             primeiroCampoInvalido = '#inscricao_estadual';
         }
@@ -724,7 +755,7 @@ function validarFormulario() {
     }
 
     document.querySelectorAll('.procuracao-obrigatoria').forEach(function (campo) {
-        if (campo.value === '') {
+        if (!campo.disabled && campo.value === '') {
             campo.classList.add('is-invalid');
 
             if (primeiroCampoInvalido === null) {
@@ -736,7 +767,7 @@ function validarFormulario() {
     });
 
     document.querySelectorAll('.controle-interno-obrigatorio').forEach(function (campo) {
-        if (campo.value === '') {
+        if (!campo.disabled && campo.value === '') {
             campo.classList.add('is-invalid');
 
             if (primeiroCampoInvalido === null) {
@@ -750,7 +781,7 @@ function validarFormulario() {
     document.querySelectorAll('.controle-com-vencimento').forEach(function (campoSituacao) {
         const campoVencimento = document.getElementById(campoSituacao.dataset.vencimento);
 
-        if (campoSituacao.value === 'possui' && campoVencimento.value === '') {
+        if (!campoSituacao.disabled && campoSituacao.value === 'possui' && campoVencimento.value === '') {
             campoVencimento.classList.add('is-invalid');
 
             if (primeiroCampoInvalido === null) {
@@ -761,7 +792,18 @@ function validarFormulario() {
         }
     });
 
-    const alvarasValidos = $('#alvara').val() !== 'possui'
+    if (somenteParcelamento && $('#possui_parcelamento').val() !== 'possui') {
+        $('#possui_parcelamento').addClass('is-invalid');
+
+        if (primeiroCampoInvalido === null) {
+            primeiroCampoInvalido = '#possui_parcelamento';
+        }
+
+        valido = false;
+    }
+
+    const alvarasValidos = somenteParcelamento
+        || $('#alvara').val() !== 'possui'
         || validarPreenchimentoAlvaras();
 
     if (!alvarasValidos) {
@@ -776,6 +818,38 @@ function validarFormulario() {
     }
 
     return valido;
+}
+
+function atualizarTipoAtendimento() {
+    const campoTipo = document.getElementById('tipo_atendimento');
+
+    if (!campoTipo) {
+        return;
+    }
+
+    const somenteParcelamento = campoTipo.value === 'somente_parcelamento';
+
+    document.querySelectorAll('.secao-cliente-completo, .campo-cliente-completo').forEach(function (bloco) {
+        bloco.classList.toggle('d-none', somenteParcelamento);
+
+        bloco.querySelectorAll('input, select, textarea').forEach(function (campo) {
+            campo.disabled = somenteParcelamento;
+            campo.classList.remove('is-invalid');
+        });
+    });
+
+    const campoParcelamento = document.getElementById('possui_parcelamento');
+
+    if (somenteParcelamento && campoParcelamento) {
+        campoParcelamento.value = 'possui';
+        campoParcelamento.classList.remove('is-invalid');
+    }
+
+    if (!somenteParcelamento) {
+        document.querySelectorAll('.controle-com-vencimento').forEach(function (campo) {
+            atualizarCampoVencimentoControle(campo);
+        });
+    }
 }
 
 function verificarDocumentoDuplicado(documentoFormatado) {

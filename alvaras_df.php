@@ -17,7 +17,8 @@ $orgaosAlvara = [
 $stmtClientes = $pdo->query("
     SELECT *
     FROM clientes
-    WHERE COALESCE(uf, '') <> 'GO'
+    WHERE COALESCE(tipo_atendimento, 'completo') <> 'somente_parcelamento'
+      AND COALESCE(uf, '') <> 'GO'
       AND COALESCE(alvara, '') <> 'goias'
       AND COALESCE(cadastro_df_legal, '') <> 'goias'
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
