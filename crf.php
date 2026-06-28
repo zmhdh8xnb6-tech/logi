@@ -1,6 +1,7 @@
 <?php
 require 'config.php';
 
+$moduloPermissao = 'crf';
 $titulo = 'Cadastro CRF';
 $subtitulo = 'Acompanhe o cadastro CRF dos clientes';
 $tituloTabela = 'Controle de Cadastro CRF';

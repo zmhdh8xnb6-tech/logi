@@ -112,7 +112,7 @@ exigirLogin();
 
                 <?php if (usuarioPode('crf')): ?>
                     <div class="col-md-4">
-                        <div class="card-servico" onclick="location.href='CRF.php'">
+                        <div class="card-servico" onclick="location.href='crf.php'">
                             <div class="icon">📋</div>
                             <h5>Cadastro CRF</h5>
                             <p>Controle Cadastro FGTS</p>
