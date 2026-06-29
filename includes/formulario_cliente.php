@@ -13,7 +13,7 @@ $orgaosAlvara = [
 $alvarasCliente = $alvarasCliente ?? [];
 $clienteContabilAtual = (int)($cliente['cliente_contabil'] ?? $clienteContabilPadrao ?? 1);
 $servicoParcelamentoAtual = (int)($cliente['servico_parcelamento'] ?? (($cliente['possui_parcelamento'] ?? '') === 'possui'));
-$servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? $clienteContabilAtual);
+$servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
 ?>
 
 <!-- DADOS PRINCIPAIS -->
@@ -398,7 +398,7 @@ $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? $clienteCont
 </div>
 
 <!-- ENDEREÇO -->
-<div class="border rounded p-3 mb-3">
+<div class="border rounded p-3 mb-3 secao-cliente-contabil">
     <h6 class="mb-3 fw-bold">Endereço</h6>
 
     <div class="col-md-1 mb-3">

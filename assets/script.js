@@ -697,8 +697,10 @@ function validarFormulario() {
     const servicoParcelamento = $('#servico_parcelamento').is(':checked');
     const servicoCertificado = $('#servico_certificado').is(':checked');
 
-    validarObrigatorio('#cep');
-    validarObrigatorio('#numero_endereco');
+    if (clienteContabil) {
+        validarObrigatorio('#cep');
+        validarObrigatorio('#numero_endereco');
+    }
 
     const documento = $('#documento').val().replace(/\D/g, '');
     const telefone = $('#telefone').val().replace(/\D/g, '');
@@ -736,7 +738,7 @@ function validarFormulario() {
         valido = false;
     }
 
-    if (!validarCampoInscricaoEstadual()) {
+    if (clienteContabil && !validarCampoInscricaoEstadual()) {
         if (primeiroCampoInvalido === null) {
             primeiroCampoInvalido = '#inscricao_estadual';
         }
