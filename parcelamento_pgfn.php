@@ -110,6 +110,8 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'PGFN');
 
     </main>
 
+    <?php renderizarAvisoLiquidacoesAutomaticas('PGFN'); ?>
+
     <script>
         setTimeout(function() {
             document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {

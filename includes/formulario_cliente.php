@@ -11,6 +11,9 @@ $orgaosAlvara = [
 ];
 
 $alvarasCliente = $alvarasCliente ?? [];
+$clienteContabilAtual = (int)($cliente['cliente_contabil'] ?? $clienteContabilPadrao ?? 1);
+$servicoParcelamentoAtual = (int)($cliente['servico_parcelamento'] ?? (($cliente['possui_parcelamento'] ?? '') === 'possui'));
+$servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? $clienteContabilAtual);
 ?>
 
 <!-- DADOS PRINCIPAIS -->
@@ -24,12 +27,12 @@ $alvarasCliente = $alvarasCliente ?? [];
         </div>
 
         <div class="col-md-3 mb-3">
-            <label for="tipo_atendimento" class="form-label">Tipo de atendimento</label>
-            <select class="form-select" name="tipo_atendimento" id="tipo_atendimento" required>
-                <option value="completo">Cliente completo</option>
-                <option value="somente_parcelamento">Somente parcelamento</option>
+            <label for="cliente_contabil" class="form-label">É cliente contábil?</label>
+            <select class="form-select" name="cliente_contabil" id="cliente_contabil" required>
+                <option value="1" <?= $clienteContabilAtual === 1 ? 'selected' : '' ?>>Sim</option>
+                <option value="0" <?= $clienteContabilAtual === 0 ? 'selected' : '' ?>>Não, serviço avulso</option>
             </select>
-            <div class="invalid-feedback">Informe o tipo de atendimento.</div>
+            <div class="invalid-feedback">Informe se é cliente contábil.</div>
         </div>
 
         <div class="col-md-2 mb-3">
@@ -57,7 +60,7 @@ $alvarasCliente = $alvarasCliente ?? [];
             <input type="text" class="form-control" name="telefone" id="telefone">
         </div>
 
-        <div class="col-md-2 mb-3 campo-cliente-completo">
+        <div class="col-md-2 mb-3 campo-cliente-contabil">
             <label for="inscricao_estadual" class="form-label">Inscrição Estadual</label>
             <input
                 type="text"
@@ -70,11 +73,11 @@ $alvarasCliente = $alvarasCliente ?? [];
             </div>
         </div>
 
-        <div class="col-md-2 mb-3 campo-cliente-completo">
+        <div class="col-md-2 mb-3 campo-cliente-contabil">
             <label for="nire" class="form-label">NIRE</label>
             <input type="text" class="form-control" name="nire" id="nire">
         </div>
-        <div class="col-md-2 mb-3 campo-cliente-completo">
+        <div class="col-md-2 mb-3 campo-servico-certificado">
             <label for="vencimento_certificado" class="form-label">
                 Vencimento Certificado Digital
             </label>
@@ -87,7 +90,7 @@ $alvarasCliente = $alvarasCliente ?? [];
     </div>
 </div>
 
-<div class="border rounded p-3 mb-3 secao-cliente-completo">
+<div class="border rounded p-3 mb-3 secao-cliente-contabil">
     <h6 class="mb-3 fw-bold">Controles internos</h6>
 
     <div class="row">
@@ -232,21 +235,36 @@ $alvarasCliente = $alvarasCliente ?? [];
 </div>
 
 <div class="border rounded p-3 mb-3">
-    <h6 class="mb-3 fw-bold">Parcelamentos</h6>
-    <div class="row">
-        <div class="col-md-4 mb-1">
-            <label for="possui_parcelamento" class="form-label">O cliente possui parcelamento?</label>
-            <select
-                class="form-select controle-interno-obrigatorio"
-                name="possui_parcelamento"
-                id="possui_parcelamento"
-                required>
-                <option value="">Selecione</option>
-                <option value="possui">Possui</option>
-                <option value="nao_possui">Não possui</option>
-            </select>
-            <div class="invalid-feedback">Informe se o cliente possui parcelamento.</div>
+    <h6 class="mb-3 fw-bold">Serviços acompanhados</h6>
+    <input type="hidden" name="possui_parcelamento" id="possui_parcelamento" value="<?= $servicoParcelamentoAtual ? 'possui' : 'nao_possui' ?>">
+
+    <div class="d-flex flex-wrap gap-4">
+        <div class="form-check form-switch">
+            <input
+                class="form-check-input"
+                type="checkbox"
+                role="switch"
+                name="servico_parcelamento"
+                id="servico_parcelamento"
+                value="1"
+                <?= $servicoParcelamentoAtual ? 'checked' : '' ?>>
+            <label class="form-check-label" for="servico_parcelamento">Parcelamento</label>
         </div>
+
+        <div class="form-check form-switch">
+            <input
+                class="form-check-input"
+                type="checkbox"
+                role="switch"
+                name="servico_certificado"
+                id="servico_certificado"
+                value="1"
+                <?= $servicoCertificadoAtual ? 'checked' : '' ?>>
+            <label class="form-check-label" for="servico_certificado">Certificado Digital</label>
+        </div>
+    </div>
+    <div class="invalid-feedback d-none" id="servicosAvulsosFeedback">
+        Selecione pelo menos um serviço para o cadastro avulso.
     </div>
 </div>
 
@@ -380,7 +398,7 @@ $alvarasCliente = $alvarasCliente ?? [];
 </div>
 
 <!-- ENDEREÇO -->
-<div class="border rounded p-3 mb-3 secao-cliente-completo">
+<div class="border rounded p-3 mb-3">
     <h6 class="mb-3 fw-bold">Endereço</h6>
 
     <div class="col-md-1 mb-3">

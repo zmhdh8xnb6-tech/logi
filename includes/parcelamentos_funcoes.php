@@ -73,28 +73,68 @@ function parcelamentosTemColuna(PDO $pdo, string $coluna): bool
     return $cache[$coluna];
 }
 
-function atualizarParcelamentosLiquidados(PDO $pdo): void
+function atualizarParcelamentosLiquidados(PDO $pdo, string $orgao): array
 {
     if (!parcelamentosTemColuna($pdo, 'liquidado_em')) {
-        return;
+        return [];
     }
 
-    $pdo->exec("
-        UPDATE parcelamentos
-        SET liquidado_em = NOW()
-        WHERE liquidado_em IS NULL
-          AND cancelado_em IS NULL
-          AND parcelas_total > 0
-          AND parcelas_atrasadas = 0
+    $stmt = $pdo->prepare("
+        SELECT
+            p.id,
+            p.numero_parcelamento,
+            p.parcelas_total,
+            c.codigo AS cliente_codigo,
+            c.nome AS cliente_nome
+        FROM parcelamentos p
+        INNER JOIN clientes c ON c.id = p.cliente_id
+        WHERE p.orgao = ?
+          AND p.liquidado_em IS NULL
+          AND p.cancelado_em IS NULL
+          AND p.parcelas_total > 0
+          AND p.parcelas_atrasadas = 0
           AND (
-              (data_primeira_parcela IS NULL AND parcelas_emitidas >= parcelas_total)
+              (p.data_primeira_parcela IS NULL AND p.parcelas_emitidas >= p.parcelas_total)
               OR (
-                  data_primeira_parcela IS NOT NULL
-                  AND CURDATE() >= data_primeira_parcela
-                  AND LEAST(TIMESTAMPDIFF(MONTH, data_primeira_parcela, CURDATE()) + 1, parcelas_total) >= parcelas_total
+                  p.data_primeira_parcela IS NOT NULL
+                  AND CURDATE() >= p.data_primeira_parcela
+                  AND TIMESTAMPDIFF(
+                      MONTH,
+                      p.data_primeira_parcela,
+                      CURDATE()
+                  ) + 1 > p.parcelas_total
               )
           )
+        ORDER BY CAST(c.codigo AS UNSIGNED), c.nome, p.id
     ");
+    $stmt->execute([$orgao]);
+    $liquidados = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!$liquidados) {
+        return [];
+    }
+
+    $ids = array_column($liquidados, 'id');
+    $marcadores = implode(',', array_fill(0, count($ids), '?'));
+    $camposLiquidacao = 'liquidado_em = NOW()';
+
+    if (parcelamentosTemColuna($pdo, 'liquidacao_tipo')) {
+        $camposLiquidacao .= ", liquidacao_tipo = 'automatica'";
+    }
+
+    if (parcelamentosTemColuna($pdo, 'liquidacao_observacao')) {
+        $camposLiquidacao .= ', liquidacao_observacao = NULL';
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE parcelamentos
+        SET {$camposLiquidacao}
+        WHERE liquidado_em IS NULL
+          AND id IN ({$marcadores})
+    ");
+    $stmt->execute($ids);
+
+    return $liquidados;
 }
 
 function buscarParcelamentosPorOrgao(
@@ -103,7 +143,9 @@ function buscarParcelamentosPorOrgao(
     bool $cancelados = false,
     bool $liquidados = false
 ): array {
-    atualizarParcelamentosLiquidados($pdo);
+    if (!$cancelados && !$liquidados) {
+        $GLOBALS['parcelamentos_liquidados_agora'] = atualizarParcelamentosLiquidados($pdo, $orgao);
+    }
 
     $temLiquidadoEm = parcelamentosTemColuna($pdo, 'liquidado_em');
 
@@ -136,6 +178,158 @@ function buscarParcelamentosPorOrgao(
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
+function renderizarAvisoLiquidacoesAutomaticas(string $orgao): void
+{
+    $liquidados = $GLOBALS['parcelamentos_liquidados_agora'] ?? [];
+
+    if (!$liquidados) {
+        return;
+    }
+
+    $urlLiquidados = urlLiquidadosOrgaoParcelamento($orgao);
+?>
+    <div class="modal fade" id="modalLiquidacoesAutomaticas" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-check-circle text-success me-2"></i>
+                        Parcelamento liquidado automaticamente
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <p>
+                        Os parcelamentos abaixo chegaram à última parcela. Confira se os clientes realmente pagaram:
+                    </p>
+
+                    <div class="list-group">
+                        <?php foreach ($liquidados as $parcelamento): ?>
+                            <div class="list-group-item">
+                                <strong class="d-block">
+                                    <?= htmlspecialchars($parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome']) ?>
+                                </strong>
+                                <span class="text-muted small">
+                                    Nº <?= htmlspecialchars($parcelamento['numero_parcelamento']) ?>
+                                    · <?= (int)$parcelamento['parcelas_total'] ?>/<?= (int)$parcelamento['parcelas_total'] ?> parcelas
+                                </span>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <p class="text-muted small mt-3 mb-0">
+                        Caso algum cliente não tenha pago, use “Voltar” na lista de liquidados.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <a href="<?= htmlspecialchars($urlLiquidados) ?>" class="btn btn-success">
+                        Revisar liquidados
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const modal = document.getElementById('modalLiquidacoesAutomaticas');
+            bootstrap.Modal.getOrCreateInstance(modal).show();
+        });
+    </script>
+<?php
+}
+
+function renderizarModalQuitarParcelamento(): void
+{
+?>
+    <div class="modal fade" id="modalQuitarParcelamento" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form method="post" action="parcelamento_quitar.php" id="formQuitarParcelamento" novalidate>
+                    <div class="modal-header">
+                        <h5 class="modal-title">Quitar parcelamento</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <strong id="clienteParcelamentoQuitar" class="d-block mb-3"></strong>
+
+                        <div class="border rounded p-3 mb-3">
+                            <div class="d-flex justify-content-between gap-3 mb-2">
+                                <span class="text-muted">Parcela atual</span>
+                                <strong id="parcelaAtualQuitar"></strong>
+                            </div>
+                            <div class="d-flex justify-content-between gap-3">
+                                <span class="text-muted">Parcelas atrasadas</span>
+                                <strong id="parcelasAtrasadasQuitar"></strong>
+                            </div>
+                        </div>
+
+                        <input type="hidden" name="id" id="parcelamentoIdQuitar">
+
+                        <div class="mb-3">
+                            <label for="dataQuitacao" class="form-label">Data da quitação</label>
+                            <input
+                                type="date"
+                                class="form-control"
+                                name="data_quitacao"
+                                id="dataQuitacao"
+                                value="<?= date('Y-m-d') ?>"
+                                max="<?= date('Y-m-d') ?>">
+                            <div class="invalid-feedback">Informe uma data válida.</div>
+                        </div>
+
+                        <div>
+                            <label for="observacaoQuitacao" class="form-label">Observação <span class="text-muted">(opcional)</span></label>
+                            <textarea
+                                class="form-control"
+                                name="observacao"
+                                id="observacaoQuitacao"
+                                rows="3"
+                                maxlength="500"
+                                placeholder="Ex.: cliente realizou o pagamento integral"></textarea>
+                        </div>
+
+                        <p class="text-muted small mt-3 mb-0">
+                            O parcelamento será enviado para Liquidados como quitado antecipadamente.
+                        </p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-success">Confirmar quitação</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('modalQuitarParcelamento').addEventListener('show.bs.modal', function(event) {
+            const botao = event.relatedTarget;
+
+            document.getElementById('parcelamentoIdQuitar').value = botao.dataset.parcelamentoId;
+            document.getElementById('clienteParcelamentoQuitar').textContent = botao.dataset.cliente;
+            document.getElementById('parcelaAtualQuitar').textContent = botao.dataset.parcelas;
+            document.getElementById('parcelasAtrasadasQuitar').textContent = botao.dataset.atrasadas;
+        });
+
+        document.getElementById('formQuitarParcelamento').addEventListener('submit', function(event) {
+            const campoData = document.getElementById('dataQuitacao');
+
+            if (!campoData.value || campoData.value > campoData.max) {
+                event.preventDefault();
+                campoData.classList.add('is-invalid');
+                campoData.focus();
+                return;
+            }
+
+            campoData.classList.remove('is-invalid');
+        });
+    </script>
+    <?php
+}
+
 function buscarParcelamentoPorId(PDO $pdo, int $id): ?array
 {
     $stmt = $pdo->prepare("
@@ -161,26 +355,32 @@ function statusParcelamento(array $parcelamento): string
     }
 
     if (!empty($parcelamento['liquidado_em'])) {
-        return 'Liquidado';
+        return ($parcelamento['liquidacao_tipo'] ?? '') === 'antecipada'
+            ? 'Quitado antecipadamente'
+            : 'Liquidado';
     }
-
-    $parcelasEmitidas = parcelasEmitidasAtual($parcelamento);
 
     if ((int)$parcelamento['parcelas_atrasadas'] > 0) {
         return 'Atrasado';
-    }
-
-    if (
-        (int)$parcelamento['parcelas_total'] > 0 &&
-        $parcelasEmitidas >= (int)$parcelamento['parcelas_total']
-    ) {
-        return 'Liquidado';
     }
 
     return 'Em dia';
 }
 
 function parcelasEmitidasAtual(array $parcelamento): int
+{
+    $dataReferencia = new DateTime(date('Y-m-d'));
+
+    if (!empty($parcelamento['cancelado_em'])) {
+        $dataReferencia = new DateTime($parcelamento['cancelado_em']);
+    } elseif (!empty($parcelamento['liquidado_em'])) {
+        $dataReferencia = new DateTime($parcelamento['liquidado_em']);
+    }
+
+    return parcelasEmitidasNaData($parcelamento, $dataReferencia);
+}
+
+function parcelasEmitidasNaData(array $parcelamento, DateTimeInterface $dataReferencia): int
 {
     $parcelasTotal = (int)$parcelamento['parcelas_total'];
 
@@ -193,16 +393,32 @@ function parcelasEmitidasAtual(array $parcelamento): int
     }
 
     $inicio = new DateTime($parcelamento['data_primeira_parcela']);
-    $hoje = new DateTime(date('Y-m-d'));
+    $referencia = new DateTime($dataReferencia->format('Y-m-d'));
 
-    if ($hoje < $inicio) {
+    if ($referencia < $inicio) {
         return 0;
     }
 
-    $meses = (($hoje->format('Y') - $inicio->format('Y')) * 12)
-        + ($hoje->format('n') - $inicio->format('n'));
+    $meses = (($referencia->format('Y') - $inicio->format('Y')) * 12)
+        + ($referencia->format('n') - $inicio->format('n'));
 
     return min($meses + 1, $parcelasTotal);
+}
+
+function diasDesdeCancelamento(array $parcelamento): int
+{
+    if (empty($parcelamento['cancelado_em'])) {
+        return 0;
+    }
+
+    $cancelamento = new DateTime($parcelamento['cancelado_em']);
+    $hoje = new DateTime(date('Y-m-d'));
+
+    if ($hoje <= $cancelamento) {
+        return 0;
+    }
+
+    return (int)$cancelamento->diff($hoje)->days;
 }
 
 function renderizarLinhasParcelamentos(
@@ -222,6 +438,10 @@ function renderizarLinhasParcelamentos(
 
     foreach ($parcelamentos as $parcelamento):
         $parcelasEmitidas = parcelasEmitidasAtual($parcelamento);
+        $parcelasAoReativar = parcelasEmitidasNaData(
+            $parcelamento,
+            new DateTime(date('Y-m-d'))
+        );
         $status = statusParcelamento($parcelamento);
         $badge = 'success';
 
@@ -238,6 +458,14 @@ function renderizarLinhasParcelamentos(
                 <?= htmlspecialchars($parcelamento['cliente_codigo']) ?>
                 -
                 <?= htmlspecialchars($parcelamento['cliente_nome']) ?>
+                <?php if (!empty($parcelamento['liquidado_em'])): ?>
+                    <div class="small text-muted mt-1">
+                        Liquidado em <?= (new DateTime($parcelamento['liquidado_em']))->format('d/m/Y') ?>
+                        <?php if (!empty($parcelamento['liquidacao_observacao'])): ?>
+                            · <?= htmlspecialchars($parcelamento['liquidacao_observacao']) ?>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
             </td>
             <td><?= htmlspecialchars($parcelamento['orgao']) ?></td>
             <td class="text-end"><?= htmlspecialchars($parcelamento['numero_parcelamento']) ?></td>
@@ -270,7 +498,11 @@ function renderizarLinhasParcelamentos(
                             data-bs-toggle="modal"
                             data-bs-target="#modalReativarParcelamento"
                             data-parcelamento-id="<?= (int)$parcelamento['id'] ?>"
-                            data-cliente="<?= htmlspecialchars($parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome']) ?>">
+                            data-cliente="<?= htmlspecialchars($parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome']) ?>"
+                            data-parcela-cancelada="<?= $parcelasEmitidas ?>/<?= (int)$parcelamento['parcelas_total'] ?>"
+                            data-parcela-reativada="<?= $parcelasAoReativar ?>/<?= (int)$parcelamento['parcelas_total'] ?>"
+                            data-dias-cancelado="<?= diasDesdeCancelamento($parcelamento) ?>"
+                            data-cancelado-em="<?= !empty($parcelamento['cancelado_em']) ? (new DateTime($parcelamento['cancelado_em']))->format('d/m/Y') : '' ?>">
                             <i class="bi bi-arrow-counterclockwise"></i> Reativar
                         </button>
                     <?php elseif ($mostrarVoltarLiquidado): ?>
@@ -284,6 +516,18 @@ function renderizarLinhasParcelamentos(
                             <i class="bi bi-arrow-counterclockwise"></i> Voltar
                         </button>
                     <?php else: ?>
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-success"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalQuitarParcelamento"
+                            data-parcelamento-id="<?= (int)$parcelamento['id'] ?>"
+                            data-cliente="<?= htmlspecialchars($parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome']) ?>"
+                            data-parcelas="<?= $parcelasEmitidas ?>/<?= (int)$parcelamento['parcelas_total'] ?>"
+                            data-atrasadas="<?= (int)$parcelamento['parcelas_atrasadas'] ?>"
+                            title="Quitar parcelamento">
+                            <i class="bi bi-check2-circle"></i>
+                        </button>
                         <a
                             href="parcelamento_editar.php?id=<?= (int)$parcelamento['id'] ?>"
                             class="btn btn-sm btn-outline-primary">

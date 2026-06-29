@@ -17,10 +17,22 @@ if (!$parcelamento) {
     exit;
 }
 
+$campos = [
+    'liquidado_em = NULL',
+    'parcelas_atrasadas = GREATEST(COALESCE(parcelas_atrasadas, 0), 1)',
+];
+
+if (parcelamentosTemColuna($pdo, 'liquidacao_tipo')) {
+    $campos[] = 'liquidacao_tipo = NULL';
+}
+
+if (parcelamentosTemColuna($pdo, 'liquidacao_observacao')) {
+    $campos[] = 'liquidacao_observacao = NULL';
+}
+
 $stmt = $pdo->prepare("
     UPDATE parcelamentos
-    SET liquidado_em = NULL,
-        parcelas_atrasadas = GREATEST(COALESCE(parcelas_atrasadas, 0), 1)
+    SET " . implode(', ', $campos) . "
     WHERE id = ?
 ");
 $stmt->execute([$id]);

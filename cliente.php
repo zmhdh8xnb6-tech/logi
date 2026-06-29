@@ -50,7 +50,10 @@ $formatarData = static function ($data): string {
     return !empty($data) ? date('d/m/Y', strtotime($data)) : 'Não informado';
 };
 
-$somenteParcelamento = ($cliente['tipo_atendimento'] ?? 'completo') === 'somente_parcelamento';
+$clienteContabil = (int)($cliente['cliente_contabil'] ?? 1) === 1;
+$servicoParcelamento = (int)($cliente['servico_parcelamento'] ?? 0) === 1;
+$servicoCertificado = (int)($cliente['servico_certificado'] ?? 1) === 1;
+$paginaRetorno = $clienteContabil ? 'clientes.php' : 'servicos_avulsos.php';
 ?>
 
 <!DOCTYPE html>
@@ -68,12 +71,12 @@ $somenteParcelamento = ($cliente['tipo_atendimento'] ?? 'completo') === 'somente
     <main class="app-main">
         <div class="container-fluid">
 
-            <a href="clientes.php" class="btn btn-outline-secondary mb-3">Voltar</a>
+            <a href="<?= $paginaRetorno ?>" class="btn btn-outline-secondary mb-3">Voltar</a>
 
             <h3><?= htmlspecialchars($cliente['nome']) ?></h3>
             <p class="text-muted"><?= htmlspecialchars($cliente['documento']) ?></p>
-            <span class="badge <?= $somenteParcelamento ? 'bg-info text-dark' : 'bg-success' ?> mb-3">
-                <?= $somenteParcelamento ? 'Somente parcelamento' : 'Cliente completo' ?>
+            <span class="badge <?= $clienteContabil ? 'bg-success' : 'bg-info text-dark' ?> mb-3">
+                <?= $clienteContabil ? 'Cliente contábil' : 'Serviço avulso' ?>
             </span>
 
             <div class="d-flex gap-2 mb-4">
@@ -92,9 +95,9 @@ $somenteParcelamento = ($cliente['tipo_atendimento'] ?? 'completo') === 'somente
                 <p><strong>Nome Fantasia:</strong> <?= htmlspecialchars($cliente['nome_fantasia'] ?? '') ?></p>
                 <p><strong>E-mail:</strong> <?= htmlspecialchars($cliente['email'] ?? '') ?></p>
                 <p><strong>Telefone:</strong> <?= htmlspecialchars($cliente['telefone'] ?? '') ?></p>
-                <?php if (!$somenteParcelamento): ?>
-                    <p><strong>Inscrição Estadual:</strong> <?= htmlspecialchars($cliente['inscricao_estadual'] ?? '') ?></p>
-                    <p><strong>NIRE:</strong> <?= htmlspecialchars($cliente['nire'] ?? '') ?></p>
+                <p><strong>Inscrição Estadual:</strong> <?= htmlspecialchars($cliente['inscricao_estadual'] ?? '') ?></p>
+                <p><strong>NIRE:</strong> <?= htmlspecialchars($cliente['nire'] ?? '') ?></p>
+                <?php if ($servicoCertificado): ?>
                     <p>
                         <strong>Vencimento Certificado Digital:</strong>
                         <?= !empty($cliente['vencimento_certificado'])
@@ -104,9 +107,16 @@ $somenteParcelamento = ($cliente['tipo_atendimento'] ?? 'completo') === 'somente
                 <?php endif; ?>
                 <hr>
 
-                <?php if ($somenteParcelamento): ?>
-                    <h6 class="mt-3 mb-2">Parcelamentos</h6>
-                    <span class="badge bg-success">Possui</span>
+                <?php if (!$clienteContabil): ?>
+                    <h6 class="mt-3 mb-2">Serviços acompanhados</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        <?php if ($servicoParcelamento): ?>
+                            <span class="badge bg-primary">Parcelamento</span>
+                        <?php endif; ?>
+                        <?php if ($servicoCertificado): ?>
+                            <span class="badge bg-success">Certificado Digital</span>
+                        <?php endif; ?>
+                    </div>
                 <?php else: ?>
                     <h6 class="mt-3 mb-3">Controles internos</h6>
 
@@ -188,7 +198,7 @@ $somenteParcelamento = ($cliente['tipo_atendimento'] ?? 'completo') === 'somente
                 <?php endif; ?>
             </div>
 
-            <?php if (!$somenteParcelamento && !empty($alvarasCliente)): ?>
+            <?php if ($clienteContabil && !empty($alvarasCliente)): ?>
                 <div class="clientes-box mt-4">
                     <h5>Alvarás e licenças</h5>
                     <div class="table-responsive">
@@ -214,16 +224,14 @@ $somenteParcelamento = ($cliente['tipo_atendimento'] ?? 'completo') === 'somente
                 </div>
             <?php endif; ?>
 
-            <?php if (!$somenteParcelamento): ?>
-                <div class="clientes-box mt-4">
-                    <h5>Endereço</h5>
-                    <p><strong>CEP:</strong> <?= htmlspecialchars($cliente['cep'] ?? '') ?></p>
-                    <p><strong>Endereço:</strong> <?= htmlspecialchars($cliente['endereco'] ?? '') ?>, <?= htmlspecialchars($cliente['numero_endereco'] ?? '') ?></p>
-                    <p><strong>Complemento:</strong> <?= htmlspecialchars($cliente['complemento'] ?? '') ?></p>
-                    <p><strong>Bairro:</strong> <?= htmlspecialchars($cliente['bairro'] ?? '') ?></p>
-                    <p><strong>Cidade/UF:</strong> <?= htmlspecialchars($cliente['cidade'] ?? '') ?> / <?= htmlspecialchars($cliente['uf'] ?? '') ?></p>
-                </div>
-            <?php endif; ?>
+            <div class="clientes-box mt-4">
+                <h5>Endereço</h5>
+                <p><strong>CEP:</strong> <?= htmlspecialchars($cliente['cep'] ?? '') ?></p>
+                <p><strong>Endereço:</strong> <?= htmlspecialchars($cliente['endereco'] ?? '') ?>, <?= htmlspecialchars($cliente['numero_endereco'] ?? '') ?></p>
+                <p><strong>Complemento:</strong> <?= htmlspecialchars($cliente['complemento'] ?? '') ?></p>
+                <p><strong>Bairro:</strong> <?= htmlspecialchars($cliente['bairro'] ?? '') ?></p>
+                <p><strong>Cidade/UF:</strong> <?= htmlspecialchars($cliente['cidade'] ?? '') ?> / <?= htmlspecialchars($cliente['uf'] ?? '') ?></p>
+            </div>
 
         </div>
     </main>

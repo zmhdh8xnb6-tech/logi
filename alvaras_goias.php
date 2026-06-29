@@ -6,7 +6,7 @@ exigirPermissao('alvaras');
 $stmt = $pdo->query("
     SELECT id, codigo, documento, nome, uf, alvara, cadastro_df_legal
     FROM clientes
-    WHERE COALESCE(tipo_atendimento, 'completo') <> 'somente_parcelamento'
+    WHERE cliente_contabil = 1
       AND (
         uf = 'GO'
         OR alvara = 'goias'

@@ -17,7 +17,7 @@ $orgaosAlvara = [
 $stmtClientes = $pdo->query("
     SELECT *
     FROM clientes
-    WHERE COALESCE(tipo_atendimento, 'completo') <> 'somente_parcelamento'
+    WHERE cliente_contabil = 1
       AND COALESCE(uf, '') <> 'GO'
       AND COALESCE(alvara, '') <> 'goias'
       AND COALESCE(cadastro_df_legal, '') <> 'goias'

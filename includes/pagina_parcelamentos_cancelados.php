@@ -2,6 +2,8 @@
 require 'config.php';
 require 'includes/parcelamentos_funcoes.php';
 
+exigirPermissao('parcelamentos');
+
 $parcelamentos = buscarParcelamentosPorOrgao($pdo, $orgaoCancelado, true);
 ?>
 
@@ -81,8 +83,30 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, $orgaoCancelado, true);
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="mb-1">Deseja devolver este parcelamento para a lista de ativos?</p>
-                    <strong id="clienteParcelamentoReativar"></strong>
+                    <strong id="clienteParcelamentoReativar" class="d-block mb-3"></strong>
+
+                    <div class="border rounded p-3 mb-3">
+                        <div class="d-flex justify-content-between gap-3 mb-2">
+                            <span class="text-muted">Cancelado em</span>
+                            <strong id="dataCancelamentoReativar"></strong>
+                        </div>
+                        <div class="d-flex justify-content-between gap-3 mb-2">
+                            <span class="text-muted">Parcela congelada</span>
+                            <strong id="parcelaCanceladaReativar"></strong>
+                        </div>
+                        <div class="d-flex justify-content-between gap-3 mb-2">
+                            <span class="text-muted">Tempo cancelado</span>
+                            <strong id="tempoCanceladoReativar"></strong>
+                        </div>
+                        <div class="d-flex justify-content-between gap-3">
+                            <span class="text-muted">Parcela ao reativar</span>
+                            <strong id="parcelaNovaReativar" class="text-success"></strong>
+                        </div>
+                    </div>
+
+                    <p class="mb-0">
+                        Ao confirmar, o parcelamento voltará para os ativos seguindo o calendário original.
+                    </p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Não</button>
@@ -103,6 +127,14 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, $orgaoCancelado, true);
 
             document.getElementById('parcelamentoIdReativar').value = botao.dataset.parcelamentoId;
             document.getElementById('clienteParcelamentoReativar').textContent = botao.dataset.cliente;
+            document.getElementById('dataCancelamentoReativar').textContent = botao.dataset.canceladoEm;
+            document.getElementById('parcelaCanceladaReativar').textContent = botao.dataset.parcelaCancelada;
+            document.getElementById('parcelaNovaReativar').textContent = botao.dataset.parcelaReativada;
+
+            const dias = Number(botao.dataset.diasCancelado || 0);
+            document.getElementById('tempoCanceladoReativar').textContent = dias === 0 ?
+                'Menos de 1 dia' :
+                dias + (dias === 1 ? ' dia' : ' dias');
         });
 
         setTimeout(function() {

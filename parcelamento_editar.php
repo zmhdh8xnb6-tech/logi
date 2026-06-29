@@ -43,12 +43,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($acao === 'cancelar') {
+        $parcelasNoCancelamento = parcelasEmitidasAtual($parcelamento);
         $stmt = $pdo->prepare("
             UPDATE parcelamentos
-            SET cancelado_em = NOW()
+            SET cancelado_em = NOW(),
+                parcelas_emitidas = ?
             WHERE id = ?
         ");
-        $stmt->execute([$id]);
+        $stmt->execute([$parcelasNoCancelamento, $id]);
 
         header('Location: ' . urlCanceladosOrgaoParcelamento($parcelamento['orgao']) . '?cancelado=1');
         exit;

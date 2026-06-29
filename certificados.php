@@ -6,7 +6,7 @@ exigirPermissao('certificados');
 $stmt = $pdo->query("
     SELECT *
     FROM clientes
-    WHERE COALESCE(tipo_atendimento, 'completo') <> 'somente_parcelamento'
+    WHERE servico_certificado = 1
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 
@@ -61,6 +61,7 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <th>Código</th>
                                 <th>CNPJ/CPF</th>
                                 <th>Cliente</th>
+                                <th>Vínculo</th>
                                 <th>Status</th>
                                 <th>Vencimento</th>
                                 <th>Dias restantes</th>
@@ -97,6 +98,12 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                     <td class="nome-cliente">
                                         <?= htmlspecialchars($cliente['nome']) ?>
+                                    </td>
+
+                                    <td>
+                                        <span class="badge <?= !empty($cliente['cliente_contabil']) ? 'bg-success' : 'bg-info text-dark' ?>">
+                                            <?= !empty($cliente['cliente_contabil']) ? 'Cliente contábil' : 'Serviço avulso' ?>
+                                        </span>
                                     </td>
 
                                     <td>

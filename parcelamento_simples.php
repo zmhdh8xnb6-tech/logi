@@ -110,6 +110,9 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'Simples Nacional');
 
     </main>
 
+    <?php renderizarAvisoLiquidacoesAutomaticas('Simples Nacional'); ?>
+    <?php renderizarModalQuitarParcelamento(); ?>
+
     <script>
         setTimeout(function() {
             document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {

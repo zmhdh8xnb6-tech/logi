@@ -52,7 +52,7 @@ if ($mostrarVencimento) {
 $stmt = $pdo->query("
     SELECT {$colunas}
     FROM clientes
-    WHERE COALESCE(tipo_atendimento, 'completo') <> 'somente_parcelamento'
+    WHERE cliente_contabil = 1
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 

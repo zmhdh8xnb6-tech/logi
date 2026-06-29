@@ -110,6 +110,9 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'Previdência Social e Tribut
 
     </main>
 
+    <?php renderizarAvisoLiquidacoesAutomaticas('Previdência Social e Tributos'); ?>
+    <?php renderizarModalQuitarParcelamento(); ?>
+
     <script>
         setTimeout(function() {
             document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {

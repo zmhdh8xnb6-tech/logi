@@ -2,6 +2,8 @@
 require 'config.php';
 
 exigirPermissao('clientes');
+
+$clienteContabilPadrao = isset($_GET['avulso']) ? 0 : 1;
 ?>
 
 <!DOCTYPE html>
@@ -31,7 +33,7 @@ exigirPermissao('clientes');
                     <?php include 'includes/formulario_cliente.php'; ?>
 
                     <div class="d-flex justify-content-end gap-2 mt-4">
-                        <a href="clientes.php" class="btn btn-secondary">
+                        <a href="<?= $clienteContabilPadrao ? 'clientes.php' : 'servicos_avulsos.php' ?>" class="btn btn-secondary">
                             Cancelar
                         </a>
 

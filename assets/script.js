@@ -88,8 +88,8 @@ $(document).ready(function () {
                 const respostaPartes = resposta.split('|');
                 const cadastroSalvo = respostaPartes[0] === 'ok';
                 const clienteIdSalvo = respostaPartes[1] || $('#id').val();
-                const possuiParcelamento = $('#possui_parcelamento').val();
-                const tipoAtendimento = $('#tipo_atendimento').val();
+                const servicoParcelamento = $('#servico_parcelamento').is(':checked');
+                const clienteContabil = $('#cliente_contabil').val() === '1';
 
                 if (cadastroSalvo) {
 
@@ -110,13 +110,13 @@ $(document).ready(function () {
 
                     if (window.location.pathname.includes('cliente_novo.php')) {
 
-                        if (tipoAtendimento === 'somente_parcelamento') {
+                        if (!clienteContabil && servicoParcelamento) {
                             window.location.href =
                                 'parcelamento_novo.php?cliente_id=' + encodeURIComponent(clienteIdSalvo);
                             return;
                         }
 
-                        if (possuiParcelamento === 'possui') {
+                        if (clienteContabil && servicoParcelamento) {
                             const botaoParcelamento = document.getElementById('btnCadastrarParcelamentoAgora');
                             botaoParcelamento.href =
                                 'parcelamento_novo.php?cliente_id=' + encodeURIComponent(clienteIdSalvo);
@@ -129,7 +129,7 @@ $(document).ready(function () {
                             return;
                         }
 
-                        window.location.href = 'clientes.php';
+                        window.location.href = clienteContabil ? 'clientes.php' : 'servicos_avulsos.php';
 
                         return;
                     }
@@ -164,20 +164,15 @@ $(document).ready(function () {
 
                     mostrarAviso('Preencha todos os órgãos do alvará com vencimento ou como dispensado.');
 
-                } else if (resp.trim() === 'parcelamento_obrigatorio') {
+                } else if (resp.trim() === 'servico_avulso_obrigatorio') {
 
-                    $('#possui_parcelamento').addClass('is-invalid').focus();
-                    mostrarAviso('Informe se o cliente possui parcelamento.');
+                    $('#servicosAvulsosFeedback').removeClass('d-none').show();
+                    mostrarAviso('Selecione pelo menos um serviço para o cadastro avulso.');
 
-                } else if (resp.trim() === 'parcelamento_exigido') {
+                } else if (resp.trim() === 'cliente_contabil_obrigatorio') {
 
-                    $('#possui_parcelamento').addClass('is-invalid').focus();
-                    mostrarAviso('O cliente de somente parcelamento precisa possuir um parcelamento.');
-
-                } else if (resp.trim() === 'tipo_atendimento_obrigatorio') {
-
-                    $('#tipo_atendimento').addClass('is-invalid').focus();
-                    mostrarAviso('Informe o tipo de atendimento do cliente.');
+                    $('#cliente_contabil').addClass('is-invalid').focus();
+                    mostrarAviso('Informe se a empresa é cliente contábil.');
 
                 } else if (resp.trim() === 'alvara_obrigatorio') {
 
@@ -220,8 +215,8 @@ $(document).ready(function () {
         filtrarClientesNaTela();
     });
 
-    $('#tipo_atendimento').on('change', atualizarTipoAtendimento);
-    atualizarTipoAtendimento();
+    $('#cliente_contabil, #servico_parcelamento, #servico_certificado').on('change', atualizarVinculoServicos);
+    atualizarVinculoServicos();
 
     $(document).on('input', '#nome_fantasia', function () {
         this.value = this.value.toUpperCase();
@@ -516,7 +511,7 @@ function carregarClientes(page = 1) {
         if (clientes.length === 0) {
             $('#clientesTable tbody').html(`
                 <tr>
-                    <td colspan="10" class="text-center text-muted py-4">
+                    <td colspan="9" class="text-center text-muted py-4">
                         Nenhum cliente cadastrado ainda.
                     </td>
                 </tr>
@@ -527,20 +522,15 @@ function carregarClientes(page = 1) {
         }
 
         clientes.forEach(cliente => {
-            const somenteParcelamento = cliente.tipo_atendimento === 'somente_parcelamento';
-            const atendimento = somenteParcelamento ? 'Somente parcelamento' : 'Completo';
-            const classeAtendimento = somenteParcelamento ? 'bg-info text-dark' : 'bg-success';
-
             linhas += `
 <tr class="linha-cliente"
-    data-busca="${escapeHtml(`${cliente.codigo} ${cliente.documento} ${cliente.nome} ${cliente.nome_fantasia} ${cliente.email} ${atendimento}`).toLowerCase()}"
+    data-busca="${escapeHtml(`${cliente.codigo} ${cliente.documento} ${cliente.nome} ${cliente.nome_fantasia} ${cliente.email}`).toLowerCase()}"
     data-uf="${escapeHtml(cliente.uf)}"
     onclick="window.location.href='cliente.php?id=${cliente.id}'">
 
     <td>${escapeHtml(cliente.codigo)}</td>
     <td>${escapeHtml(cliente.documento)}</td>
     <td>${escapeHtml(cliente.nome)}</td>
-    <td><span class="badge ${classeAtendimento}">${atendimento}</span></td>
     <td>${escapeHtml(cliente.nome_fantasia)}</td>
     <td>${escapeHtml(cliente.cidade)}</td>
     <td>${escapeHtml(cliente.uf)}</td>
@@ -697,18 +687,18 @@ function validarFormulario() {
     }
 
     validarObrigatorio('#codigo');
-    validarObrigatorio('#tipo_atendimento');
+    validarObrigatorio('#cliente_contabil');
     validarObrigatorio('#documento');
     validarObrigatorio('#nome');
     validarObrigatorio('#telefone');
     validarObrigatorio('#email');
 
-    const somenteParcelamento = $('#tipo_atendimento').val() === 'somente_parcelamento';
+    const clienteContabil = $('#cliente_contabil').val() === '1';
+    const servicoParcelamento = $('#servico_parcelamento').is(':checked');
+    const servicoCertificado = $('#servico_certificado').is(':checked');
 
-    if (!somenteParcelamento) {
-        validarObrigatorio('#cep');
-        validarObrigatorio('#numero_endereco');
-    }
+    validarObrigatorio('#cep');
+    validarObrigatorio('#numero_endereco');
 
     const documento = $('#documento').val().replace(/\D/g, '');
     const telefone = $('#telefone').val().replace(/\D/g, '');
@@ -746,7 +736,7 @@ function validarFormulario() {
         valido = false;
     }
 
-    if (!somenteParcelamento && !validarCampoInscricaoEstadual()) {
+    if (!validarCampoInscricaoEstadual()) {
         if (primeiroCampoInvalido === null) {
             primeiroCampoInvalido = '#inscricao_estadual';
         }
@@ -792,17 +782,14 @@ function validarFormulario() {
         }
     });
 
-    if (somenteParcelamento && $('#possui_parcelamento').val() !== 'possui') {
-        $('#possui_parcelamento').addClass('is-invalid');
-
-        if (primeiroCampoInvalido === null) {
-            primeiroCampoInvalido = '#possui_parcelamento';
-        }
-
+    if (!clienteContabil && !servicoParcelamento && !servicoCertificado) {
+        $('#servicosAvulsosFeedback').removeClass('d-none').show();
         valido = false;
+    } else {
+        $('#servicosAvulsosFeedback').addClass('d-none').hide();
     }
 
-    const alvarasValidos = somenteParcelamento
+    const alvarasValidos = !clienteContabil
         || $('#alvara').val() !== 'possui'
         || validarPreenchimentoAlvaras();
 
@@ -820,35 +807,49 @@ function validarFormulario() {
     return valido;
 }
 
-function atualizarTipoAtendimento() {
-    const campoTipo = document.getElementById('tipo_atendimento');
+function atualizarVinculoServicos() {
+    const campoClienteContabil = document.getElementById('cliente_contabil');
 
-    if (!campoTipo) {
+    if (!campoClienteContabil) {
         return;
     }
 
-    const somenteParcelamento = campoTipo.value === 'somente_parcelamento';
+    const clienteContabil = campoClienteContabil.value === '1';
+    const servicoParcelamento = document.getElementById('servico_parcelamento').checked;
+    const servicoCertificado = document.getElementById('servico_certificado').checked;
 
-    document.querySelectorAll('.secao-cliente-completo, .campo-cliente-completo').forEach(function (bloco) {
-        bloco.classList.toggle('d-none', somenteParcelamento);
+    document.querySelectorAll('.secao-cliente-contabil, .campo-cliente-contabil').forEach(function (bloco) {
+        bloco.classList.toggle('d-none', !clienteContabil);
 
         bloco.querySelectorAll('input, select, textarea').forEach(function (campo) {
-            campo.disabled = somenteParcelamento;
+            campo.disabled = !clienteContabil;
             campo.classList.remove('is-invalid');
         });
     });
 
     const campoParcelamento = document.getElementById('possui_parcelamento');
+    campoParcelamento.value = servicoParcelamento ? 'possui' : 'nao_possui';
 
-    if (somenteParcelamento && campoParcelamento) {
-        campoParcelamento.value = 'possui';
-        campoParcelamento.classList.remove('is-invalid');
-    }
+    document.querySelectorAll('.campo-servico-certificado').forEach(function (bloco) {
+        bloco.classList.toggle('d-none', !servicoCertificado);
 
-    if (!somenteParcelamento) {
+        bloco.querySelectorAll('input, select, textarea').forEach(function (campo) {
+            campo.disabled = !servicoCertificado;
+
+            if (!servicoCertificado) {
+                campo.value = '';
+            }
+        });
+    });
+
+    if (clienteContabil) {
         document.querySelectorAll('.controle-com-vencimento').forEach(function (campo) {
             atualizarCampoVencimentoControle(campo);
         });
+    }
+
+    if (clienteContabil || servicoParcelamento || servicoCertificado) {
+        $('#servicosAvulsosFeedback').addClass('d-none').hide();
     }
 }
 

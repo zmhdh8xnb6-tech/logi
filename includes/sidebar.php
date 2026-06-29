@@ -58,6 +58,11 @@
                 <i class="bi bi-people"></i>
                 <span>Clientes</span>
             </a>
+
+            <a href="servicos_avulsos.php" class="sidebar-link" data-label="Serviços Avulsos">
+                <i class="bi bi-briefcase"></i>
+                <span>Serviços Avulsos</span>
+            </a>
         <?php endif; ?>
 
         <?php if (usuarioPode('usuarios')): ?>

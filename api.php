@@ -183,12 +183,13 @@ if ($action === 'read') {
 
     $offset = ($page - 1) * $limit;
 
-    $stmtTotal = $pdo->query("SELECT COUNT(*) FROM clientes");
+    $stmtTotal = $pdo->query("SELECT COUNT(*) FROM clientes WHERE cliente_contabil = 1");
     $total = $stmtTotal->fetchColumn();
 
     $stmt = $pdo->prepare("
         SELECT * 
         FROM clientes
+        WHERE cliente_contabil = 1
         ORDER BY CAST(codigo AS UNSIGNED) ASC
         LIMIT :limit OFFSET :offset
     ");
@@ -238,7 +239,9 @@ if ($action === 'create' || $action === 'update') {
     $id = $_POST['id'] ?? '';
 
     $codigo = $_POST['codigo'] ?? '';
-    $tipo_atendimento = $_POST['tipo_atendimento'] ?? '';
+    $cliente_contabil_enviado = $_POST['cliente_contabil'] ?? '';
+    $servico_parcelamento = isset($_POST['servico_parcelamento']) && $_POST['servico_parcelamento'] === '1' ? 1 : 0;
+    $servico_certificado = isset($_POST['servico_certificado']) && $_POST['servico_certificado'] === '1' ? 1 : 0;
     $documento = $_POST['documento'] ?? '';
     $nome = $_POST['nome'] ?? '';
     $nome_fantasia = $_POST['nome_fantasia'] ?? '';
@@ -268,31 +271,34 @@ if ($action === 'create' || $action === 'update') {
     $procuracao_sefaz = $_POST['procuracao_sefaz'] ?? '';
     $contrato_prestacao_servicos = $_POST['contrato_prestacao_servicos'] ?? '';
     $tributacao = $_POST['tributacao'] ?? '';
-    $possui_parcelamento = $_POST['possui_parcelamento'] ?? '';
+    $possui_parcelamento = $servico_parcelamento ? 'possui' : 'nao_possui';
     $alvaras = is_array($_POST['alvaras'] ?? null) ? $_POST['alvaras'] : [];
 
     $vencimento_certificado = !empty($_POST['vencimento_certificado'])
         ? $_POST['vencimento_certificado']
         : null;
 
-    if (!in_array($tipo_atendimento, ['completo', 'somente_parcelamento'], true)) {
-        echo 'tipo_atendimento_obrigatorio';
+    if (!in_array((string)$cliente_contabil_enviado, ['0', '1'], true)) {
+        echo 'cliente_contabil_obrigatorio';
         exit;
     }
 
-    $somenteParcelamento = $tipo_atendimento === 'somente_parcelamento';
+    $cliente_contabil = (int)$cliente_contabil_enviado;
 
-    if ($somenteParcelamento) {
-        $endereco = '';
-        $numero_endereco = '';
-        $complemento = '';
-        $bairro = '';
-        $cidade = '';
-        $uf = '';
-        $cep = '';
-        $inscricao_estadual = '';
-        $nire = '';
+    if ($cliente_contabil === 0 && !$servico_parcelamento && !$servico_certificado) {
+        echo 'servico_avulso_obrigatorio';
+        exit;
+    }
+
+    $tipo_atendimento = $cliente_contabil === 1
+        ? 'completo'
+        : ($servico_parcelamento && !$servico_certificado ? 'somente_parcelamento' : 'servico_avulso');
+
+    if (!$servico_certificado) {
         $vencimento_certificado = null;
+    }
+
+    if ($cliente_contabil === 0) {
         $cadastro_df_legal = '';
         $alvara = '';
         $contador = '';
@@ -311,7 +317,7 @@ if ($action === 'create' || $action === 'update') {
         $alvaras = [];
     }
 
-    if (!$somenteParcelamento && !validarInscricaoEstadualServidor($inscricao_estadual, $uf)) {
+    if (!validarInscricaoEstadualServidor($inscricao_estadual, $uf)) {
         echo 'inscricao_estadual_invalida';
         exit;
     }
@@ -322,7 +328,7 @@ if ($action === 'create' || $action === 'update') {
         [$procuracao_fgts, $vencimento_procuracao_fgts],
     ];
 
-    if (!$somenteParcelamento) {
+    if ($cliente_contabil === 1) {
         foreach ($controlesComVencimento as [$situacao, $vencimento]) {
             if ($situacao === 'possui' && empty($vencimento)) {
                 echo 'vencimento_procuracao_obrigatorio';
@@ -339,7 +345,7 @@ if ($action === 'create' || $action === 'update') {
         $procuracao_particular,
     ];
 
-    if (!$somenteParcelamento) {
+    if ($cliente_contabil === 1) {
         foreach ($procuracoesObrigatorias as $situacao) {
             if (!in_array($situacao, ['possui', 'nao_possui'], true)) {
                 echo 'procuracoes_incompletas';
@@ -348,22 +354,12 @@ if ($action === 'create' || $action === 'update') {
         }
     }
 
-    if (!$somenteParcelamento && !in_array($procuracao_sefaz, ['possui', 'nao_possui', 'goias'], true)) {
+    if ($cliente_contabil === 1 && !in_array($procuracao_sefaz, ['possui', 'nao_possui', 'goias'], true)) {
         echo 'procuracoes_incompletas';
         exit;
     }
 
-    if (!in_array($possui_parcelamento, ['possui', 'nao_possui'], true)) {
-        echo 'parcelamento_obrigatorio';
-        exit;
-    }
-
-    if ($somenteParcelamento && $possui_parcelamento !== 'possui') {
-        echo 'parcelamento_exigido';
-        exit;
-    }
-
-    if (!$somenteParcelamento && !in_array($alvara, ['possui', 'nao_possui', 'goias'], true)) {
+    if ($cliente_contabil === 1 && !in_array($alvara, ['possui', 'nao_possui', 'goias'], true)) {
         echo 'alvara_obrigatorio';
         exit;
     }
@@ -429,6 +425,9 @@ if ($action === 'create' || $action === 'update') {
             INSERT INTO clientes (
                 codigo,
                 tipo_atendimento,
+                cliente_contabil,
+                servico_parcelamento,
+                servico_certificado,
                 documento,
                 nome,
                 nome_fantasia,
@@ -461,12 +460,15 @@ if ($action === 'create' || $action === 'update') {
                 tributacao,
                 possui_parcelamento
             )
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ");
 
             $ok = $stmt->execute([
                 $codigo,
                 $tipo_atendimento,
+                $cliente_contabil,
+                $servico_parcelamento,
+                $servico_certificado,
                 $documento,
                 $nome,
                 $nome_fantasia,
@@ -505,7 +507,8 @@ if ($action === 'create' || $action === 'update') {
             $stmtClienteAtual = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
             $stmtClienteAtual->execute([$id]);
             $clienteAtual = $stmtClienteAtual->fetch(PDO::FETCH_ASSOC) ?: [];
-            $eraSomenteParcelamento = ($clienteAtual['tipo_atendimento'] ?? 'completo') === 'somente_parcelamento';
+            $eraClienteContabil = (int)($clienteAtual['cliente_contabil'] ?? 1) === 1;
+            $eraServicoCertificado = (int)($clienteAtual['servico_certificado'] ?? 1) === 1;
 
             $mudouRazaoSocial = valorClienteMudou($clienteAtual, 'nome', $nome);
             $mudouUf = valorClienteMudou($clienteAtual, 'uf', $uf);
@@ -532,6 +535,9 @@ if ($action === 'create' || $action === 'update') {
             UPDATE clientes SET
                 codigo=?,
                 tipo_atendimento=?,
+                cliente_contabil=?,
+                servico_parcelamento=?,
+                servico_certificado=?,
                 documento=?,
                 nome=?,
                 nome_fantasia=?,
@@ -569,6 +575,9 @@ if ($action === 'create' || $action === 'update') {
             $ok = $stmt->execute([
                 $codigo,
                 $tipo_atendimento,
+                $cliente_contabil,
+                $servico_parcelamento,
+                $servico_certificado,
                 $documento,
                 $nome,
                 $nome_fantasia,
@@ -607,19 +616,21 @@ if ($action === 'create' || $action === 'update') {
 
             $atualizacoesPendencias = [];
 
-            if (!$somenteParcelamento && !$eraSomenteParcelamento && ($mudouRazaoSocial || $mudouEndereco) && clienteTemColuna($pdo, 'pendencia_alvara_funcionamento')) {
+            if ($cliente_contabil === 1 && $eraClienteContabil && ($mudouRazaoSocial || $mudouEndereco) && clienteTemColuna($pdo, 'pendencia_alvara_funcionamento')) {
                 $atualizacoesPendencias[] = 'pendencia_alvara_funcionamento = 1';
             }
 
-            if (!$somenteParcelamento && !$eraSomenteParcelamento && ($mudouRazaoSocial || $mudouUf) && clienteTemColuna($pdo, 'pendencia_certificado_digital')) {
+            if ($servico_certificado === 1 && $eraServicoCertificado && ($mudouRazaoSocial || $mudouUf) && clienteTemColuna($pdo, 'pendencia_certificado_digital')) {
                 $atualizacoesPendencias[] = 'pendencia_certificado_digital = 1';
             }
 
-            if ($somenteParcelamento) {
+            if ($cliente_contabil === 0) {
                 if (clienteTemColuna($pdo, 'pendencia_alvara_funcionamento')) {
                     $atualizacoesPendencias[] = 'pendencia_alvara_funcionamento = 0';
                 }
+            }
 
+            if ($servico_certificado === 0) {
                 if (clienteTemColuna($pdo, 'pendencia_certificado_digital')) {
                     $atualizacoesPendencias[] = 'pendencia_certificado_digital = 0';
                 }

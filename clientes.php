@@ -19,15 +19,20 @@ exigirPermissao('clientes');
     <main class="app-main">
         <div class="container-fluid">
 
-            <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
                 <div>
                     <h3 class="mb-1">Clientes</h3>
                     <p class="text-muted mb-0">Cadastro e gerenciamento de clientes</p>
                 </div>
 
-                <a href="cliente_novo.php" class="btn btn-primary">
-                    <i class="bi bi-plus-circle"></i> Novo Cliente
-                </a>
+                <div class="d-flex gap-2">
+                    <a href="servicos_avulsos.php" class="btn btn-outline-secondary">
+                        <i class="bi bi-briefcase"></i> Serviços Avulsos
+                    </a>
+                    <a href="cliente_novo.php" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> Novo Cliente
+                    </a>
+                </div>
             </div>
 
             <div class="clientes-box">
@@ -56,7 +61,6 @@ exigirPermissao('clientes');
                                 <th>Código</th>
                                 <th>CPF/CNPJ</th>
                                 <th>Razão Social</th>
-                                <th>Atendimento</th>
                                 <th>Nome Fantasia</th>
                                 <th>Cidade</th>
                                 <th>UF</th>
@@ -67,7 +71,7 @@ exigirPermissao('clientes');
                         </thead>
                         <tbody>
                             <tr>
-                                <td colspan="10" class="text-center text-muted py-4">
+                                <td colspan="9" class="text-center text-muted py-4">
                                     Nenhum cliente cadastrado ainda.
                                 </td>
                             </tr>

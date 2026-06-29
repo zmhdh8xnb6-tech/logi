@@ -110,6 +110,9 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'SEFAZ DF');
 
     </main>
 
+    <?php renderizarAvisoLiquidacoesAutomaticas('SEFAZ DF'); ?>
+    <?php renderizarModalQuitarParcelamento(); ?>
+
     <script>
         setTimeout(function() {
             document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {

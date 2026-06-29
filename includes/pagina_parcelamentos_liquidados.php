@@ -35,6 +35,12 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, $orgaoLiquidado, false, true)
                 </a>
             </div>
 
+            <?php if (isset($_GET['quitado'])): ?>
+                <div class="alert alert-success alert-auto-dismiss fade show">
+                    Parcelamento quitado antecipadamente com sucesso.
+                </div>
+            <?php endif; ?>
+
             <div class="parcelamento-box">
                 <div class="cabecalho-lista d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">Parcelamentos Liquidados</h5>
@@ -101,6 +107,15 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, $orgaoLiquidado, false, true)
             document.getElementById('parcelamentoIdVoltar').value = botao.dataset.parcelamentoId;
             document.getElementById('clienteParcelamentoVoltar').textContent = botao.dataset.cliente;
         });
+
+        setTimeout(function() {
+            document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {
+                alerta.classList.remove('show');
+                setTimeout(function() {
+                    alerta.remove();
+                }, 200);
+            });
+        }, 4000);
     </script>
 
 </body>

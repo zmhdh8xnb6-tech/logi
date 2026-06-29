@@ -86,9 +86,9 @@ foreach ($stmtAlvaras->fetchAll(PDO::FETCH_ASSOC) as $alvaraCliente) {
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             $('#codigo').val(<?= json_encode($cliente['codigo'] ?? '') ?>);
-            $('#tipo_atendimento')
-                .val(<?= json_encode($cliente['tipo_atendimento'] ?? 'completo') ?>)
-                .trigger('change');
+            $('#cliente_contabil').val(<?= json_encode((string)($cliente['cliente_contabil'] ?? 1)) ?>);
+            $('#servico_parcelamento').prop('checked', <?= !empty($cliente['servico_parcelamento']) ? 'true' : 'false' ?>);
+            $('#servico_certificado').prop('checked', <?= !empty($cliente['servico_certificado']) ? 'true' : 'false' ?>);
             $('#documento').val(<?= json_encode($cliente['documento'] ?? '') ?>);
             $('#nome').val(<?= json_encode($cliente['nome'] ?? '') ?>);
             $('#nome_fantasia').val(<?= json_encode($cliente['nome_fantasia'] ?? '') ?>);
@@ -112,7 +112,6 @@ foreach ($stmtAlvaras->fetchAll(PDO::FETCH_ASSOC) as $alvaraCliente) {
             $('#procuracao_sefaz').val(<?= json_encode($cliente['procuracao_sefaz'] ?? '') ?>);
             $('#contrato_prestacao_servicos').val(<?= json_encode($cliente['contrato_prestacao_servicos'] ?? '') ?>);
             $('#tributacao').val(<?= json_encode($cliente['tributacao'] ?? '') ?>);
-            $('#possui_parcelamento').val(<?= json_encode($cliente['possui_parcelamento'] ?? '') ?>);
 
             document.querySelectorAll('.controle-com-vencimento').forEach(function(campo) {
                 atualizarCampoVencimentoControle(campo);
@@ -129,7 +128,7 @@ foreach ($stmtAlvaras->fetchAll(PDO::FETCH_ASSOC) as $alvaraCliente) {
             $('#bairro').val(<?= json_encode($cliente['bairro'] ?? '') ?>);
             $('#cidade').val(<?= json_encode($cliente['cidade'] ?? '') ?>);
             $('#uf').val(<?= json_encode($cliente['uf'] ?? '') ?>);
-            atualizarTipoAtendimento();
+            atualizarVinculoServicos();
         });
     </script>
 

@@ -93,7 +93,7 @@ $clientesPorId = [];
 $alvarasPorCliente = [];
 
 foreach ($clientes as $cliente) {
-    if (($cliente['tipo_atendimento'] ?? 'completo') === 'somente_parcelamento') {
+    if ((int)($cliente['cliente_contabil'] ?? 1) !== 1) {
         continue;
     }
 
@@ -157,7 +157,10 @@ $procuracoes = [
 ];
 
 foreach ($clientes as $cliente) {
-    if (!empty($cliente['pendencia_certificado_digital'])) {
+    $clienteContabil = (int)($cliente['cliente_contabil'] ?? 1) === 1;
+    $controlaCertificado = (int)($cliente['servico_certificado'] ?? 1) === 1;
+
+    if ($controlaCertificado && !empty($cliente['pendencia_certificado_digital'])) {
         adicionarPendencia(
             $pendencias,
             $resumo,
@@ -170,12 +173,16 @@ foreach ($clientes as $cliente) {
         );
     }
 
-    if (empty($cliente['vencimento_certificado'])) {
+    if ($controlaCertificado && empty($cliente['vencimento_certificado'])) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado digital não informado', 'Não possui', 'danger', null, null, modalCertificado($cliente));
-    } elseif ($cliente['vencimento_certificado'] < $hoje) {
+    } elseif ($controlaCertificado && $cliente['vencimento_certificado'] < $hoje) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado digital vencido em ' . dataBr($cliente['vencimento_certificado']), 'Vencido', 'danger', null, null, modalCertificado($cliente));
-    } elseif ($cliente['vencimento_certificado'] <= $limiteAlerta) {
+    } elseif ($controlaCertificado && $cliente['vencimento_certificado'] <= $limiteAlerta) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado vence em ' . dataBr($cliente['vencimento_certificado']), 'A vencer', 'warning', null, null, modalCertificado($cliente));
+    }
+
+    if (!$clienteContabil) {
+        continue;
     }
 
     foreach ($procuracoes as $procuracao) {
@@ -294,7 +301,7 @@ try {
         FROM clientes c
         LEFT JOIN cliente_alvaras ca ON ca.cliente_id = c.id
         WHERE c.alvara = 'possui'
-          AND COALESCE(c.tipo_atendimento, 'completo') <> 'somente_parcelamento'
+          AND c.cliente_contabil = 1
         GROUP BY c.id, c.codigo, c.nome, c.documento
         HAVING total_preenchido < 8
         ORDER BY CAST(c.codigo AS UNSIGNED) ASC, c.nome ASC
@@ -328,7 +335,7 @@ try {
         WHERE ca.situacao = 'com_vencimento'
           AND ca.vencimento IS NOT NULL
           AND ca.vencimento <= " . $pdo->quote($limiteAlerta) . "
-          AND COALESCE(c.tipo_atendimento, 'completo') <> 'somente_parcelamento'
+          AND c.cliente_contabil = 1
         ORDER BY ca.vencimento ASC
     ");
 
