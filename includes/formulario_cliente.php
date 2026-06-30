@@ -234,7 +234,7 @@ $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
     </div>
 </div>
 
-<div class="border rounded p-3 mb-3">
+<div class="border rounded p-3 mb-3 secao-servicos-avulsos">
     <h6 class="mb-3 fw-bold">Serviços acompanhados</h6>
     <input type="hidden" name="possui_parcelamento" id="possui_parcelamento" value="<?= $servicoParcelamentoAtual ? 'possui' : 'nao_possui' ?>">
 

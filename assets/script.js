@@ -817,8 +817,21 @@ function atualizarVinculoServicos() {
     }
 
     const clienteContabil = campoClienteContabil.value === '1';
-    const servicoParcelamento = document.getElementById('servico_parcelamento').checked;
-    const servicoCertificado = document.getElementById('servico_certificado').checked;
+    const criandoCliente = ($('#id').val() || '') === '';
+    const campoServicoParcelamento = document.getElementById('servico_parcelamento');
+    const campoServicoCertificado = document.getElementById('servico_certificado');
+
+    document.querySelectorAll('.secao-servicos-avulsos').forEach(function (bloco) {
+        bloco.classList.toggle('d-none', clienteContabil);
+    });
+
+    if (clienteContabil && criandoCliente) {
+        campoServicoParcelamento.checked = false;
+        campoServicoCertificado.checked = false;
+    }
+
+    const servicoParcelamento = campoServicoParcelamento.checked;
+    const servicoCertificado = campoServicoCertificado.checked;
 
     document.querySelectorAll('.secao-cliente-contabil, .campo-cliente-contabil').forEach(function (bloco) {
         bloco.classList.toggle('d-none', !clienteContabil);

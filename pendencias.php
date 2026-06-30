@@ -979,6 +979,7 @@ $limiteGraficoPendencias = 15;
             const linha = botao.closest('.linha-pendencia');
             atualizarResumoPendencia(linha);
             linha.remove();
+            window.dispatchEvent(new Event('pendencias:atualizar'));
 
             if (document.querySelectorAll('.linha-pendencia').length === 0) {
                 const tbody = document.querySelector('table tbody');

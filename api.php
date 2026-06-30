@@ -285,6 +285,11 @@ if ($action === 'create' || $action === 'update') {
 
     $cliente_contabil = (int)$cliente_contabil_enviado;
 
+    if ($action === 'create' && $cliente_contabil === 1) {
+        $servico_parcelamento = 0;
+        $servico_certificado = 0;
+    }
+
     if ($cliente_contabil === 0 && !$servico_parcelamento && !$servico_certificado) {
         echo 'servico_avulso_obrigatorio';
         exit;

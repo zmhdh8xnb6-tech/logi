@@ -13,6 +13,28 @@
     </div>
 
     <nav class="sidebar-menu">
+        <?php if (usuarioPode('pendencias')): ?>
+            <?php $urlBaseNotificacoes = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\'); ?>
+            <div
+                class="sidebar-notification-item"
+                id="appNotificationCenter"
+                data-api-url="<?= htmlspecialchars($urlBaseNotificacoes . '/api_notificacoes.php') ?>"
+                data-user-id="<?= (int)($_SESSION['usuario_id'] ?? 0) ?>">
+                <button
+                    type="button"
+                    class="sidebar-link sidebar-notification-link"
+                    id="notificationBell"
+                    data-label="Notificações"
+                    title="Notificações"
+                    aria-label="Abrir notificações"
+                    aria-expanded="false">
+                    <i class="bi bi-bell"></i>
+                    <span>Notificações</span>
+                    <strong class="notification-count d-none" id="notificationCount">0</strong>
+                </button>
+            </div>
+        <?php endif; ?>
+
         <a href="home.php" class="sidebar-link" data-label="Início">
             <i class="bi bi-house"></i>
             <span>Início</span>
@@ -80,3 +102,29 @@
         </a>
     </div>
 </div>
+
+<?php if (usuarioPode('pendencias')): ?>
+    <div class="notification-panel d-none" id="notificationPanel">
+        <div class="notification-panel-header">Notificações</div>
+        <div class="notification-panel-body">
+            <strong id="notificationPanelTitle">Consultando...</strong>
+            <span id="notificationPanelText">Aguarde a atualização.</span>
+        </div>
+        <a href="pendencias.php" class="notification-panel-link">
+            Ver pendências
+            <i class="bi bi-arrow-right"></i>
+        </a>
+    </div>
+
+    <div class="notification-toast d-none" id="notificationToast" role="status" aria-live="polite">
+        <i class="bi bi-exclamation-triangle"></i>
+        <div>
+            <strong id="notificationToastTitle"></strong>
+            <span>Consulte a lista para verificar o que precisa ser resolvido.</span>
+        </div>
+        <a href="pendencias.php">Ver</a>
+        <button type="button" id="notificationToastClose" title="Fechar" aria-label="Fechar">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+<?php endif; ?>
