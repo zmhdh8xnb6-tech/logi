@@ -417,7 +417,7 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
 
                         <div id="grupoOrgaosAlvara" class="d-none">
                             <h6 class="fw-bold mb-1">Órgãos e vencimentos</h6>
-                            <p class="text-muted small">Para cada órgão, informe o vencimento ou marque como dispensado.</p>
+                            <p class="text-muted small">Para cada órgão, informe o vencimento, marque como dispensado ou em estudo.</p>
 
                             <div class="table-responsive">
                                 <table class="table align-middle modal-alvaras-tabela mb-0">
@@ -441,6 +441,7 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                                                         <option value="">Selecione</option>
                                                         <option value="com_vencimento">Com vencimento</option>
                                                         <option value="dispensado">Dispensado</option>
+                                                        <option value="em_estudo">Em estudo</option>
                                                     </select>
                                                     <div class="invalid-feedback">Informe a situação.</div>
                                                 </td>
@@ -711,7 +712,8 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
             const lista = document.getElementById('listaConsultaOrgaos');
             let totalVencimentos = 0;
             let totalDispensados = 0;
-            let totalPendentes = 0;
+            let totalEmEstudo = 0;
+            let totalNaoInformados = 0;
 
             document.getElementById('modalConsultaCliente').textContent = botao.dataset.cliente;
             lista.innerHTML = '';
@@ -720,24 +722,26 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                 const alvara = alvaras[codigo] || {};
                 const possuiVencimento = alvara.situacao === 'com_vencimento';
                 const dispensado = alvara.situacao === 'dispensado';
+                const emEstudo = alvara.situacao === 'em_estudo';
                 const partesNome = partesNomeOrgao(nome);
                 const textoSituacao = possuiVencimento ?
                     'Com vencimento' :
-                    (dispensado ? 'Dispensado' : 'Não informado');
+                    (dispensado ? 'Dispensado' : (emEstudo ? 'Em estudo' : 'Não informado'));
                 const classeSituacao = possuiVencimento ?
                     'bg-primary' :
-                    (dispensado ? 'bg-success' : 'bg-danger');
+                    (dispensado ? 'bg-success' : (emEstudo ? 'bg-warning text-dark' : 'bg-danger'));
                 const prazo = possuiVencimento ?
                     prazoVencimento(alvara.vencimento) :
                     {
                         texto: dispensado ? 'Não se aplica' : 'Pendente',
-                        classe: dispensado ? 'bg-secondary' : 'bg-danger'
+                        classe: dispensado ? 'bg-secondary' : (emEstudo ? 'bg-warning text-dark' : 'bg-danger')
                     };
                 const linha = document.createElement('tr');
 
                 totalVencimentos += possuiVencimento ? 1 : 0;
                 totalDispensados += dispensado ? 1 : 0;
-                totalPendentes += !possuiVencimento && !dispensado ? 1 : 0;
+                totalEmEstudo += emEstudo ? 1 : 0;
+                totalNaoInformados += !possuiVencimento && !dispensado && !emEstudo ? 1 : 0;
 
                 linha.innerHTML =
                     '<td><span class="consulta-orgao-sigla"></span><span class="consulta-orgao-nome"></span></td>' +
@@ -754,8 +758,12 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                 totalDispensados + (totalDispensados === 1 ? ' dispensado' : ' dispensados')
             ];
 
-            if (totalPendentes > 0) {
-                partesResumo.push(totalPendentes + (totalPendentes === 1 ? ' pendente' : ' pendentes'));
+            if (totalEmEstudo > 0) {
+                partesResumo.push(totalEmEstudo + (totalEmEstudo === 1 ? ' em estudo' : ' em estudo'));
+            }
+
+            if (totalNaoInformados > 0) {
+                partesResumo.push(totalNaoInformados + (totalNaoInformados === 1 ? ' não informado' : ' não informados'));
             }
 
             document.getElementById('resumoConsultaOrgaos').textContent = partesResumo.join(' • ');

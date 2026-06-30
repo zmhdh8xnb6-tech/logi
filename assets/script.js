@@ -162,7 +162,7 @@ $(document).ready(function () {
 
                 } else if (resp.trim() === 'alvaras_incompletos') {
 
-                    mostrarAviso('Preencha todos os órgãos do alvará com vencimento ou como dispensado.');
+                    mostrarAviso('Preencha todos os órgãos do alvará com vencimento, como dispensado ou em estudo.');
 
                 } else if (resp.trim() === 'servico_avulso_obrigatorio') {
 
@@ -278,7 +278,7 @@ $(document).ready(function () {
     });
 
     $(document).on('change', '.controle-com-vencimento', function () {
-        atualizarCampoVencimentoControle(this);
+        atualizarCampoVencimentoControle(this, true);
     });
 
     const controlesConferencia = {
@@ -376,16 +376,16 @@ $(document).ready(function () {
 
 });
 
-function atualizarCampoVencimentoControle(campoSituacao) {
+function atualizarCampoVencimentoControle(campoSituacao, darFoco = false) {
     const campoVencimento = document.getElementById(campoSituacao.dataset.vencimento);
     const possui = campoSituacao.value === 'possui';
 
     campoVencimento.disabled = !possui;
     campoVencimento.required = possui;
 
-    if (possui) {
+    if (possui && darFoco) {
         campoVencimento.focus();
-    } else {
+    } else if (!possui) {
         campoVencimento.value = '';
         campoVencimento.classList.remove('is-invalid');
     }

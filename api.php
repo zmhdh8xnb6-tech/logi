@@ -97,7 +97,7 @@ function salvarAlvarasCliente(PDO $pdo, int $clienteId, string $situacaoAlvara, 
     foreach ($orgaos as $codigo => $nome) {
         $situacao = $dados[$codigo]['situacao'] ?? '';
 
-        if (!in_array($situacao, ['com_vencimento', 'dispensado'], true)) {
+        if (!in_array($situacao, ['com_vencimento', 'dispensado', 'em_estudo'], true)) {
             continue;
         }
 
@@ -385,7 +385,7 @@ if ($action === 'create' || $action === 'update') {
             $situacao = $alvaras[$codigoOrgao]['situacao'] ?? '';
             $vencimento = $alvaras[$codigoOrgao]['vencimento'] ?? null;
 
-            if (!in_array($situacao, ['com_vencimento', 'dispensado'], true)) {
+            if (!in_array($situacao, ['com_vencimento', 'dispensado', 'em_estudo'], true)) {
                 echo 'alvaras_incompletos';
                 exit;
             }

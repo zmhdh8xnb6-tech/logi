@@ -214,8 +214,17 @@ $paginaRetorno = $clienteContabil ? 'clientes.php' : 'servicos_avulsos.php';
                                 <?php foreach ($alvarasCliente as $alvaraCliente): ?>
                                     <tr>
                                         <td><?= htmlspecialchars($alvaraCliente['orgao_nome']) ?></td>
-                                        <td><?= $alvaraCliente['situacao'] === 'dispensado' ? 'Dispensado' : 'Com vencimento' ?></td>
-                                        <td><?= $alvaraCliente['situacao'] === 'dispensado' ? '-' : htmlspecialchars($formatarData($alvaraCliente['vencimento'])) ?></td>
+                                        <td>
+                                            <?php
+                                            $textoSituacaoAlvara = [
+                                                'com_vencimento' => 'Com vencimento',
+                                                'dispensado' => 'Dispensado',
+                                                'em_estudo' => 'Em estudo',
+                                            ][$alvaraCliente['situacao']] ?? 'Não informado';
+                                            ?>
+                                            <?= htmlspecialchars($textoSituacaoAlvara) ?>
+                                        </td>
+                                        <td><?= $alvaraCliente['situacao'] === 'com_vencimento' ? htmlspecialchars($formatarData($alvaraCliente['vencimento'])) : '-' ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>

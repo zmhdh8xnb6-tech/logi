@@ -316,7 +316,7 @@ try {
             $resumo,
             $clienteCompleto,
             'Alvará',
-            $faltantes . ($faltantes === 1 ? ' órgão sem vencimento ou dispensa' : ' órgãos sem vencimento ou dispensa'),
+            $faltantes . ($faltantes === 1 ? ' órgão não informado ou em estudo' : ' órgãos não informados ou em estudo'),
             'Incompleto',
             'danger',
             null,
@@ -772,7 +772,7 @@ $limiteGraficoPendencias = 15;
 
                         <div id="grupoPendenciaOrgaosAlvara" class="d-none">
                             <h6 class="fw-bold mb-1">Órgãos e vencimentos</h6>
-                            <p class="text-muted small">Para cada órgão, informe o vencimento ou marque como dispensado.</p>
+                            <p class="text-muted small">Para cada órgão, informe o vencimento, marque como dispensado ou em estudo.</p>
 
                             <div class="table-responsive">
                                 <table class="table align-middle tabela-pendencia-alvara mb-0">
@@ -796,6 +796,7 @@ $limiteGraficoPendencias = 15;
                                                         <option value="">Selecione</option>
                                                         <option value="com_vencimento">Com vencimento</option>
                                                         <option value="dispensado">Dispensado</option>
+                                                        <option value="em_estudo">Em estudo</option>
                                                     </select>
                                                     <div class="invalid-feedback">Informe a situação.</div>
                                                 </td>

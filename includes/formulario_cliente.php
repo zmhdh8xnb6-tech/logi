@@ -335,7 +335,7 @@ $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
             <div class="modal-header">
                 <div>
                     <h5 class="modal-title">Órgãos e vencimentos dos alvarás</h5>
-                    <small class="text-muted">Todos os órgãos devem ser preenchidos: informe o vencimento ou marque como dispensado.</small>
+                    <small class="text-muted">Todos os órgãos devem ser preenchidos: informe o vencimento, marque como dispensado ou em estudo.</small>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
             </div>
@@ -371,6 +371,7 @@ $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
                                             <option value="" <?= $situacaoAtual === '' ? 'selected' : '' ?>>Não informado</option>
                                             <option value="com_vencimento" <?= $situacaoAtual === 'com_vencimento' ? 'selected' : '' ?>>Com vencimento</option>
                                             <option value="dispensado" <?= $situacaoAtual === 'dispensado' ? 'selected' : '' ?>>Dispensado</option>
+                                            <option value="em_estudo" <?= $situacaoAtual === 'em_estudo' ? 'selected' : '' ?>>Em estudo</option>
                                         </select>
                                     </td>
                                     <td>

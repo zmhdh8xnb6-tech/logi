@@ -2,6 +2,8 @@
 require 'config.php';
 require 'includes/parcelamentos_funcoes.php';
 
+exigirPermissao('parcelamentos');
+
 $orgaosPermitidos = [
     'Simples Nacional' => 'parcelamento_simples.php',
     'Previdência Social e Tributos' => 'parcelamento_tributos.php',
@@ -75,6 +77,15 @@ ORDER BY CAST(codigo AS UNSIGNED) ASC
 ");
 
 $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$clienteSelecionadoTexto = '';
+
+foreach ($clientes as $clienteLista) {
+    if ((int)$clienteLista['id'] === $clienteSelecionadoId) {
+        $clienteSelecionadoTexto = $clienteLista['codigo'] . ' - ' . $clienteLista['nome'];
+        break;
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -126,30 +137,33 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 Cliente
                             </label>
 
-                            <select
-                                class="form-select"
+                            <input
+                                type="search"
+                                class="form-control"
+                                id="cliente_busca"
+                                list="lista_clientes"
+                                value="<?= htmlspecialchars($clienteSelecionadoTexto) ?>"
+                                placeholder="Digite o código ou o nome"
+                                autocomplete="off">
+
+                            <input
+                                type="hidden"
                                 name="cliente_id"
-                                id="cliente_id">
+                                id="cliente_id"
+                                value="<?= $clienteSelecionadoId > 0 ? $clienteSelecionadoId : '' ?>">
 
-                                <option value="">
-                                    Selecione
-                                </option>
-
+                            <datalist id="lista_clientes">
                                 <?php foreach ($clientes as $c): ?>
-
                                     <option
-                                        value="<?= $c['id'] ?>"
-                                        <?= (int)$c['id'] === $clienteSelecionadoId ? 'selected' : '' ?>>
-
-                                        <?= $c['codigo'] ?>
-                                        -
-                                        <?= htmlspecialchars($c['nome']) ?>
-
+                                        value="<?= htmlspecialchars($c['codigo'] . ' - ' . $c['nome']) ?>"
+                                        data-id="<?= (int)$c['id'] ?>">
                                     </option>
-
                                 <?php endforeach; ?>
+                            </datalist>
 
-                            </select>
+                            <div class="invalid-feedback">
+                                Selecione um cliente da lista.
+                            </div>
 
                         </div>
 
@@ -341,6 +355,25 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             'parcelas_atrasadas'
         ];
 
+        const campoBuscaCliente = document.getElementById('cliente_busca');
+        const campoClienteId = document.getElementById('cliente_id');
+        const opcoesClientes = Array.from(document.querySelectorAll('#lista_clientes option'));
+
+        function sincronizarClienteSelecionado() {
+            const opcaoSelecionada = opcoesClientes.find(function(opcao) {
+                return opcao.value === campoBuscaCliente.value;
+            });
+
+            campoClienteId.value = opcaoSelecionada ? opcaoSelecionada.dataset.id : '';
+            campoBuscaCliente.classList.toggle(
+                'is-invalid',
+                campoBuscaCliente.value !== '' && !opcaoSelecionada
+            );
+        }
+
+        campoBuscaCliente.addEventListener('input', sincronizarClienteSelecionado);
+        campoBuscaCliente.addEventListener('change', sincronizarClienteSelecionado);
+
         camposParcelamento.forEach(function(id) {
             const campo = document.getElementById(id);
 
@@ -373,7 +406,8 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 }
 
                 if (!campo.value.trim()) {
-                    campo.classList.add('is-invalid');
+                    const campoComErro = id === 'cliente_id' ? campoBuscaCliente : campo;
+                    campoComErro.classList.add('is-invalid');
                     valido = false;
                 }
             });

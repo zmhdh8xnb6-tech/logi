@@ -87,8 +87,8 @@ if ($situacaoAlvara === 'possui') {
         $situacao = $alvaras[$codigo]['situacao'] ?? '';
         $vencimento = trim($alvaras[$codigo]['vencimento'] ?? '');
 
-        if (!in_array($situacao, ['com_vencimento', 'dispensado'], true)) {
-            responderAlvara(false, 'Informe o vencimento ou a dispensa de todos os órgãos.');
+        if (!in_array($situacao, ['com_vencimento', 'dispensado', 'em_estudo'], true)) {
+            responderAlvara(false, 'Informe o vencimento, a dispensa ou marque como em estudo em todos os órgãos.');
         }
 
         if ($situacao === 'com_vencimento' && !dataAlvaraValida($vencimento)) {
