@@ -137,14 +137,51 @@ foreach ($clientes as $clienteLista) {
                                 Cliente
                             </label>
 
-                            <input
-                                type="search"
-                                class="form-control"
-                                id="cliente_busca"
-                                list="lista_clientes"
-                                value="<?= htmlspecialchars($clienteSelecionadoTexto) ?>"
-                                placeholder="Digite o código ou o nome"
-                                autocomplete="off">
+                            <div class="cliente-seletor" id="clienteSeletor">
+                                <button
+                                    type="button"
+                                    class="form-select text-start"
+                                    id="clienteSeletorBotao"
+                                    aria-haspopup="listbox"
+                                    aria-expanded="false">
+                                    <span id="clienteSeletorTexto">
+                                        <?= $clienteSelecionadoTexto !== '' ? htmlspecialchars($clienteSelecionadoTexto) : 'Selecione' ?>
+                                    </span>
+                                </button>
+
+                                <div class="cliente-seletor-menu d-none" id="clienteSeletorMenu">
+                                    <div class="cliente-seletor-busca">
+                                        <i class="bi bi-search"></i>
+                                        <input
+                                            type="search"
+                                            class="form-control"
+                                            id="cliente_busca"
+                                            placeholder="Digite o código ou a razão social"
+                                            autocomplete="off">
+                                    </div>
+
+                                    <div class="cliente-seletor-opcoes" id="clienteSeletorOpcoes" role="listbox">
+                                        <?php foreach ($clientes as $c):
+                                            $textoCliente = $c['codigo'] . ' - ' . $c['nome'];
+                                        ?>
+                                            <button
+                                                type="button"
+                                                class="cliente-seletor-opcao<?= (int)$c['id'] === $clienteSelecionadoId ? ' selecionado' : '' ?>"
+                                                data-id="<?= (int)$c['id'] ?>"
+                                                data-texto="<?= htmlspecialchars($textoCliente) ?>"
+                                                role="option"
+                                                aria-selected="<?= (int)$c['id'] === $clienteSelecionadoId ? 'true' : 'false' ?>">
+                                                <strong><?= htmlspecialchars($c['codigo']) ?></strong>
+                                                <span><?= htmlspecialchars($c['nome']) ?></span>
+                                            </button>
+                                        <?php endforeach; ?>
+
+                                        <div class="cliente-seletor-vazio d-none" id="clienteSeletorVazio">
+                                            Nenhum cliente encontrado.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
 
                             <input
                                 type="hidden"
@@ -152,16 +189,7 @@ foreach ($clientes as $clienteLista) {
                                 id="cliente_id"
                                 value="<?= $clienteSelecionadoId > 0 ? $clienteSelecionadoId : '' ?>">
 
-                            <datalist id="lista_clientes">
-                                <?php foreach ($clientes as $c): ?>
-                                    <option
-                                        value="<?= htmlspecialchars($c['codigo'] . ' - ' . $c['nome']) ?>"
-                                        data-id="<?= (int)$c['id'] ?>">
-                                    </option>
-                                <?php endforeach; ?>
-                            </datalist>
-
-                            <div class="invalid-feedback">
+                            <div class="invalid-feedback" id="clienteFeedback">
                                 Selecione um cliente da lista.
                             </div>
 
@@ -355,24 +383,93 @@ foreach ($clientes as $clienteLista) {
             'parcelas_atrasadas'
         ];
 
+        const seletorCliente = document.getElementById('clienteSeletor');
+        const botaoCliente = document.getElementById('clienteSeletorBotao');
+        const textoBotaoCliente = document.getElementById('clienteSeletorTexto');
+        const menuCliente = document.getElementById('clienteSeletorMenu');
         const campoBuscaCliente = document.getElementById('cliente_busca');
         const campoClienteId = document.getElementById('cliente_id');
-        const opcoesClientes = Array.from(document.querySelectorAll('#lista_clientes option'));
+        const feedbackCliente = document.getElementById('clienteFeedback');
+        const avisoClienteVazio = document.getElementById('clienteSeletorVazio');
+        const opcoesClientes = Array.from(document.querySelectorAll('.cliente-seletor-opcao'));
 
-        function sincronizarClienteSelecionado() {
-            const opcaoSelecionada = opcoesClientes.find(function(opcao) {
-                return opcao.value === campoBuscaCliente.value;
-            });
-
-            campoClienteId.value = opcaoSelecionada ? opcaoSelecionada.dataset.id : '';
-            campoBuscaCliente.classList.toggle(
-                'is-invalid',
-                campoBuscaCliente.value !== '' && !opcaoSelecionada
-            );
+        function normalizarBusca(texto) {
+            return texto
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .trim();
         }
 
-        campoBuscaCliente.addEventListener('input', sincronizarClienteSelecionado);
-        campoBuscaCliente.addEventListener('change', sincronizarClienteSelecionado);
+        function filtrarClientes() {
+            const busca = normalizarBusca(campoBuscaCliente.value);
+            let totalVisivel = 0;
+
+            opcoesClientes.forEach(function(opcao) {
+                const visivel = normalizarBusca(opcao.dataset.texto).includes(busca);
+                opcao.classList.toggle('d-none', !visivel);
+                totalVisivel += visivel ? 1 : 0;
+            });
+
+            avisoClienteVazio.classList.toggle('d-none', totalVisivel > 0);
+        }
+
+        function abrirListaClientes() {
+            menuCliente.classList.remove('d-none');
+            botaoCliente.setAttribute('aria-expanded', 'true');
+            campoBuscaCliente.value = '';
+            filtrarClientes();
+            campoBuscaCliente.focus();
+        }
+
+        function fecharListaClientes() {
+            menuCliente.classList.add('d-none');
+            botaoCliente.setAttribute('aria-expanded', 'false');
+        }
+
+        function selecionarCliente(opcao) {
+            campoClienteId.value = opcao.dataset.id;
+            textoBotaoCliente.textContent = opcao.dataset.texto;
+            botaoCliente.classList.remove('is-invalid');
+            feedbackCliente.classList.remove('d-block');
+
+            opcoesClientes.forEach(function(item) {
+                const selecionado = item === opcao;
+                item.classList.toggle('selecionado', selecionado);
+                item.setAttribute('aria-selected', selecionado ? 'true' : 'false');
+            });
+
+            fecharListaClientes();
+        }
+
+        botaoCliente.addEventListener('click', function() {
+            if (menuCliente.classList.contains('d-none')) {
+                abrirListaClientes();
+            } else {
+                fecharListaClientes();
+            }
+        });
+
+        campoBuscaCliente.addEventListener('input', filtrarClientes);
+
+        opcoesClientes.forEach(function(opcao) {
+            opcao.addEventListener('click', function() {
+                selecionarCliente(opcao);
+            });
+        });
+
+        document.addEventListener('click', function(event) {
+            if (!seletorCliente.contains(event.target)) {
+                fecharListaClientes();
+            }
+        });
+
+        campoBuscaCliente.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                fecharListaClientes();
+                botaoCliente.focus();
+            }
+        });
 
         camposParcelamento.forEach(function(id) {
             const campo = document.getElementById(id);
@@ -406,8 +503,13 @@ foreach ($clientes as $clienteLista) {
                 }
 
                 if (!campo.value.trim()) {
-                    const campoComErro = id === 'cliente_id' ? campoBuscaCliente : campo;
+                    const campoComErro = id === 'cliente_id' ? botaoCliente : campo;
                     campoComErro.classList.add('is-invalid');
+
+                    if (id === 'cliente_id') {
+                        feedbackCliente.classList.add('d-block');
+                    }
+
                     valido = false;
                 }
             });
