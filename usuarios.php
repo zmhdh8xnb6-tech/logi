@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $telefone = trim($_POST['telefone'] ?? '');
     $departamento = trim($_POST['departamento'] ?? '');
-    $tipo = $_POST['tipo'] === 'admin' ? 'admin' : 'usuario';
+    $tipo = ($_POST['tipo'] ?? '') === 'admin' ? 'admin' : 'usuario';
     $ativo = isset($_POST['ativo']) ? 1 : 0;
     $senha = $_POST['senha'] ?? '';
     $permissoes = $_POST['permissoes'] ?? [];
@@ -26,7 +26,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $permissoesJson = json_encode($permissoes, JSON_UNESCAPED_UNICODE);
 
-    if ($nome === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    if ($acao === 'excluir') {
+        if (!usuarioEhAdmin()) {
+            $mensagem = 'Somente administradores podem excluir usuários.';
+            $tipoMensagem = 'danger';
+        } elseif ($id === (int)($_SESSION['usuario_id'] ?? 0)) {
+            $mensagem = 'Você não pode excluir a própria conta enquanto está conectado.';
+            $tipoMensagem = 'danger';
+        } else {
+            $stmtUsuario = $pdo->prepare("SELECT id, tipo FROM usuarios WHERE id = ?");
+            $stmtUsuario->execute([$id]);
+            $usuarioExcluir = $stmtUsuario->fetch(PDO::FETCH_ASSOC);
+
+            if (!$usuarioExcluir) {
+                $mensagem = 'Usuário não encontrado.';
+                $tipoMensagem = 'danger';
+            } else {
+                $podeExcluir = true;
+
+                if ($usuarioExcluir['tipo'] === 'admin') {
+                    $totalAdministradores = (int)$pdo
+                        ->query("SELECT COUNT(*) FROM usuarios WHERE tipo = 'admin'")
+                        ->fetchColumn();
+
+                    if ($totalAdministradores <= 1) {
+                        $mensagem = 'Não é possível excluir o último administrador do sistema.';
+                        $tipoMensagem = 'danger';
+                        $podeExcluir = false;
+                    }
+                }
+
+                if ($podeExcluir) {
+                    try {
+                        $stmtExcluir = $pdo->prepare("DELETE FROM usuarios WHERE id = ?");
+                        $stmtExcluir->execute([$id]);
+                        $mensagem = 'Usuário excluído com sucesso.';
+                    } catch (PDOException $e) {
+                        $mensagem = 'Não foi possível excluir o usuário.';
+                        $tipoMensagem = 'danger';
+                    }
+                }
+            }
+        }
+    } elseif ($nome === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $mensagem = 'Informe nome e e-mail válido.';
         $tipoMensagem = 'danger';
     } elseif ($acao === 'criar') {
@@ -262,13 +304,31 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                         </span>
                                     </td>
                                     <td class="text-end">
-                                        <button
-                                            type="button"
-                                            class="btn btn-outline-primary btn-sm btn-editar-usuario"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#modalEditarUsuario<?= (int)$usuario['id'] ?>">
-                                            <i class="bi bi-pencil"></i>
-                                        </button>
+                                        <div class="d-inline-flex gap-1">
+                                            <button
+                                                type="button"
+                                                class="btn btn-outline-primary btn-sm btn-editar-usuario"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#modalEditarUsuario<?= (int)$usuario['id'] ?>"
+                                                title="Editar usuário"
+                                                aria-label="Editar usuário">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+
+                                            <?php if (usuarioEhAdmin() && (int)$usuario['id'] !== (int)($_SESSION['usuario_id'] ?? 0)): ?>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-outline-danger btn-sm btn-excluir-usuario"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#modalExcluirUsuario"
+                                                    data-usuario-id="<?= (int)$usuario['id'] ?>"
+                                                    data-usuario-nome="<?= htmlspecialchars($usuario['nome']) ?>"
+                                                    title="Excluir usuário"
+                                                    aria-label="Excluir usuário">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
                                 </tr>
 
@@ -383,6 +443,43 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
     </main>
 
+    <?php if (usuarioEhAdmin()): ?>
+        <div class="modal fade" id="modalExcluirUsuario" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Excluir usuário</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <p class="mb-2">
+                            Tem certeza que deseja excluir
+                            <strong id="nomeUsuarioExcluir"></strong>?
+                        </p>
+                        <small class="text-danger">
+                            Essa ação apaga o acesso definitivamente e não poderá ser desfeita.
+                        </small>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            Não
+                        </button>
+
+                        <form method="post" id="formExcluirUsuario">
+                            <input type="hidden" name="acao" value="excluir">
+                            <input type="hidden" name="id" id="idUsuarioExcluir">
+                            <button type="submit" class="btn btn-danger">
+                                <i class="bi bi-trash"></i> Sim, excluir
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         setTimeout(function() {
@@ -407,6 +504,13 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 document.querySelectorAll(this.dataset.target + ' input[type="checkbox"]').forEach(function(campo) {
                     campo.checked = false;
                 });
+            });
+        });
+
+        document.querySelectorAll('.btn-excluir-usuario').forEach(function(botao) {
+            botao.addEventListener('click', function() {
+                document.getElementById('idUsuarioExcluir').value = this.dataset.usuarioId;
+                document.getElementById('nomeUsuarioExcluir').textContent = this.dataset.usuarioNome;
             });
         });
 
