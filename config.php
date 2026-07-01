@@ -26,9 +26,11 @@ if ($ambiente === 'localhost' || $ambiente === '127.0.0.1') {
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$db;charset=utf8mb4", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->exec("SET time_zone = '-03:00'");
 
     $conn = new mysqli($host, $user, $pass, $db);
     $conn->set_charset('utf8mb4');
+    $conn->query("SET time_zone = '-03:00'");
 
     atualizarSessaoUsuario($pdo);
 } catch (PDOException $e) {

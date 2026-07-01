@@ -121,9 +121,10 @@ function registrarAuditoria(
                 dados_depois,
                 endereco_ip,
                 user_agent,
-                url
+                url,
+                criado_em
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $usuarioId,
@@ -142,6 +143,7 @@ function registrarAuditoria(
             auditoriaCortar($_SERVER['REMOTE_ADDR'] ?? '', 45),
             auditoriaCortar($_SERVER['HTTP_USER_AGENT'] ?? '', 500),
             auditoriaCortar($_SERVER['REQUEST_URI'] ?? ($_SERVER['SCRIPT_NAME'] ?? ''), 500),
+            date('Y-m-d H:i:s'),
         ]);
     } catch (Throwable $e) {
         // A auditoria nunca deve impedir a operação principal do sistema.
