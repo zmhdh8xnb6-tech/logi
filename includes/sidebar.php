@@ -54,6 +54,13 @@
             </a>
         <?php endif; ?>
 
+        <?php if (usuarioPode('financeiro')): ?>
+            <a href="financeiro.php" class="sidebar-link" data-label="Financeiro">
+                <i class="bi bi-wallet2"></i>
+                <span>Financeiro</span>
+            </a>
+        <?php endif; ?>
+
         <?php if (usuarioPode('certificados')): ?>
             <a href="certificados.php" class="sidebar-link" data-label="Certificado Digital">
                 <i class="bi bi-file-earmark-text"></i>

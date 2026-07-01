@@ -1,0 +1,946 @@
+<?php
+require 'config.php';
+require 'includes/financeiro_funcoes.php';
+
+exigirPermissao('financeiro');
+
+$usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
+$cartaoSelecionadoId = (int)($_GET['cartao'] ?? $_POST['cartao_retorno'] ?? 0);
+$tabelasDisponiveis = financeiroTabelasDisponiveis(
+    $pdo,
+    ['financeiro_cartoes', 'financeiro_cartao_lancamentos']
+);
+
+function urlCartoes(int $cartaoId = 0): string
+{
+    return 'financeiro_cartoes.php' . ($cartaoId > 0 ? '?cartao=' . $cartaoId : '');
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $urlRetorno = urlCartoes($cartaoSelecionadoId);
+
+    if (!$tabelasDisponiveis) {
+        financeiroRedirecionar($urlRetorno, 'Execute o SQL do financeiro antes de cadastrar.', 'danger');
+    }
+
+    if (!financeiroTokenValido($_POST['csrf_token'] ?? null)) {
+        financeiroRedirecionar($urlRetorno, 'A sessão do formulário expirou. Tente novamente.', 'danger');
+    }
+
+    $acao = $_POST['acao'] ?? '';
+    $id = (int)($_POST['id'] ?? 0);
+
+    if ($acao === 'salvar_cartao') {
+        $nome = trim($_POST['nome'] ?? '');
+        $limite = financeiroValorEntrada($_POST['limite_total'] ?? '');
+        $tipo = ($_POST['tipo'] ?? '') === 'loja' ? 'loja' : 'credito';
+        $diaVencimento = (int)($_POST['dia_vencimento'] ?? 0);
+        $diaVencimento = $diaVencimento >= 1 && $diaVencimento <= 31 ? $diaVencimento : null;
+
+        if ($nome === '' || $limite <= 0) {
+            financeiroRedirecionar($urlRetorno, 'Informe o nome e o limite do cartão.', 'danger');
+        }
+
+        if ($id > 0) {
+            $stmt = $pdo->prepare("
+                SELECT COALESCE(SUM(valor), 0)
+                FROM financeiro_cartao_lancamentos
+                WHERE cartao_id = ? AND usuario_id = ? AND status = 'aberto'
+            ");
+            $stmt->execute([$id, $usuarioId]);
+            $totalEmAberto = (float)$stmt->fetchColumn();
+
+            if ($limite < $totalEmAberto) {
+                financeiroRedirecionar(
+                    $urlRetorno,
+                    'O limite não pode ser menor que o total de compras em aberto.',
+                    'danger'
+                );
+            }
+
+            $stmt = $pdo->prepare("
+                UPDATE financeiro_cartoes
+                SET nome = ?, limite_total = ?, tipo = ?, dia_vencimento = ?
+                WHERE id = ? AND usuario_id = ?
+            ");
+            $stmt->execute([$nome, $limite, $tipo, $diaVencimento, $id, $usuarioId]);
+            financeiroRedirecionar(urlCartoes($id), 'Cartão atualizado com sucesso.');
+        }
+
+        $stmt = $pdo->prepare("
+            INSERT INTO financeiro_cartoes
+                (usuario_id, nome, limite_total, tipo, dia_vencimento, ativo)
+            VALUES (?, ?, ?, ?, ?, 1)
+        ");
+        $stmt->execute([$usuarioId, $nome, $limite, $tipo, $diaVencimento]);
+        $novoId = (int)$pdo->lastInsertId();
+        financeiroRedirecionar(urlCartoes($novoId), 'Cartão cadastrado com sucesso.');
+    }
+
+    if ($acao === 'excluir_cartao') {
+        $pdo->beginTransaction();
+
+        try {
+            $stmt = $pdo->prepare("
+                DELETE FROM financeiro_cartao_lancamentos
+                WHERE cartao_id = ? AND usuario_id = ?
+            ");
+            $stmt->execute([$id, $usuarioId]);
+
+            $stmt = $pdo->prepare("DELETE FROM financeiro_cartoes WHERE id = ? AND usuario_id = ?");
+            $stmt->execute([$id, $usuarioId]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            financeiroRedirecionar($urlRetorno, 'Não foi possível excluir o cartão.', 'danger');
+        }
+
+        financeiroRedirecionar('financeiro_cartoes.php', 'Cartão e lançamentos excluídos com sucesso.');
+    }
+
+    if ($acao === 'salvar_lancamento') {
+        $cartaoId = (int)($_POST['cartao_id'] ?? 0);
+        $dataCompra = trim($_POST['data_compra'] ?? '');
+        $descricao = trim($_POST['descricao'] ?? '');
+        $valor = financeiroValorEntrada($_POST['valor'] ?? '');
+        $tipoCompra = ($_POST['tipo_compra'] ?? '') === 'parcelada' ? 'parcelada' : 'unica';
+        $parcelasTotal = (int)($_POST['parcelas_total'] ?? 1);
+
+        $stmt = $pdo->prepare("
+            SELECT id, limite_total
+            FROM financeiro_cartoes
+            WHERE id = ? AND usuario_id = ? AND ativo = 1
+        ");
+        $stmt->execute([$cartaoId, $usuarioId]);
+        $cartaoDestino = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$cartaoDestino || $dataCompra === '' || $descricao === '' || $valor <= 0) {
+            financeiroRedirecionar($urlRetorno, 'Preencha os dados da compra corretamente.', 'danger');
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT COALESCE(SUM(valor), 0)
+            FROM financeiro_cartao_lancamentos
+            WHERE cartao_id = ?
+              AND usuario_id = ?
+              AND status = 'aberto'
+              AND id <> ?
+        ");
+        $stmt->execute([$cartaoId, $usuarioId, $id]);
+        $totalEmAberto = (float)$stmt->fetchColumn();
+
+        if ($totalEmAberto + $valor > (float)$cartaoDestino['limite_total']) {
+            financeiroRedirecionar(
+                urlCartoes($cartaoId),
+                'A compra ultrapassa o limite disponível deste cartão.',
+                'danger'
+            );
+        }
+
+        if ($id > 0) {
+            $stmt = $pdo->prepare("
+                UPDATE financeiro_cartao_lancamentos
+                SET cartao_id = ?, data_compra = ?, descricao = ?, valor = ?
+                WHERE id = ? AND usuario_id = ? AND status = 'aberto'
+            ");
+            $stmt->execute([$cartaoId, $dataCompra, $descricao, $valor, $id, $usuarioId]);
+            financeiroRedirecionar(urlCartoes($cartaoId), 'Compra atualizada com sucesso.');
+        }
+
+        if ($tipoCompra === 'parcelada') {
+            if ($parcelasTotal < 2 || $parcelasTotal > 600) {
+                financeiroRedirecionar(
+                    urlCartoes($cartaoId),
+                    'Informe corretamente a quantidade de parcelas.',
+                    'danger'
+                );
+            }
+
+            $grupoParcelamento = bin2hex(random_bytes(16));
+            $valorTotalCentavos = (int)round($valor * 100);
+            $valorBaseCentavos = intdiv($valorTotalCentavos, $parcelasTotal);
+            $centavosRestantes = $valorTotalCentavos - ($valorBaseCentavos * $parcelasTotal);
+            $stmt = $pdo->prepare("
+                INSERT INTO financeiro_cartao_lancamentos (
+                    usuario_id,
+                    cartao_id,
+                    data_compra,
+                    descricao,
+                    valor,
+                    status,
+                    grupo_parcelamento,
+                    parcela_numero,
+                    parcelas_total
+                )
+                VALUES (?, ?, ?, ?, ?, 'aberto', ?, ?, ?)
+            ");
+
+            $pdo->beginTransaction();
+
+            try {
+                for ($numero = 1; $numero <= $parcelasTotal; $numero++) {
+                    $valorParcelaCentavos = $valorBaseCentavos + ($numero <= $centavosRestantes ? 1 : 0);
+                    $valorParcela = $valorParcelaCentavos / 100;
+                    $dataParcela = financeiroSomarMeses($dataCompra, $numero - 1);
+                    $stmt->execute([
+                        $usuarioId,
+                        $cartaoId,
+                        $dataParcela,
+                        $descricao,
+                        $valorParcela,
+                        $grupoParcelamento,
+                        $numero,
+                        $parcelasTotal,
+                    ]);
+                }
+
+                $pdo->commit();
+            } catch (Throwable $e) {
+                $pdo->rollBack();
+                financeiroRedirecionar(urlCartoes($cartaoId), 'Não foi possível gerar as parcelas da compra.', 'danger');
+            }
+
+            financeiroRedirecionar(
+                urlCartoes($cartaoId),
+                $parcelasTotal . ' parcelas lançadas e limite atualizado.'
+            );
+        }
+
+        $stmt = $pdo->prepare("
+            INSERT INTO financeiro_cartao_lancamentos (
+                usuario_id,
+                cartao_id,
+                data_compra,
+                descricao,
+                valor,
+                status,
+                grupo_parcelamento,
+                parcela_numero,
+                parcelas_total
+            )
+            VALUES (?, ?, ?, ?, ?, 'aberto', NULL, NULL, NULL)
+        ");
+        $stmt->execute([$usuarioId, $cartaoId, $dataCompra, $descricao, $valor]);
+        financeiroRedirecionar(urlCartoes($cartaoId), 'Compra lançada e limite atualizado.');
+    }
+
+    if ($acao === 'excluir_lancamento') {
+        $stmt = $pdo->prepare("
+            DELETE FROM financeiro_cartao_lancamentos
+            WHERE id = ? AND usuario_id = ?
+        ");
+        $stmt->execute([$id, $usuarioId]);
+        financeiroRedirecionar($urlRetorno, 'Lançamento excluído e limite atualizado.');
+    }
+
+    if ($acao === 'pagar_fatura') {
+        $cartaoId = (int)($_POST['cartao_id'] ?? 0);
+        $dataPagamento = trim($_POST['data_pagamento'] ?? '');
+        $mesFatura = financeiroMesValido($_POST['mes_fatura'] ?? null);
+        $fimMesFatura = date('Y-m-d', strtotime($mesFatura . '-01 +1 month'));
+
+        if (
+            $cartaoId <= 0
+            || $dataPagamento === ''
+            || !preg_match('/^\d{4}-\d{2}$/', $_POST['mes_fatura'] ?? '')
+        ) {
+            financeiroRedirecionar($urlRetorno, 'Informe o mês da fatura e a data de pagamento.', 'danger');
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE financeiro_cartao_lancamentos l
+            INNER JOIN financeiro_cartoes c ON c.id = l.cartao_id
+            SET l.status = 'pago', l.data_pagamento = ?
+            WHERE l.cartao_id = ?
+              AND l.usuario_id = ?
+              AND c.usuario_id = ?
+              AND l.status = 'aberto'
+              AND l.data_compra < ?
+        ");
+        $stmt->execute([$dataPagamento, $cartaoId, $usuarioId, $usuarioId, $fimMesFatura]);
+        financeiroRedirecionar(urlCartoes($cartaoId), 'Fatura paga e limite liberado.');
+    }
+
+    if ($acao === 'reabrir_lancamento') {
+        $stmt = $pdo->prepare("
+            SELECT l.valor, l.cartao_id, c.limite_total,
+                (
+                    SELECT COALESCE(SUM(x.valor), 0)
+                    FROM financeiro_cartao_lancamentos x
+                    WHERE x.cartao_id = l.cartao_id
+                      AND x.usuario_id = l.usuario_id
+                      AND x.status = 'aberto'
+                ) AS total_aberto
+            FROM financeiro_cartao_lancamentos l
+            INNER JOIN financeiro_cartoes c ON c.id = l.cartao_id AND c.usuario_id = l.usuario_id
+            WHERE l.id = ? AND l.usuario_id = ?
+        ");
+        $stmt->execute([$id, $usuarioId]);
+        $lancamento = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (
+            !$lancamento
+            || (float)$lancamento['total_aberto'] + (float)$lancamento['valor'] > (float)$lancamento['limite_total']
+        ) {
+            financeiroRedirecionar($urlRetorno, 'Não há limite suficiente para reabrir esta compra.', 'danger');
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE financeiro_cartao_lancamentos
+            SET status = 'aberto', data_pagamento = NULL
+            WHERE id = ? AND usuario_id = ?
+        ");
+        $stmt->execute([$id, $usuarioId]);
+        financeiroRedirecionar(urlCartoes((int)$lancamento['cartao_id']), 'Compra reaberta e limite recalculado.');
+    }
+
+    financeiroRedirecionar($urlRetorno, 'Ação de cartão inválida.', 'danger');
+}
+
+$mensagem = financeiroObterMensagem();
+$cartoes = [];
+$lancamentos = [];
+$cartaoSelecionado = null;
+$resumo = [
+    'credito_limite' => 0.0,
+    'credito_disponivel' => 0.0,
+    'loja_limite' => 0.0,
+    'loja_disponivel' => 0.0,
+];
+
+if ($tabelasDisponiveis) {
+    $fimMesAtual = date('Y-m-d', strtotime(date('Y-m-01') . ' +1 month'));
+    $stmt = $pdo->prepare("
+        SELECT
+            c.*,
+            COALESCE(SUM(CASE WHEN l.status = 'aberto' THEN l.valor ELSE 0 END), 0) AS total_aberto,
+            COALESCE(SUM(
+                CASE
+                    WHEN l.status = 'aberto' AND l.data_compra < ? THEN l.valor
+                    ELSE 0
+                END
+            ), 0) AS fatura_atual
+        FROM financeiro_cartoes c
+        LEFT JOIN financeiro_cartao_lancamentos l
+            ON l.cartao_id = c.id
+           AND l.usuario_id = c.usuario_id
+        WHERE c.usuario_id = ?
+        GROUP BY c.id
+        ORDER BY c.tipo ASC, c.nome ASC
+    ");
+    $stmt->execute([$fimMesAtual, $usuarioId]);
+    $cartoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($cartoes as &$cartao) {
+        $cartao['disponivel'] = (float)$cartao['limite_total'] - (float)$cartao['total_aberto'];
+        $prefixo = $cartao['tipo'] === 'loja' ? 'loja' : 'credito';
+        $resumo[$prefixo . '_limite'] += (float)$cartao['limite_total'];
+        $resumo[$prefixo . '_disponivel'] += (float)$cartao['disponivel'];
+
+        if ((int)$cartao['id'] === $cartaoSelecionadoId) {
+            $cartaoSelecionado = $cartao;
+        }
+    }
+    unset($cartao);
+
+    if (!$cartaoSelecionado && $cartoes !== []) {
+        $cartaoSelecionado = $cartoes[0];
+        $cartaoSelecionadoId = (int)$cartaoSelecionado['id'];
+    }
+
+    if ($cartaoSelecionado) {
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM financeiro_cartao_lancamentos
+            WHERE cartao_id = ? AND usuario_id = ?
+            ORDER BY status ASC, data_compra DESC, id DESC
+        ");
+        $stmt->execute([$cartaoSelecionadoId, $usuarioId]);
+        $lancamentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+}
+?>
+
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <?php include 'includes/head.php'; ?>
+    <title>Cartões de crédito</title>
+    <link rel="stylesheet" href="<?= assetUrl('assets/financeiro.css') ?>">
+</head>
+
+<body class="app-layout">
+    <?php include 'includes/sidebar.php'; ?>
+
+    <main class="app-main">
+        <div class="container-fluid">
+            <div class="financeiro-cabecalho mb-4">
+                <div>
+                    <h3 class="mb-1">Cartões de crédito</h3>
+                    <p class="text-muted mb-0">Compras lançadas reduzem o limite disponível automaticamente</p>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="financeiro.php" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Voltar ao financeiro
+                    </a>
+                </div>
+            </div>
+
+            <?php if ($mensagem): ?>
+                <div class="alert alert-<?= htmlspecialchars($mensagem['tipo']) ?> alert-auto-dismiss fade show">
+                    <?= htmlspecialchars($mensagem['texto']) ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!$tabelasDisponiveis): ?>
+                <div class="alert alert-warning">
+                    <strong>Banco ainda não preparado.</strong>
+                    Execute o SQL do financeiro no phpMyAdmin e atualize esta página.
+                </div>
+            <?php else: ?>
+                <section class="financeiro-resumo financeiro-resumo-cartoes mb-4" aria-label="Resumo dos cartões">
+                    <div class="financeiro-metrica metrica-cartao">
+                        <span>Limite cartões</span>
+                        <strong><?= financeiroMoeda($resumo['credito_limite']) ?></strong>
+                    </div>
+                    <div class="financeiro-metrica metrica-saldo">
+                        <span>Disponível cartões</span>
+                        <strong><?= financeiroMoeda($resumo['credito_disponivel']) ?></strong>
+                    </div>
+                    <div class="financeiro-metrica metrica-loja">
+                        <span>Limite lojas</span>
+                        <strong><?= financeiroMoeda($resumo['loja_limite']) ?></strong>
+                    </div>
+                    <div class="financeiro-metrica metrica-pendente">
+                        <span>Disponível lojas</span>
+                        <strong><?= financeiroMoeda($resumo['loja_disponivel']) ?></strong>
+                    </div>
+                </section>
+
+                <div class="financeiro-cartoes-layout">
+                    <aside class="financeiro-painel financeiro-lista-cartoes">
+                        <div class="financeiro-painel-titulo">
+                            <div>
+                                <h5 class="mb-1">Meus cartões</h5>
+                                <p class="text-muted small mb-0"><?= count($cartoes) ?> cadastrados</p>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" id="btnNovoCartao" data-bs-toggle="modal" data-bs-target="#modalCartao">
+                                <i class="bi bi-plus-lg"></i> Novo
+                            </button>
+                        </div>
+
+                        <div class="financeiro-cartoes">
+                            <?php if ($cartoes === []): ?>
+                                <div class="financeiro-vazio">Cadastre seu primeiro cartão.</div>
+                            <?php endif; ?>
+
+                            <?php foreach ($cartoes as $cartao): ?>
+                                <a
+                                    href="financeiro_cartoes.php?cartao=<?= (int)$cartao['id'] ?>"
+                                    class="financeiro-cartao-item<?= (int)$cartao['id'] === $cartaoSelecionadoId ? ' ativo' : '' ?>">
+                                    <span class="financeiro-cartao-icone">
+                                        <i class="bi <?= $cartao['tipo'] === 'loja' ? 'bi-shop' : 'bi-credit-card' ?>"></i>
+                                    </span>
+                                    <span class="financeiro-cartao-dados">
+                                        <strong><?= htmlspecialchars($cartao['nome']) ?></strong>
+                                        <small><?= financeiroMoeda((float)$cartao['disponivel']) ?> disponível</small>
+                                    </span>
+                                    <span class="badge <?= $cartao['tipo'] === 'loja' ? 'bg-warning text-dark' : 'bg-primary' ?>">
+                                        <?= $cartao['tipo'] === 'loja' ? 'Loja' : 'Crédito' ?>
+                                    </span>
+                                </a>
+                            <?php endforeach; ?>
+                        </div>
+                    </aside>
+
+                    <section class="financeiro-painel">
+                        <?php if (!$cartaoSelecionado): ?>
+                            <div class="financeiro-vazio py-5">
+                                Cadastre um cartão para começar a lançar suas compras.
+                            </div>
+                        <?php else: ?>
+                            <div class="financeiro-painel-titulo financeiro-cartao-cabecalho">
+                                <div>
+                                    <h5 class="mb-1"><?= htmlspecialchars($cartaoSelecionado['nome']) ?></h5>
+                                    <p class="text-muted small mb-0">
+                                        Limite <?= financeiroMoeda((float)$cartaoSelecionado['limite_total']) ?>
+                                        <?php if (!empty($cartaoSelecionado['dia_vencimento'])): ?>
+                                            · vence dia <?= (int)$cartaoSelecionado['dia_vencimento'] ?>
+                                        <?php endif; ?>
+                                    </p>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline-secondary btn-sm btn-editar-cartao"
+                                        data-id="<?= (int)$cartaoSelecionado['id'] ?>"
+                                        data-nome="<?= htmlspecialchars($cartaoSelecionado['nome']) ?>"
+                                        data-limite="<?= number_format((float)$cartaoSelecionado['limite_total'], 2, ',', '.') ?>"
+                                        data-tipo="<?= htmlspecialchars($cartaoSelecionado['tipo']) ?>"
+                                        data-vencimento="<?= (int)($cartaoSelecionado['dia_vencimento'] ?? 0) ?>"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#modalCartao">
+                                        <i class="bi bi-pencil"></i> Editar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline-danger btn-sm btn-excluir-cartao"
+                                        data-id="<?= (int)$cartaoSelecionado['id'] ?>"
+                                        data-nome="<?= htmlspecialchars($cartaoSelecionado['nome']) ?>"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#modalExcluirCartao">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="btn btn-success btn-sm"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#modalPagarFatura"
+                                        <?= (float)$cartaoSelecionado['fatura_atual'] <= 0 ? 'disabled' : '' ?>>
+                                        <i class="bi bi-check-lg"></i> Pagar fatura
+                                    </button>
+                                    <button type="button" class="btn btn-primary btn-sm" id="btnNovaCompra" data-bs-toggle="modal" data-bs-target="#modalCompra">
+                                        <i class="bi bi-plus-lg"></i> Nova compra
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="financeiro-limite-barra mb-4">
+                                <?php
+                                $percentualUsado = (float)$cartaoSelecionado['limite_total'] > 0
+                                    ? min(100, ((float)$cartaoSelecionado['total_aberto'] / (float)$cartaoSelecionado['limite_total']) * 100)
+                                    : 0;
+                                ?>
+                                <div class="d-flex justify-content-between gap-3 mb-2">
+                                    <span>Fatura atual: <strong><?= financeiroMoeda((float)$cartaoSelecionado['fatura_atual']) ?></strong></span>
+                                    <span>Compras comprometidas: <strong><?= financeiroMoeda((float)$cartaoSelecionado['total_aberto']) ?></strong></span>
+                                    <span>Disponível: <strong><?= financeiroMoeda((float)$cartaoSelecionado['disponivel']) ?></strong></span>
+                                </div>
+                                <div class="progress" role="progressbar" aria-valuenow="<?= round($percentualUsado) ?>" aria-valuemin="0" aria-valuemax="100">
+                                    <div class="progress-bar <?= $percentualUsado >= 85 ? 'bg-danger' : ($percentualUsado >= 60 ? 'bg-warning' : 'bg-primary') ?>" style="width: <?= $percentualUsado ?>%"></div>
+                                </div>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table align-middle financeiro-tabela">
+                                    <thead>
+                                        <tr>
+                                            <th>Data</th>
+                                            <th>Compra</th>
+                                            <th class="text-end">Valor</th>
+                                            <th>Status</th>
+                                            <th>Pagamento</th>
+                                            <th class="text-end">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php if ($lancamentos === []): ?>
+                                            <tr>
+                                                <td colspan="6" class="financeiro-vazio">Nenhuma compra lançada neste cartão.</td>
+                                            </tr>
+                                        <?php endif; ?>
+
+                                        <?php foreach ($lancamentos as $lancamento):
+                                            $textoCompra = $lancamento['descricao'];
+
+                                            if (!empty($lancamento['parcela_numero']) && !empty($lancamento['parcelas_total'])) {
+                                                $textoCompra .= ' ' . (int)$lancamento['parcela_numero'] . '/' . (int)$lancamento['parcelas_total'];
+                                            }
+                                        ?>
+                                            <tr>
+                                                <td><?= financeiroData($lancamento['data_compra']) ?></td>
+                                                <td>
+                                                    <?= htmlspecialchars($textoCompra) ?>
+                                                    <?php if (!empty($lancamento['grupo_parcelamento'])): ?>
+                                                        <span class="badge bg-light text-dark border ms-1">Parcelada</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="text-end fw-semibold"><?= financeiroMoeda((float)$lancamento['valor']) ?></td>
+                                                <td>
+                                                    <span class="badge <?= $lancamento['status'] === 'aberto' ? 'bg-warning text-dark' : 'bg-success' ?>">
+                                                        <?= $lancamento['status'] === 'aberto' ? 'Em aberto' : 'Pago' ?>
+                                                    </span>
+                                                </td>
+                                                <td><?= financeiroData($lancamento['data_pagamento']) ?></td>
+                                                <td class="text-end">
+                                                    <div class="d-inline-flex gap-1">
+                                                        <?php if ($lancamento['status'] === 'aberto'): ?>
+                                                            <button
+                                                                type="button"
+                                                                class="btn btn-outline-primary btn-sm btn-editar-compra"
+                                                                data-id="<?= (int)$lancamento['id'] ?>"
+                                                                data-cartao="<?= (int)$lancamento['cartao_id'] ?>"
+                                                                data-data="<?= htmlspecialchars($lancamento['data_compra']) ?>"
+                                                                data-descricao="<?= htmlspecialchars($lancamento['descricao']) ?>"
+                                                                data-valor="<?= number_format((float)$lancamento['valor'], 2, ',', '.') ?>"
+                                                                data-bs-toggle="modal"
+                                                                data-bs-target="#modalCompra"
+                                                                title="Editar compra">
+                                                                <i class="bi bi-pencil"></i>
+                                                            </button>
+                                                        <?php else: ?>
+                                                            <form method="post">
+                                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
+                                                                <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                                                                <input type="hidden" name="acao" value="reabrir_lancamento">
+                                                                <input type="hidden" name="id" value="<?= (int)$lancamento['id'] ?>">
+                                                                <button type="submit" class="btn btn-outline-warning btn-sm" title="Reabrir compra">
+                                                                    <i class="bi bi-arrow-counterclockwise"></i>
+                                                                </button>
+                                                            </form>
+                                                        <?php endif; ?>
+                                                        <button
+                                                            type="button"
+                                                            class="btn btn-outline-danger btn-sm btn-excluir-lancamento"
+                                                            data-id="<?= (int)$lancamento['id'] ?>"
+                                                            data-descricao="<?= htmlspecialchars($textoCompra) ?>"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#modalExcluirLancamento"
+                                                            title="Excluir compra">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    </section>
+                </div>
+            <?php endif; ?>
+        </div>
+    </main>
+
+    <?php if ($tabelasDisponiveis): ?>
+        <div class="modal fade" id="modalCartao" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form method="post" class="financeiro-form" novalidate>
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
+                        <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                        <input type="hidden" name="acao" value="salvar_cartao">
+                        <input type="hidden" name="id" id="cartaoId">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="tituloModalCartao">Novo cartão</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="cartaoNome" class="form-label">Nome do cartão</label>
+                                <input type="text" class="form-control" name="nome" id="cartaoNome" required>
+                                <div class="invalid-feedback">Informe o nome.</div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="cartaoLimite" class="form-label">Limite total</label>
+                                    <input type="text" inputmode="decimal" class="form-control" name="limite_total" id="cartaoLimite" placeholder="0,00" required>
+                                    <div class="invalid-feedback">Informe o limite.</div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="cartaoTipo" class="form-label">Tipo</label>
+                                    <select class="form-select" name="tipo" id="cartaoTipo">
+                                        <option value="credito">Cartão de crédito</option>
+                                        <option value="loja">Loja específica</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="cartaoVencimento" class="form-label">Dia do vencimento</label>
+                                <input type="number" min="1" max="31" class="form-control" name="dia_vencimento" id="cartaoVencimento" placeholder="Opcional">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="modalCompra" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form method="post" class="financeiro-form" novalidate>
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
+                        <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                        <input type="hidden" name="acao" value="salvar_lancamento">
+                        <input type="hidden" name="id" id="compraId">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="tituloModalCompra">Nova compra</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3" id="grupoTipoCompra">
+                                <label for="compraTipo" class="form-label">Tipo de compra</label>
+                                <select class="form-select" name="tipo_compra" id="compraTipo">
+                                    <option value="unica">À vista</option>
+                                    <option value="parcelada">Parcelada</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="compraCartao" class="form-label">Cartão</label>
+                                <select class="form-select" name="cartao_id" id="compraCartao" required>
+                                    <?php foreach ($cartoes as $cartao): ?>
+                                        <option value="<?= (int)$cartao['id'] ?>" <?= (int)$cartao['id'] === $cartaoSelecionadoId ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($cartao['nome']) ?> · <?= financeiroMoeda((float)$cartao['disponivel']) ?> disponível
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="compraData" class="form-label">Data da compra</label>
+                                    <input type="date" class="form-control" name="data_compra" id="compraData" value="<?= date('Y-m-d') ?>" required>
+                                    <div class="invalid-feedback">Informe a data.</div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="compraValor" class="form-label" id="compraValorLabel">Valor da compra</label>
+                                    <input type="text" inputmode="decimal" class="form-control" name="valor" id="compraValor" placeholder="0,00" required>
+                                    <div class="invalid-feedback">Informe o valor.</div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="compraDescricao" class="form-label">Descrição</label>
+                                <input type="text" class="form-control" name="descricao" id="compraDescricao" required>
+                                <div class="invalid-feedback">Informe a descrição.</div>
+                            </div>
+                            <div class="mb-3 d-none" id="campoParcelasCompra">
+                                <label for="compraParcelasTotal" class="form-label">Quantidade de parcelas</label>
+                                <input type="number" min="2" max="600" class="form-control" name="parcelas_total" id="compraParcelasTotal">
+                                <div class="invalid-feedback">Informe a quantidade de parcelas.</div>
+                                <small class="text-muted">
+                                    O valor total será dividido e o limite será comprometido pela compra inteira.
+                                </small>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Lançar compra</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <?php if ($cartaoSelecionado): ?>
+            <div class="modal fade" id="modalPagarFatura" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <form method="post" class="financeiro-form" novalidate>
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
+                            <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                            <input type="hidden" name="acao" value="pagar_fatura">
+                            <input type="hidden" name="cartao_id" value="<?= $cartaoSelecionadoId ?>">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Pagar fatura</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>
+                                    Pagar a fatura do cartão <?= htmlspecialchars($cartaoSelecionado['nome']) ?>.
+                                    Somente as parcelas até o mês escolhido serão quitadas.
+                                </p>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="mesPagamentoFatura" class="form-label">Mês da fatura</label>
+                                        <input type="month" class="form-control" name="mes_fatura" id="mesPagamentoFatura" value="<?= date('Y-m') ?>" required>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="dataPagamentoFatura" class="form-label">Data do pagamento</label>
+                                        <input type="date" class="form-control" name="data_pagamento" id="dataPagamentoFatura" value="<?= date('Y-m-d') ?>" required>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="submit" class="btn btn-success">
+                                    <i class="bi bi-check-lg"></i> Confirmar pagamento
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <div class="modal fade" id="modalExcluirCartao" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Excluir cartão</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-1">Tem certeza que deseja excluir <strong id="nomeCartaoExcluir"></strong>?</p>
+                        <small class="text-danger">Todas as compras desse cartão também serão apagadas.</small>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Não</button>
+                        <form method="post">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
+                            <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                            <input type="hidden" name="acao" value="excluir_cartao">
+                            <input type="hidden" name="id" id="cartaoExcluirId">
+                            <button type="submit" class="btn btn-danger">Sim, excluir</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="modalExcluirLancamento" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Excluir compra</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-1">Tem certeza que deseja excluir <strong id="descricaoLancamentoExcluir"></strong>?</p>
+                        <small class="text-danger">O limite do cartão será recalculado.</small>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Não</button>
+                        <form method="post">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
+                            <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                            <input type="hidden" name="acao" value="excluir_lancamento">
+                            <input type="hidden" name="id" id="lancamentoExcluirId">
+                            <button type="submit" class="btn btn-danger">Sim, excluir</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <?php if ($tabelasDisponiveis): ?>
+        <script>
+            const cartaoSelecionado = <?= json_encode($cartaoSelecionadoId) ?>;
+            const dataHoje = <?= json_encode(date('Y-m-d')) ?>;
+
+            document.getElementById('btnNovoCartao').addEventListener('click', function() {
+                document.getElementById('tituloModalCartao').textContent = 'Novo cartão';
+                document.getElementById('cartaoId').value = '';
+                document.getElementById('cartaoNome').value = '';
+                document.getElementById('cartaoLimite').value = '';
+                document.getElementById('cartaoTipo').value = 'credito';
+                document.getElementById('cartaoVencimento').value = '';
+            });
+
+            document.querySelectorAll('.btn-editar-cartao').forEach(function(botao) {
+                botao.addEventListener('click', function() {
+                    document.getElementById('tituloModalCartao').textContent = 'Editar cartão';
+                    document.getElementById('cartaoId').value = this.dataset.id;
+                    document.getElementById('cartaoNome').value = this.dataset.nome;
+                    document.getElementById('cartaoLimite').value = this.dataset.limite;
+                    document.getElementById('cartaoTipo').value = this.dataset.tipo;
+                    document.getElementById('cartaoVencimento').value = this.dataset.vencimento || '';
+                });
+            });
+
+            document.querySelectorAll('.btn-excluir-cartao').forEach(function(botao) {
+                botao.addEventListener('click', function() {
+                    document.getElementById('cartaoExcluirId').value = this.dataset.id;
+                    document.getElementById('nomeCartaoExcluir').textContent = this.dataset.nome;
+                });
+            });
+
+            const botaoNovaCompra = document.getElementById('btnNovaCompra');
+
+            if (botaoNovaCompra) {
+                botaoNovaCompra.addEventListener('click', function() {
+                    document.getElementById('tituloModalCompra').textContent = 'Nova compra';
+                    document.getElementById('compraId').value = '';
+                    document.getElementById('grupoTipoCompra').classList.remove('d-none');
+                    document.getElementById('compraTipo').value = 'unica';
+                    document.getElementById('compraCartao').value = String(cartaoSelecionado);
+                    document.getElementById('compraData').value = dataHoje;
+                    document.getElementById('compraDescricao').value = '';
+                    document.getElementById('compraValor').value = '';
+                    document.getElementById('compraParcelasTotal').value = '';
+                    atualizarCamposParcelamentoCompra();
+                });
+            }
+
+            document.querySelectorAll('.btn-editar-compra').forEach(function(botao) {
+                botao.addEventListener('click', function() {
+                    document.getElementById('tituloModalCompra').textContent = 'Editar compra';
+                    document.getElementById('compraId').value = this.dataset.id;
+                    document.getElementById('grupoTipoCompra').classList.add('d-none');
+                    document.getElementById('campoParcelasCompra').classList.add('d-none');
+                    document.getElementById('compraCartao').value = this.dataset.cartao;
+                    document.getElementById('compraData').value = this.dataset.data;
+                    document.getElementById('compraDescricao').value = this.dataset.descricao;
+                    document.getElementById('compraValor').value = this.dataset.valor;
+                });
+            });
+
+            function atualizarCamposParcelamentoCompra() {
+                const parcelada = document.getElementById('compraTipo').value === 'parcelada';
+                const campoParcelas = document.getElementById('campoParcelasCompra');
+                const parcelasTotal = document.getElementById('compraParcelasTotal');
+
+                campoParcelas.classList.toggle('d-none', !parcelada);
+                parcelasTotal.required = parcelada;
+                document.getElementById('compraValorLabel').textContent = parcelada ?
+                    'Valor total da compra' :
+                    'Valor da compra';
+
+                if (parcelada) {
+                    parcelasTotal.focus();
+                } else {
+                    parcelasTotal.classList.remove('is-invalid');
+                }
+            }
+
+            document.getElementById('compraTipo').addEventListener('change', atualizarCamposParcelamentoCompra);
+
+            document.querySelectorAll('.btn-excluir-lancamento').forEach(function(botao) {
+                botao.addEventListener('click', function() {
+                    document.getElementById('lancamentoExcluirId').value = this.dataset.id;
+                    document.getElementById('descricaoLancamentoExcluir').textContent = this.dataset.descricao;
+                });
+            });
+
+            document.querySelectorAll('.financeiro-form').forEach(function(formulario) {
+                formulario.addEventListener('submit', function(event) {
+                    let primeiroInvalido = null;
+
+                    formulario.querySelectorAll('[required]').forEach(function(campo) {
+                        const invalido = campo.value.trim() === '';
+                        campo.classList.toggle('is-invalid', invalido);
+                        primeiroInvalido = primeiroInvalido || (invalido ? campo : null);
+                    });
+
+                    if (primeiroInvalido) {
+                        event.preventDefault();
+                        primeiroInvalido.focus();
+                    }
+                });
+            });
+
+            document.querySelectorAll('.financeiro-form input, .financeiro-form select').forEach(function(campo) {
+                campo.addEventListener('input', function() {
+                    this.classList.remove('is-invalid');
+                });
+            });
+
+            setTimeout(function() {
+                document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {
+                    alerta.classList.remove('show');
+                    setTimeout(function() {
+                        alerta.remove();
+                    }, 200);
+                });
+            }, 4000);
+        </script>
+    <?php endif; ?>
+</body>
+
+</html>

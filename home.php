@@ -50,6 +50,16 @@ exigirLogin();
                     </div>
                 <?php endif; ?>
 
+                <?php if (usuarioPode('financeiro')): ?>
+                    <div class="col-md-4">
+                        <div class="card-servico" onclick="location.href='financeiro.php'">
+                            <div class="icon">💳</div>
+                            <h5>Financeiro</h5>
+                            <p>Receitas, contas e cartões</p>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
                 <?php if (usuarioPode('certificados')): ?>
                     <div class="col-md-4">
                         <div class="card-servico" onclick="location.href='certificados.php'">

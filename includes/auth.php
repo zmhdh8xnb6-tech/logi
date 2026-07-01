@@ -14,6 +14,7 @@ if (!function_exists('modulosSistema')) {
             'contratos' => 'Contrato de Prestação de Serviços',
             'paralisacoes' => 'Paralisações',
             'baixas' => 'Baixas',
+            'financeiro' => 'Financeiro',
             'usuarios' => 'Usuários e Permissões',
         ];
     }
