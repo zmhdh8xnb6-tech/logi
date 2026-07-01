@@ -38,6 +38,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $pdo->prepare("DELETE FROM parcelamentos WHERE id = ?");
         $stmt->execute([$id]);
 
+        registrarAuditoria(
+            $pdo,
+            'Parcelamentos',
+            'excluir',
+            'parcelamento',
+            $id,
+            'Excluiu o parcelamento de ' . $parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome'],
+            $parcelamento,
+            null
+        );
+
         header('Location: ' . $urlRetorno . '?excluido=1');
         exit;
     }
@@ -51,6 +62,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             WHERE id = ?
         ");
         $stmt->execute([$parcelasNoCancelamento, $id]);
+
+        registrarAuditoria(
+            $pdo,
+            'Parcelamentos',
+            'cancelar',
+            'parcelamento',
+            $id,
+            'Cancelou o parcelamento de ' . $parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome'],
+            ['cancelado_em' => $parcelamento['cancelado_em'] ?? null, 'parcelas_emitidas' => $parcelamento['parcelas_emitidas']],
+            ['cancelado_em' => date('Y-m-d H:i:s'), 'parcelas_emitidas' => $parcelasNoCancelamento]
+        );
 
         header('Location: ' . urlCanceladosOrgaoParcelamento($parcelamento['orgao']) . '?cancelado=1');
         exit;
@@ -100,6 +122,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $parcelasAtrasadas,
             $id,
         ]);
+
+        $depois = $parcelamento;
+        $depois['orgao'] = $orgao;
+        $depois['numero_parcelamento'] = $numeroParcelamento;
+        $depois['forma_envio'] = $formaEnvio;
+        $depois['data_primeira_parcela'] = $dataPrimeiraParcela;
+        $depois['parcelas_total'] = $parcelasTotal;
+        $depois['parcelas_emitidas'] = $parcelasEmitidas;
+        $depois['parcelas_atrasadas'] = $parcelasAtrasadas;
+        $mudancas = auditoriaMudancas($parcelamento, $depois);
+        registrarAuditoria(
+            $pdo,
+            'Parcelamentos',
+            'editar',
+            'parcelamento',
+            $id,
+            'Alterou o parcelamento de ' . $parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome'],
+            $mudancas['antes'],
+            $mudancas['depois']
+        );
 
         header('Location: ' . urlOrgaoParcelamento($orgao) . '?editado=1');
         exit;

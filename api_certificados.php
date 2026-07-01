@@ -1,6 +1,8 @@
 <?php
 require 'config.php';
 
+exigirPermissao('certificados');
+
 $id = $_POST['id'] ?? '';
 $vencimento = $_POST['vencimento_certificado'] ?? '';
 
@@ -10,6 +12,10 @@ if ($id == '') {
 }
 
 $vencimento = $vencimento !== '' ? $vencimento : null;
+
+$stmtAntes = $pdo->prepare("SELECT id, codigo, nome, vencimento_certificado FROM clientes WHERE id = ?");
+$stmtAntes->execute([$id]);
+$clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
 
 $stmt = $pdo->prepare("
     UPDATE clientes
@@ -21,5 +27,21 @@ $ok = $stmt->execute([
     $vencimento,
     $id
 ]);
+
+if ($ok && $clienteAntes) {
+    $clienteDepois = $clienteAntes;
+    $clienteDepois['vencimento_certificado'] = $vencimento;
+    $mudancas = auditoriaMudancas($clienteAntes, $clienteDepois);
+    registrarAuditoria(
+        $pdo,
+        'Certificados',
+        'editar',
+        'cliente',
+        $id,
+        'Alterou o certificado de ' . $clienteAntes['codigo'] . ' - ' . $clienteAntes['nome'],
+        $mudancas['antes'],
+        $mudancas['depois']
+    );
+}
 
 echo $ok ? 'ok' : 'erro';

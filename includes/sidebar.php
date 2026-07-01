@@ -100,6 +100,13 @@
                 <span>Usuários</span>
             </a>
         <?php endif; ?>
+
+        <?php if (usuarioEhAdmin()): ?>
+            <a href="auditoria.php" class="sidebar-link" data-label="Auditoria">
+                <i class="bi bi-activity"></i>
+                <span>Auditoria</span>
+            </a>
+        <?php endif; ?>
     </nav>
 
     <div class="sidebar-footer">

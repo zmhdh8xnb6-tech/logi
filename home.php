@@ -150,6 +150,16 @@ exigirLogin();
                     </div>
                 <?php endif; ?>
 
+                <?php if (usuarioEhAdmin()): ?>
+                    <div class="col-md-4">
+                        <div class="card-servico" onclick="location.href='auditoria.php'">
+                            <div class="icon">🔎</div>
+                            <h5>Auditoria</h5>
+                            <p>Acompanhe ações dos usuários</p>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
             </div>
 
         </div>

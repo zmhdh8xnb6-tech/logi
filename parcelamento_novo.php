@@ -65,6 +65,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $parcelasAtrasadas,
         ]);
 
+        $parcelamentoId = (int)$pdo->lastInsertId();
+        registrarAuditoria(
+            $pdo,
+            'Parcelamentos',
+            'criar',
+            'parcelamento',
+            $parcelamentoId,
+            'Cadastrou parcelamento de ' . $orgao . ' para o cliente #' . $clienteId,
+            null,
+            [
+                'cliente_id' => $clienteId,
+                'orgao' => $orgao,
+                'numero_parcelamento' => $numeroParcelamento,
+                'forma_envio' => $formaEnvio,
+                'data_primeira_parcela' => $dataPrimeiraParcela,
+                'parcelas_total' => $parcelasTotal,
+                'parcelas_emitidas' => $parcelasEmitidas,
+                'parcelas_atrasadas' => $parcelasAtrasadas,
+            ]
+        );
+
         header('Location: ' . $orgaosPermitidos[$orgao] . '?salvo=1');
         exit;
     }

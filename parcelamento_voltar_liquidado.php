@@ -37,5 +37,22 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$id]);
 
+registrarAuditoria(
+    $pdo,
+    'Parcelamentos',
+    'reabrir',
+    'parcelamento',
+    $id,
+    'Voltou o parcelamento liquidado de ' . $parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome'],
+    [
+        'liquidado_em' => $parcelamento['liquidado_em'] ?? null,
+        'parcelas_atrasadas' => $parcelamento['parcelas_atrasadas'],
+    ],
+    [
+        'liquidado_em' => null,
+        'parcelas_atrasadas' => max((int)$parcelamento['parcelas_atrasadas'], 1),
+    ]
+);
+
 header('Location: ' . urlOrgaoParcelamento($parcelamento['orgao']) . '?voltou_liquidado=1');
 exit;

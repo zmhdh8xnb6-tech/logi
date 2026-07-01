@@ -31,6 +31,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $usuario = $resultado->fetch_assoc();
 
         if (!password_verify($senha, $usuario["senha"])) {
+            registrarAuditoria(
+                $pdo,
+                'Autenticação',
+                'login_falhou',
+                'usuario',
+                $usuario['id'],
+                'Tentativa de login inválida para ' . $usuario['email'],
+                null,
+                null,
+                (int)$usuario['id'],
+                $usuario['nome']
+            );
             $_SESSION["mensagem"] = "E-mail ou senha inválidos.";
             $_SESSION["tipoMensagem"] = "danger";
             header("Location: login.php");
@@ -59,10 +71,31 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $_SESSION["usuario_tipo"] = $usuario["tipo"] ?? "usuario";
         $_SESSION["usuario_permissoes"] = json_decode($usuario["permissoes"] ?? "[]", true) ?: [];
 
+        registrarAuditoria(
+            $pdo,
+            'Autenticação',
+            'login',
+            'usuario',
+            $usuario['id'],
+            'Entrou no sistema'
+        );
+
         header("Location: home.php");
         exit;
     }
 
+    registrarAuditoria(
+        $pdo,
+        'Autenticação',
+        'login_falhou',
+        'usuario',
+        null,
+        'Tentativa de login com e-mail não cadastrado: ' . $email,
+        null,
+        null,
+        0,
+        'Não identificado'
+    );
     $_SESSION["mensagem"] = "E-mail ou senha inválidos.";
     $_SESSION["tipoMensagem"] = "danger";
     header("Location: login.php");

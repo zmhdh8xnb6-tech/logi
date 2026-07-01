@@ -38,12 +38,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($id > 0) {
+            $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_recebimentos WHERE id = ? AND usuario_id = ?");
+            $stmtAntes->execute([$id, $usuarioId]);
+            $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC) ?: [];
             $stmt = $pdo->prepare("
                 UPDATE financeiro_recebimentos
                 SET data_recebimento = ?, descricao = ?, recebido_de = ?, valor = ?
                 WHERE id = ? AND usuario_id = ?
             ");
             $stmt->execute([$data, $descricao, $recebidoDe, $valor, $id, $usuarioId]);
+            $depois = array_merge($antes, [
+                'data_recebimento' => $data,
+                'descricao' => $descricao,
+                'recebido_de' => $recebidoDe,
+                'valor' => $valor,
+            ]);
+            $mudancas = auditoriaMudancas($antes, $depois);
+            registrarAuditoria($pdo, 'Financeiro', 'editar', 'recebimento', $id, 'Alterou o recebimento ' . $descricao, $mudancas['antes'], $mudancas['depois']);
             financeiroRedirecionar($urlRetorno, 'Recebimento atualizado com sucesso.');
         }
 
@@ -53,12 +64,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             VALUES (?, ?, ?, ?, ?)
         ");
         $stmt->execute([$usuarioId, $data, $descricao, $recebidoDe, $valor]);
+        $novoId = (int)$pdo->lastInsertId();
+        registrarAuditoria(
+            $pdo,
+            'Financeiro',
+            'criar',
+            'recebimento',
+            $novoId,
+            'Cadastrou o recebimento ' . $descricao,
+            null,
+            ['data' => $data, 'descricao' => $descricao, 'recebido_de' => $recebidoDe, 'valor' => $valor]
+        );
         financeiroRedirecionar($urlRetorno, 'Recebimento cadastrado com sucesso.');
     }
 
     if ($acao === 'excluir_recebimento') {
+        $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_recebimentos WHERE id = ? AND usuario_id = ?");
+        $stmtAntes->execute([$id, $usuarioId]);
+        $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
         $stmt = $pdo->prepare("DELETE FROM financeiro_recebimentos WHERE id = ? AND usuario_id = ?");
         $stmt->execute([$id, $usuarioId]);
+        if ($antes) {
+            registrarAuditoria($pdo, 'Financeiro', 'excluir', 'recebimento', $id, 'Excluiu o recebimento ' . $antes['descricao'], $antes, null);
+        }
         financeiroRedirecionar($urlRetorno, 'Recebimento excluído com sucesso.');
     }
 
@@ -75,12 +103,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($id > 0) {
+            $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_contas WHERE id = ? AND usuario_id = ?");
+            $stmtAntes->execute([$id, $usuarioId]);
+            $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC) ?: [];
             $stmt = $pdo->prepare("
                 UPDATE financeiro_contas
                 SET descricao = ?, valor_previsto = ?, vencimento = ?
                 WHERE id = ? AND usuario_id = ?
             ");
             $stmt->execute([$descricao, $valorPrevisto, $vencimento, $id, $usuarioId]);
+            $depois = array_merge($antes, [
+                'descricao' => $descricao,
+                'valor_previsto' => $valorPrevisto,
+                'vencimento' => $vencimento,
+            ]);
+            $mudancas = auditoriaMudancas($antes, $depois);
+            registrarAuditoria($pdo, 'Financeiro', 'editar', 'conta', $id, 'Alterou a conta ' . $descricao, $mudancas['antes'], $mudancas['depois']);
             financeiroRedirecionar($urlRetorno, 'Conta atualizada com sucesso.');
         }
 
@@ -133,6 +171,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $quantidadeGerada = $parcelasTotal - $parcelaInicial + 1;
+            registrarAuditoria(
+                $pdo,
+                'Financeiro',
+                'criar_parcelas',
+                'conta',
+                $grupoParcelamento,
+                'Gerou ' . $quantidadeGerada . ' parcelas da conta ' . $descricao,
+                null,
+                [
+                    'descricao' => $descricao,
+                    'valor_parcela' => $valorPrevisto,
+                    'primeiro_vencimento' => $vencimento,
+                    'parcela_inicial' => $parcelaInicial,
+                    'parcelas_total' => $parcelasTotal,
+                ]
+            );
             financeiroRedirecionar(
                 $urlRetorno,
                 $quantidadeGerada . ($quantidadeGerada === 1 ? ' parcela cadastrada.' : ' parcelas cadastradas automaticamente.')
@@ -153,6 +207,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             VALUES (?, ?, ?, ?, 'pendente', NULL, NULL, NULL)
         ");
         $stmt->execute([$usuarioId, $descricao, $valorPrevisto, $vencimento]);
+        $novaContaId = (int)$pdo->lastInsertId();
+        registrarAuditoria(
+            $pdo,
+            'Financeiro',
+            'criar',
+            'conta',
+            $novaContaId,
+            'Cadastrou a conta ' . $descricao,
+            null,
+            ['descricao' => $descricao, 'valor_previsto' => $valorPrevisto, 'vencimento' => $vencimento]
+        );
         financeiroRedirecionar($urlRetorno, 'Conta cadastrada com sucesso.');
     }
 
@@ -164,28 +229,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             financeiroRedirecionar($urlRetorno, 'Informe o valor e a data do pagamento.', 'danger');
         }
 
+        $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_contas WHERE id = ? AND usuario_id = ?");
+        $stmtAntes->execute([$id, $usuarioId]);
+        $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
         $stmt = $pdo->prepare("
             UPDATE financeiro_contas
             SET status = 'pago', valor_pago = ?, data_pagamento = ?
             WHERE id = ? AND usuario_id = ?
         ");
         $stmt->execute([$valorPago, $dataPagamento, $id, $usuarioId]);
+        if ($antes) {
+            registrarAuditoria(
+                $pdo,
+                'Financeiro',
+                'pagar',
+                'conta',
+                $id,
+                'Marcou como paga a conta ' . $antes['descricao'],
+                ['status' => $antes['status'], 'valor_pago' => $antes['valor_pago'], 'data_pagamento' => $antes['data_pagamento']],
+                ['status' => 'pago', 'valor_pago' => $valorPago, 'data_pagamento' => $dataPagamento]
+            );
+        }
         financeiroRedirecionar($urlRetorno, 'Conta marcada como paga.');
     }
 
     if ($acao === 'reabrir_conta') {
+        $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_contas WHERE id = ? AND usuario_id = ?");
+        $stmtAntes->execute([$id, $usuarioId]);
+        $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
         $stmt = $pdo->prepare("
             UPDATE financeiro_contas
             SET status = 'pendente', valor_pago = NULL, data_pagamento = NULL
             WHERE id = ? AND usuario_id = ?
         ");
         $stmt->execute([$id, $usuarioId]);
+        if ($antes) {
+            registrarAuditoria(
+                $pdo,
+                'Financeiro',
+                'reabrir',
+                'conta',
+                $id,
+                'Voltou para pendente a conta ' . $antes['descricao'],
+                ['status' => $antes['status'], 'valor_pago' => $antes['valor_pago'], 'data_pagamento' => $antes['data_pagamento']],
+                ['status' => 'pendente', 'valor_pago' => null, 'data_pagamento' => null]
+            );
+        }
         financeiroRedirecionar($urlRetorno, 'Conta voltou para pendente.');
     }
 
     if ($acao === 'excluir_conta') {
+        $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_contas WHERE id = ? AND usuario_id = ?");
+        $stmtAntes->execute([$id, $usuarioId]);
+        $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
         $stmt = $pdo->prepare("DELETE FROM financeiro_contas WHERE id = ? AND usuario_id = ?");
         $stmt->execute([$id, $usuarioId]);
+        if ($antes) {
+            registrarAuditoria($pdo, 'Financeiro', 'excluir', 'conta', $id, 'Excluiu a conta ' . $antes['descricao'], $antes, null);
+        }
         financeiroRedirecionar($urlRetorno, 'Conta excluída com sucesso.');
     }
 

@@ -42,6 +42,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($id > 0) {
+            $stmtCartaoAntes = $pdo->prepare("SELECT * FROM financeiro_cartoes WHERE id = ? AND usuario_id = ?");
+            $stmtCartaoAntes->execute([$id, $usuarioId]);
+            $cartaoAntes = $stmtCartaoAntes->fetch(PDO::FETCH_ASSOC) ?: [];
             $stmt = $pdo->prepare("
                 SELECT COALESCE(SUM(valor), 0)
                 FROM financeiro_cartao_lancamentos
@@ -64,6 +67,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 WHERE id = ? AND usuario_id = ?
             ");
             $stmt->execute([$nome, $limite, $tipo, $diaVencimento, $id, $usuarioId]);
+            $cartaoDepois = array_merge($cartaoAntes, [
+                'nome' => $nome,
+                'limite_total' => $limite,
+                'tipo' => $tipo,
+                'dia_vencimento' => $diaVencimento,
+            ]);
+            $mudancas = auditoriaMudancas($cartaoAntes, $cartaoDepois);
+            registrarAuditoria($pdo, 'Financeiro - Cartões', 'editar', 'cartao', $id, 'Alterou o cartão ' . $nome, $mudancas['antes'], $mudancas['depois']);
             financeiroRedirecionar(urlCartoes($id), 'Cartão atualizado com sucesso.');
         }
 
@@ -74,10 +85,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ");
         $stmt->execute([$usuarioId, $nome, $limite, $tipo, $diaVencimento]);
         $novoId = (int)$pdo->lastInsertId();
+        registrarAuditoria(
+            $pdo,
+            'Financeiro - Cartões',
+            'criar',
+            'cartao',
+            $novoId,
+            'Cadastrou o cartão ' . $nome,
+            null,
+            ['nome' => $nome, 'limite_total' => $limite, 'tipo' => $tipo, 'dia_vencimento' => $diaVencimento]
+        );
         financeiroRedirecionar(urlCartoes($novoId), 'Cartão cadastrado com sucesso.');
     }
 
     if ($acao === 'excluir_cartao') {
+        $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_cartoes WHERE id = ? AND usuario_id = ?");
+        $stmtAntes->execute([$id, $usuarioId]);
+        $cartaoAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
         $pdo->beginTransaction();
 
         try {
@@ -90,6 +114,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("DELETE FROM financeiro_cartoes WHERE id = ? AND usuario_id = ?");
             $stmt->execute([$id, $usuarioId]);
             $pdo->commit();
+            if ($cartaoAntes) {
+                registrarAuditoria(
+                    $pdo,
+                    'Financeiro - Cartões',
+                    'excluir',
+                    'cartao',
+                    $id,
+                    'Excluiu o cartão ' . $cartaoAntes['nome'] . ' e seus lançamentos',
+                    $cartaoAntes,
+                    null
+                );
+            }
         } catch (Throwable $e) {
             $pdo->rollBack();
             financeiroRedirecionar($urlRetorno, 'Não foi possível excluir o cartão.', 'danger');
@@ -138,12 +174,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($id > 0) {
+            $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_cartao_lancamentos WHERE id = ? AND usuario_id = ?");
+            $stmtAntes->execute([$id, $usuarioId]);
+            $lancamentoAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC) ?: [];
             $stmt = $pdo->prepare("
                 UPDATE financeiro_cartao_lancamentos
                 SET cartao_id = ?, data_compra = ?, descricao = ?, valor = ?
                 WHERE id = ? AND usuario_id = ? AND status = 'aberto'
             ");
             $stmt->execute([$cartaoId, $dataCompra, $descricao, $valor, $id, $usuarioId]);
+            $lancamentoDepois = array_merge($lancamentoAntes, [
+                'cartao_id' => $cartaoId,
+                'data_compra' => $dataCompra,
+                'descricao' => $descricao,
+                'valor' => $valor,
+            ]);
+            $mudancas = auditoriaMudancas($lancamentoAntes, $lancamentoDepois);
+            registrarAuditoria($pdo, 'Financeiro - Cartões', 'editar', 'compra_cartao', $id, 'Alterou a compra ' . $descricao, $mudancas['antes'], $mudancas['depois']);
             financeiroRedirecionar(urlCartoes($cartaoId), 'Compra atualizada com sucesso.');
         }
 
@@ -200,6 +247,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 financeiroRedirecionar(urlCartoes($cartaoId), 'Não foi possível gerar as parcelas da compra.', 'danger');
             }
 
+            registrarAuditoria(
+                $pdo,
+                'Financeiro - Cartões',
+                'criar_parcelas',
+                'compra_cartao',
+                $grupoParcelamento,
+                'Lançou a compra parcelada ' . $descricao . ' em ' . $parcelasTotal . ' vezes',
+                null,
+                [
+                    'cartao_id' => $cartaoId,
+                    'data_primeira_parcela' => $dataCompra,
+                    'descricao' => $descricao,
+                    'valor_total' => $valor,
+                    'parcelas_total' => $parcelasTotal,
+                ]
+            );
             financeiroRedirecionar(
                 urlCartoes($cartaoId),
                 $parcelasTotal . ' parcelas lançadas e limite atualizado.'
@@ -221,15 +284,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             VALUES (?, ?, ?, ?, ?, 'aberto', NULL, NULL, NULL)
         ");
         $stmt->execute([$usuarioId, $cartaoId, $dataCompra, $descricao, $valor]);
+        $novoLancamentoId = (int)$pdo->lastInsertId();
+        registrarAuditoria(
+            $pdo,
+            'Financeiro - Cartões',
+            'criar',
+            'compra_cartao',
+            $novoLancamentoId,
+            'Lançou a compra ' . $descricao,
+            null,
+            ['cartao_id' => $cartaoId, 'data_compra' => $dataCompra, 'descricao' => $descricao, 'valor' => $valor]
+        );
         financeiroRedirecionar(urlCartoes($cartaoId), 'Compra lançada e limite atualizado.');
     }
 
     if ($acao === 'excluir_lancamento') {
+        $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_cartao_lancamentos WHERE id = ? AND usuario_id = ?");
+        $stmtAntes->execute([$id, $usuarioId]);
+        $lancamentoAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
         $stmt = $pdo->prepare("
             DELETE FROM financeiro_cartao_lancamentos
             WHERE id = ? AND usuario_id = ?
         ");
         $stmt->execute([$id, $usuarioId]);
+        if ($lancamentoAntes) {
+            registrarAuditoria(
+                $pdo,
+                'Financeiro - Cartões',
+                'excluir',
+                'compra_cartao',
+                $id,
+                'Excluiu a compra ' . $lancamentoAntes['descricao'],
+                $lancamentoAntes,
+                null
+            );
+        }
         financeiroRedirecionar($urlRetorno, 'Lançamento excluído e limite atualizado.');
     }
 
@@ -247,6 +336,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             financeiroRedirecionar($urlRetorno, 'Informe o mês da fatura e a data de pagamento.', 'danger');
         }
 
+        $stmtFatura = $pdo->prepare("
+            SELECT COUNT(*) AS quantidade, COALESCE(SUM(valor), 0) AS total
+            FROM financeiro_cartao_lancamentos
+            WHERE cartao_id = ? AND usuario_id = ? AND status = 'aberto' AND data_compra < ?
+        ");
+        $stmtFatura->execute([$cartaoId, $usuarioId, $fimMesFatura]);
+        $faturaAntes = $stmtFatura->fetch(PDO::FETCH_ASSOC) ?: ['quantidade' => 0, 'total' => 0];
         $stmt = $pdo->prepare("
             UPDATE financeiro_cartao_lancamentos l
             INNER JOIN financeiro_cartoes c ON c.id = l.cartao_id
@@ -258,12 +354,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               AND l.data_compra < ?
         ");
         $stmt->execute([$dataPagamento, $cartaoId, $usuarioId, $usuarioId, $fimMesFatura]);
+        registrarAuditoria(
+            $pdo,
+            'Financeiro - Cartões',
+            'pagar_fatura',
+            'cartao',
+            $cartaoId,
+            'Pagou a fatura do cartão até ' . $mesFatura,
+            ['parcelas_em_aberto' => (int)$faturaAntes['quantidade'], 'valor' => (float)$faturaAntes['total']],
+            ['parcelas_em_aberto' => 0, 'data_pagamento' => $dataPagamento]
+        );
         financeiroRedirecionar(urlCartoes($cartaoId), 'Fatura paga e limite liberado.');
     }
 
     if ($acao === 'reabrir_lancamento') {
         $stmt = $pdo->prepare("
-            SELECT l.valor, l.cartao_id, c.limite_total,
+            SELECT l.valor, l.cartao_id, l.descricao, c.limite_total,
                 (
                     SELECT COALESCE(SUM(x.valor), 0)
                     FROM financeiro_cartao_lancamentos x
@@ -291,6 +397,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             WHERE id = ? AND usuario_id = ?
         ");
         $stmt->execute([$id, $usuarioId]);
+        registrarAuditoria(
+            $pdo,
+            'Financeiro - Cartões',
+            'reabrir',
+            'compra_cartao',
+            $id,
+            'Reabriu a compra ' . ($lancamento['descricao'] ?? ('#' . $id)),
+            ['status' => 'pago'],
+            ['status' => 'aberto', 'data_pagamento' => null]
+        );
         financeiroRedirecionar(urlCartoes((int)$lancamento['cartao_id']), 'Compra reaberta e limite recalculado.');
     }
 

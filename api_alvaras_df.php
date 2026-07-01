@@ -58,12 +58,22 @@ if (!$clienteId) {
     responderAlvara(false, 'Cliente inválido.');
 }
 
-$stmtClienteExiste = $pdo->prepare("SELECT id FROM clientes WHERE id = ?");
+$stmtClienteExiste = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
 $stmtClienteExiste->execute([$clienteId]);
+$clienteAntes = $stmtClienteExiste->fetch(PDO::FETCH_ASSOC);
 
-if (!$stmtClienteExiste->fetchColumn()) {
+if (!$clienteAntes) {
     responderAlvara(false, 'Cliente não encontrado.');
 }
+
+$stmtAlvarasAntes = $pdo->prepare("
+    SELECT orgao_codigo, situacao, vencimento
+    FROM cliente_alvaras
+    WHERE cliente_id = ?
+    ORDER BY orgao_codigo
+");
+$stmtAlvarasAntes->execute([$clienteId]);
+$alvarasAntes = $stmtAlvarasAntes->fetchAll(PDO::FETCH_ASSOC);
 
 if (!in_array($situacaoAlvara, ['possui', 'nao_possui', 'goias'], true)) {
     responderAlvara(false, 'Informe a situação do alvará.');
@@ -157,6 +167,27 @@ try {
     }
 
     $pdo->commit();
+
+    $stmtClienteDepois = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+    $stmtClienteDepois->execute([$clienteId]);
+    $clienteDepois = $stmtClienteDepois->fetch(PDO::FETCH_ASSOC) ?: [];
+    $mudancasCliente = auditoriaMudancas($clienteAntes, $clienteDepois);
+    registrarAuditoria(
+        $pdo,
+        'Alvarás',
+        'editar',
+        'cliente',
+        $clienteId,
+        'Alterou os alvarás de ' . ($clienteAntes['codigo'] ?? '') . ' - ' . ($clienteAntes['nome'] ?? ''),
+        [
+            'cliente' => $mudancasCliente['antes'],
+            'orgaos' => $alvarasAntes,
+        ],
+        [
+            'cliente' => $mudancasCliente['depois'],
+            'orgaos' => $alvarasValidados,
+        ]
+    );
 
     $vencimentos = array_filter(array_column($alvarasValidados, 'vencimento'));
     sort($vencimentos);

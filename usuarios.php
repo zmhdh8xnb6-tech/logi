@@ -10,6 +10,14 @@ $modulos = modulosSistema();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
     $id = (int)($_POST['id'] ?? 0);
+    $usuarioAntesAuditoria = null;
+
+    if ($id > 0) {
+        $stmtAuditoria = $pdo->prepare("SELECT * FROM usuarios WHERE id = ?");
+        $stmtAuditoria->execute([$id]);
+        $usuarioAntesAuditoria = $stmtAuditoria->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
     $nome = trim($_POST['nome'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $telefone = trim($_POST['telefone'] ?? '');
@@ -34,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $mensagem = 'Você não pode excluir a própria conta enquanto está conectado.';
             $tipoMensagem = 'danger';
         } else {
-            $stmtUsuario = $pdo->prepare("SELECT id, tipo FROM usuarios WHERE id = ?");
+            $stmtUsuario = $pdo->prepare("SELECT * FROM usuarios WHERE id = ?");
             $stmtUsuario->execute([$id]);
             $usuarioExcluir = $stmtUsuario->fetch(PDO::FETCH_ASSOC);
 
@@ -60,6 +68,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     try {
                         $stmtExcluir = $pdo->prepare("DELETE FROM usuarios WHERE id = ?");
                         $stmtExcluir->execute([$id]);
+                        registrarAuditoria(
+                            $pdo,
+                            'Usuários',
+                            'excluir',
+                            'usuario',
+                            $id,
+                            'Excluiu o usuário ' . ($usuarioAntesAuditoria['nome'] ?? ('#' . $id)),
+                            $usuarioAntesAuditoria,
+                            null
+                        );
                         $mensagem = 'Usuário excluído com sucesso.';
                     } catch (PDOException $e) {
                         $mensagem = 'Não foi possível excluir o usuário.';
@@ -98,6 +116,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $permissoesJson,
                 ]);
 
+                $novoUsuarioId = (int)$pdo->lastInsertId();
+                $stmtNovoUsuario = $pdo->prepare("SELECT * FROM usuarios WHERE id = ?");
+                $stmtNovoUsuario->execute([$novoUsuarioId]);
+                registrarAuditoria(
+                    $pdo,
+                    'Usuários',
+                    'criar',
+                    'usuario',
+                    $novoUsuarioId,
+                    'Cadastrou o usuário ' . $nome,
+                    null,
+                    $stmtNovoUsuario->fetch(PDO::FETCH_ASSOC) ?: null
+                );
                 $mensagem = 'Usuário criado com sucesso.';
             } catch (PDOException $e) {
                 $mensagem = 'Não foi possível criar. Verifique se o e-mail já existe.';
@@ -148,6 +179,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id,
             ]);
             $mensagem = 'Usuário atualizado com sucesso.';
+        }
+
+        if ($mensagem === 'Usuário atualizado com sucesso.' && $usuarioAntesAuditoria) {
+            $stmtDepoisAuditoria = $pdo->prepare("SELECT * FROM usuarios WHERE id = ?");
+            $stmtDepoisAuditoria->execute([$id]);
+            $usuarioDepoisAuditoria = $stmtDepoisAuditoria->fetch(PDO::FETCH_ASSOC) ?: [];
+            $mudancasAuditoria = auditoriaMudancas($usuarioAntesAuditoria, $usuarioDepoisAuditoria);
+            registrarAuditoria(
+                $pdo,
+                'Usuários',
+                'editar',
+                'usuario',
+                $id,
+                'Alterou o usuário ' . ($usuarioDepoisAuditoria['nome'] ?? $usuarioAntesAuditoria['nome']),
+                $mudancasAuditoria['antes'],
+                $mudancasAuditoria['depois']
+            );
         }
     }
 }

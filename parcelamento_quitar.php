@@ -62,5 +62,25 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute($valores);
 
+registrarAuditoria(
+    $pdo,
+    'Parcelamentos',
+    'quitar',
+    'parcelamento',
+    $id,
+    'Quitou antecipadamente o parcelamento de ' . $parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome'],
+    [
+        'liquidado_em' => $parcelamento['liquidado_em'] ?? null,
+        'parcelas_emitidas' => $parcelamento['parcelas_emitidas'],
+        'parcelas_atrasadas' => $parcelamento['parcelas_atrasadas'],
+    ],
+    [
+        'liquidado_em' => $liquidadoEm,
+        'parcelas_emitidas' => $parcelasNaQuitacao,
+        'parcelas_atrasadas' => 0,
+        'observacao' => $observacao,
+    ]
+);
+
 header('Location: ' . urlLiquidadosOrgaoParcelamento($parcelamento['orgao']) . '?quitado=1');
 exit;

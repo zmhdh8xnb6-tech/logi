@@ -125,6 +125,10 @@ if ($campoVencimento !== '' && $status === 'possui' && $vencimento === null) {
     exit;
 }
 
+$stmtAntes = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+$stmtAntes->execute([$id]);
+$clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
 if ($campoVencimento !== '') {
     $stmt = $pdo->prepare("
         UPDATE clientes
@@ -168,6 +172,23 @@ if ($ok && isset($pendenciasConferenciaDados[$campoStatus])) {
         ");
         $stmtPendencia->execute([$pendente ? 1 : 0, $id]);
     }
+}
+
+if ($ok && $clienteAntes) {
+    $stmtDepois = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+    $stmtDepois->execute([$id]);
+    $clienteDepois = $stmtDepois->fetch(PDO::FETCH_ASSOC);
+    $mudancas = auditoriaMudancas($clienteAntes, $clienteDepois ?: []);
+    registrarAuditoria(
+        $pdo,
+        'Controles internos',
+        'editar',
+        'cliente',
+        $id,
+        'Alterou ' . str_replace('_', ' ', $campoStatus) . ' de ' . ($clienteAntes['codigo'] ?? '') . ' - ' . ($clienteAntes['nome'] ?? ''),
+        $mudancas['antes'],
+        $mudancas['depois']
+    );
 }
 
 echo $ok ? 'ok' : 'erro';

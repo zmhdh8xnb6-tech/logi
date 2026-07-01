@@ -7,7 +7,7 @@ if ($token === '') {
     die("Token inválido.");
 }
 
-$stmt = $pdo->prepare("SELECT id FROM usuarios WHERE token_verificacao = ?");
+$stmt = $pdo->prepare("SELECT id, nome FROM usuarios WHERE token_verificacao = ?");
 $stmt->execute([$token]);
 $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -18,6 +18,18 @@ if ($usuario) {
         WHERE token_verificacao = ?
     ");
     $stmt->execute([$token]);
+    registrarAuditoria(
+        $pdo,
+        'Usuários',
+        'verificar_email',
+        'usuario',
+        $usuario['id'],
+        'E-mail do usuário ' . $usuario['nome'] . ' foi verificado',
+        ['email_verificado' => 0],
+        ['email_verificado' => 1],
+        (int)$usuario['id'],
+        $usuario['nome']
+    );
 ?>
     <!DOCTYPE html>
     <html lang="pt-br">

@@ -421,6 +421,8 @@ if ($action === 'create' || $action === 'update') {
         exit;
     }
 
+    $clienteAntesAuditoria = null;
+
     try {
         $pdo->beginTransaction();
 
@@ -512,6 +514,7 @@ if ($action === 'create' || $action === 'update') {
             $stmtClienteAtual = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
             $stmtClienteAtual->execute([$id]);
             $clienteAtual = $stmtClienteAtual->fetch(PDO::FETCH_ASSOC) ?: [];
+            $clienteAntesAuditoria = $clienteAtual;
             $eraClienteContabil = (int)($clienteAtual['cliente_contabil'] ?? 1) === 1;
             $eraServicoCertificado = (int)($clienteAtual['servico_certificado'] ?? 1) === 1;
 
@@ -675,6 +678,21 @@ if ($action === 'create' || $action === 'update') {
 
         $pdo->commit();
 
+        $stmtAuditoria = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+        $stmtAuditoria->execute([$clienteIdSalvo]);
+        $clienteDepoisAuditoria = $stmtAuditoria->fetch(PDO::FETCH_ASSOC) ?: [];
+        $mudancasAuditoria = auditoriaMudancas($clienteAntesAuditoria, $clienteDepoisAuditoria);
+        registrarAuditoria(
+            $pdo,
+            'Clientes',
+            $id === '' ? 'criar' : 'editar',
+            'cliente',
+            $clienteIdSalvo,
+            ($id === '' ? 'Cadastrou' : 'Alterou') . ' o cliente ' . $codigo . ' - ' . $nome,
+            $id === '' ? null : $mudancasAuditoria['antes'],
+            $id === '' ? $clienteDepoisAuditoria : $mudancasAuditoria['depois']
+        );
+
         echo $ok ? 'ok|' . $clienteIdSalvo : 'erro';
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -691,12 +709,29 @@ if ($action === 'delete') {
 
     $id = $_POST['id'] ?? '';
 
+    $stmtAntes = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+    $stmtAntes->execute([$id]);
+    $clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
     $stmt = $pdo->prepare("
         DELETE FROM clientes
         WHERE id = ?
     ");
 
     $ok = $stmt->execute([$id]);
+
+    if ($ok && $clienteAntes) {
+        registrarAuditoria(
+            $pdo,
+            'Clientes',
+            'excluir',
+            'cliente',
+            $id,
+            'Excluiu o cliente ' . $clienteAntes['codigo'] . ' - ' . $clienteAntes['nome'],
+            $clienteAntes,
+            null
+        );
+    }
 
     echo $ok ? 'ok' : 'erro';
     exit;

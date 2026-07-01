@@ -21,12 +21,29 @@ if ($clienteId <= 0 || !isset($colunas[$tipo])) {
     exit;
 }
 
+$stmtCliente = $pdo->prepare("SELECT id, codigo, nome, {$colunas[$tipo]} AS pendencia FROM clientes WHERE id = ?");
+$stmtCliente->execute([$clienteId]);
+$clienteAntes = $stmtCliente->fetch(PDO::FETCH_ASSOC);
+
 $stmt = $pdo->prepare("
     UPDATE clientes
     SET {$colunas[$tipo]} = 0
     WHERE id = ?
 ");
 $stmt->execute([$clienteId]);
+
+if ($clienteAntes) {
+    registrarAuditoria(
+        $pdo,
+        'Pendências',
+        'resolver',
+        'cliente',
+        $clienteId,
+        'Marcou como resolvida a pendência de ' . $tipo . ' de ' . $clienteAntes['codigo'] . ' - ' . $clienteAntes['nome'],
+        ['pendencia' => $clienteAntes['pendencia']],
+        ['pendencia' => 0]
+    );
+}
 
 header('Location: pendencias.php?resolvido=1');
 exit;

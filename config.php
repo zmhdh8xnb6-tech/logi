@@ -5,6 +5,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/auditoria.php';
 
 $ambiente = $_SERVER['SERVER_NAME'] ?? 'localhost';
 
