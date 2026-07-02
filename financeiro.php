@@ -8,6 +8,8 @@ $usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
 $mes = financeiroMesValido($_GET['mes'] ?? $_POST['mes'] ?? null);
 $inicioMes = $mes . '-01';
 $fimMes = date('Y-m-d', strtotime($inicioMes . ' +1 month'));
+$mesAnterior = date('Y-m', strtotime($inicioMes . ' -1 month'));
+$proximoMes = date('Y-m', strtotime($inicioMes . ' +1 month'));
 $tabelasDisponiveis = financeiroTabelasDisponiveis(
     $pdo,
     ['financeiro_recebimentos', 'financeiro_contas']
@@ -31,9 +33,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $data = trim($_POST['data_recebimento'] ?? '');
         $descricao = trim($_POST['descricao'] ?? '');
         $recebidoDe = trim($_POST['recebido_de'] ?? '');
-        $valor = financeiroValorEntrada($_POST['valor'] ?? '');
+        $valorInformado = $_POST['valor'] ?? '';
+        $valor = financeiroValorEntrada($valorInformado);
 
-        if ($data === '' || $descricao === '' || $valor <= 0) {
+        if ($data === '' || $descricao === '' || !financeiroValorValido($valorInformado)) {
             financeiroRedirecionar($urlRetorno, 'Preencha os dados do recebimento corretamente.', 'danger');
         }
 
@@ -92,13 +95,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($acao === 'salvar_conta') {
         $descricao = trim($_POST['descricao'] ?? '');
-        $valorPrevisto = financeiroValorEntrada($_POST['valor_previsto'] ?? '');
+        $valorPrevistoInformado = $_POST['valor_previsto'] ?? '';
+        $valorPrevisto = financeiroValorEntrada($valorPrevistoInformado);
         $vencimento = trim($_POST['vencimento'] ?? '');
         $tipoLancamento = ($_POST['tipo_lancamento'] ?? '') === 'parcelada' ? 'parcelada' : 'unica';
         $parcelaInicial = (int)($_POST['parcela_inicial'] ?? 1);
         $parcelasTotal = (int)($_POST['parcelas_total'] ?? 1);
 
-        if ($descricao === '' || $valorPrevisto <= 0 || $vencimento === '') {
+        if ($descricao === '' || !financeiroValorValido($valorPrevistoInformado) || $vencimento === '') {
             financeiroRedirecionar($urlRetorno, 'Preencha os dados da conta corretamente.', 'danger');
         }
 
@@ -222,10 +226,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($acao === 'pagar_conta') {
-        $valorPago = financeiroValorEntrada($_POST['valor_pago'] ?? '');
+        $valorPagoInformado = $_POST['valor_pago'] ?? '';
+        $valorPago = financeiroValorEntrada($valorPagoInformado);
         $dataPagamento = trim($_POST['data_pagamento'] ?? '');
 
-        if ($id <= 0 || $valorPago <= 0 || $dataPagamento === '') {
+        if ($id <= 0 || !financeiroValorValido($valorPagoInformado) || $dataPagamento === '') {
             financeiroRedirecionar($urlRetorno, 'Informe o valor e a data do pagamento.', 'danger');
         }
 
@@ -399,16 +404,36 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 </div>
             <?php else: ?>
                 <div class="financeiro-filtros mb-4">
-                    <form method="get" class="d-flex align-items-end gap-2">
-                        <div>
-                            <label for="mesFinanceiro" class="form-label">Mês de referência</label>
-                            <input type="month" class="form-control" name="mes" id="mesFinanceiro" value="<?= htmlspecialchars($mes) ?>">
-                        </div>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-search"></i> Consultar
-                        </button>
-                    </form>
-                    <strong><?= htmlspecialchars($nomeMes) ?></strong>
+                    <span class="financeiro-mes-titulo"><?= htmlspecialchars($nomeMes) ?></span>
+
+                    <div class="financeiro-navegacao-mes">
+                        <a
+                            href="financeiro.php?mes=<?= htmlspecialchars($mesAnterior) ?>"
+                            class="btn btn-outline-secondary"
+                            title="Mês anterior"
+                            aria-label="Mês anterior">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+
+                        <form method="get" id="formMesFinanceiro">
+                            <label for="mesFinanceiro" class="visually-hidden">Escolher mês</label>
+                            <input
+                                type="month"
+                                class="form-control"
+                                name="mes"
+                                id="mesFinanceiro"
+                                value="<?= htmlspecialchars($mes) ?>"
+                                title="Escolher outro mês">
+                        </form>
+
+                        <a
+                            href="financeiro.php?mes=<?= htmlspecialchars($proximoMes) ?>"
+                            class="btn btn-outline-secondary"
+                            title="Próximo mês"
+                            aria-label="Próximo mês">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </div>
                 </div>
 
                 <section class="financeiro-resumo mb-4" aria-label="Resumo financeiro">
@@ -812,10 +837,15 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
     <?php endif; ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="<?= assetUrl('assets/financeiro.js') ?>"></script>
     <?php if ($tabelasDisponiveis): ?>
         <script>
             const mesSelecionado = <?= json_encode($mes) ?>;
             const dataHoje = <?= json_encode(date('Y-m-d')) ?>;
+
+            document.getElementById('mesFinanceiro').addEventListener('change', function() {
+                document.getElementById('formMesFinanceiro').submit();
+            });
 
             document.getElementById('btnNovoRecebimento').addEventListener('click', function() {
                 document.getElementById('tituloModalRecebimento').textContent = 'Novo recebimento';

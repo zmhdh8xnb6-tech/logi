@@ -29,9 +29,31 @@ function financeiroValorEntrada(string $valor): float
     if (str_contains($valor, ',')) {
         $valor = str_replace('.', '', $valor);
         $valor = str_replace(',', '.', $valor);
+    } elseif (substr_count($valor, '.') > 1) {
+        $valor = str_replace('.', '', $valor);
+    } elseif (str_contains($valor, '.')) {
+        $casasDepoisDoPonto = strlen($valor) - strrpos($valor, '.') - 1;
+
+        if ($casasDepoisDoPonto === 3) {
+            $valor = str_replace('.', '', $valor);
+        }
     }
 
     return is_numeric($valor) ? round((float)$valor, 2) : 0.0;
+}
+
+function financeiroValorValido(string $valor): bool
+{
+    $valor = trim(str_replace(['R$', ' '], '', $valor));
+
+    if ($valor === '') {
+        return false;
+    }
+
+    return (bool)preg_match(
+        '/^(?:(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?|\d+(?:\.\d{1,2})?)$/',
+        $valor
+    );
 }
 
 function financeiroMoeda(float $valor): string

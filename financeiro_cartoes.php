@@ -32,12 +32,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($acao === 'salvar_cartao') {
         $nome = trim($_POST['nome'] ?? '');
-        $limite = financeiroValorEntrada($_POST['limite_total'] ?? '');
+        $limiteInformado = $_POST['limite_total'] ?? '';
+        $limite = financeiroValorEntrada($limiteInformado);
         $tipo = ($_POST['tipo'] ?? '') === 'loja' ? 'loja' : 'credito';
         $diaVencimento = (int)($_POST['dia_vencimento'] ?? 0);
         $diaVencimento = $diaVencimento >= 1 && $diaVencimento <= 31 ? $diaVencimento : null;
 
-        if ($nome === '' || $limite <= 0) {
+        if ($nome === '' || !financeiroValorValido($limiteInformado)) {
             financeiroRedirecionar($urlRetorno, 'Informe o nome e o limite do cartão.', 'danger');
         }
 
@@ -138,7 +139,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cartaoId = (int)($_POST['cartao_id'] ?? 0);
         $dataCompra = trim($_POST['data_compra'] ?? '');
         $descricao = trim($_POST['descricao'] ?? '');
-        $valor = financeiroValorEntrada($_POST['valor'] ?? '');
+        $valorInformado = $_POST['valor'] ?? '';
+        $valor = financeiroValorEntrada($valorInformado);
         $tipoCompra = ($_POST['tipo_compra'] ?? '') === 'parcelada' ? 'parcelada' : 'unica';
         $parcelasTotal = (int)($_POST['parcelas_total'] ?? 1);
 
@@ -150,7 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$cartaoId, $usuarioId]);
         $cartaoDestino = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$cartaoDestino || $dataCompra === '' || $descricao === '' || $valor <= 0) {
+        if (!$cartaoDestino || $dataCompra === '' || $descricao === '' || !financeiroValorValido($valorInformado)) {
             financeiroRedirecionar($urlRetorno, 'Preencha os dados da compra corretamente.', 'danger');
         }
 
@@ -752,7 +754,7 @@ if ($tabelasDisponiveis) {
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label for="cartaoLimite" class="form-label">Limite total</label>
-                                    <input type="text" inputmode="decimal" class="form-control" name="limite_total" id="cartaoLimite" placeholder="0,00" required>
+                                    <input type="text" inputmode="decimal" class="form-control campo-moeda" name="limite_total" id="cartaoLimite" placeholder="0,00" required>
                                     <div class="invalid-feedback">Informe o limite.</div>
                                 </div>
                                 <div class="col-md-6 mb-3">
@@ -815,7 +817,7 @@ if ($tabelasDisponiveis) {
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label for="compraValor" class="form-label" id="compraValorLabel">Valor da compra</label>
-                                    <input type="text" inputmode="decimal" class="form-control" name="valor" id="compraValor" placeholder="0,00" required>
+                                    <input type="text" inputmode="decimal" class="form-control campo-moeda" name="valor" id="compraValor" placeholder="0,00" required>
                                     <div class="invalid-feedback">Informe o valor.</div>
                                 </div>
                             </div>
@@ -935,6 +937,7 @@ if ($tabelasDisponiveis) {
     <?php endif; ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="<?= assetUrl('assets/financeiro.js') ?>"></script>
     <?php if ($tabelasDisponiveis): ?>
         <script>
             const cartaoSelecionado = <?= json_encode($cartaoSelecionadoId) ?>;

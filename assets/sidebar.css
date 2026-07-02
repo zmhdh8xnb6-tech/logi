@@ -244,8 +244,7 @@
 
 .app-sidebar {
     width: 260px;
-    height: 100vh;
-    min-height: 0;
+    min-height: 100vh;
     background: linear-gradient(180deg,
             #0f172a 0%,
             #1e293b 100%);
@@ -270,34 +269,9 @@
 
 .sidebar-menu {
     display: flex;
-    flex: 1 1 auto;
     flex-direction: column;
     gap: 8px;
-    min-height: 0;
     margin-top: 25px;
-    padding-right: 4px;
-    padding-bottom: 8px;
-    overflow-x: hidden;
-    overflow-y: auto;
-    scrollbar-color: rgba(255, 255, 255, .28) transparent;
-    scrollbar-width: thin;
-}
-
-.sidebar-menu::-webkit-scrollbar {
-    width: 5px;
-}
-
-.sidebar-menu::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.sidebar-menu::-webkit-scrollbar-thumb {
-    border-radius: 3px;
-    background: rgba(255, 255, 255, .28);
-}
-
-.sidebar-menu::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, .42);
 }
 
 .sidebar-link {
@@ -324,28 +298,36 @@
 }
 
 .app-sidebar.collapsed .sidebar-link::after {
-    display: none;
-}
-
-.sidebar-floating-tooltip {
-    position: fixed;
-    z-index: 1100;
+    content: attr(data-label);
+    position: absolute;
+    left: calc(100% + 12px);
+    top: 50%;
     padding: 7px 10px;
     border-radius: 6px;
     background: #111827;
     color: #fff;
-    font-size: .82rem;
+    font-size: 0.82rem;
     font-weight: 500;
     line-height: 1;
     white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transform: translate(-4px, -50%);
     pointer-events: none;
     box-shadow: 0 6px 18px rgba(0, 0, 0, .22);
+    transition: opacity .15s ease, transform .15s ease, visibility 0s linear .15s;
+    z-index: 1040;
+}
+
+.app-sidebar.collapsed .sidebar-link:hover::after {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(0, -50%);
+    transition-delay: .12s;
 }
 
 .sidebar-footer {
     margin-top: auto;
-    flex: 0 0 auto;
-    padding-top: 10px;
 }
 
 .app-main {
@@ -363,12 +345,7 @@
     .app-sidebar {
         position: relative;
         width: 100%;
-        height: auto;
         min-height: auto;
-    }
-
-    .sidebar-menu {
-        overflow: visible;
     }
 
     .app-sidebar.collapsed {

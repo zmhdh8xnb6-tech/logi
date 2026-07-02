@@ -13,6 +13,32 @@
     border-bottom: 1px solid #dbe2ea;
 }
 
+.financeiro-mes-titulo {
+    color: #172033;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.financeiro-navegacao-mes {
+    display: grid;
+    grid-template-columns: 42px minmax(170px, 210px) 42px;
+    align-items: center;
+    gap: 8px;
+}
+
+.financeiro-navegacao-mes .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 38px;
+    padding: 0;
+}
+
+.financeiro-navegacao-mes .form-control {
+    height: 38px;
+}
+
 .financeiro-filtros .form-label {
     margin-bottom: 5px;
     font-size: .82rem;
@@ -245,6 +271,11 @@
     .financeiro-painel-titulo {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .financeiro-navegacao-mes {
+        width: 100%;
+        grid-template-columns: 42px minmax(0, 1fr) 42px;
     }
 
     .financeiro-resumo,

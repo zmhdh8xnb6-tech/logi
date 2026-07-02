@@ -3,38 +3,9 @@ const sidebarToggle = document.getElementById('sidebarToggle');
 
 if (sidebar && sidebarToggle) {
     const icon = sidebarToggle.querySelector('i');
-    const sidebarMenu = sidebar.querySelector('.sidebar-menu');
-    const sidebarTooltip = document.createElement('div');
-
-    sidebarTooltip.className = 'sidebar-floating-tooltip d-none';
-    document.body.appendChild(sidebarTooltip);
-
-    function esconderTooltipSidebar() {
-        sidebarTooltip.classList.add('d-none');
-    }
-
-    sidebar.querySelectorAll('.sidebar-link[data-label]').forEach(function (link) {
-        link.addEventListener('mouseenter', function () {
-            if (!sidebar.classList.contains('collapsed') || window.innerWidth <= 768) {
-                return;
-            }
-
-            const posicao = link.getBoundingClientRect();
-            sidebarTooltip.textContent = link.dataset.label;
-            sidebarTooltip.style.left = `${posicao.right + 12}px`;
-            sidebarTooltip.style.top = `${posicao.top + (posicao.height / 2)}px`;
-            sidebarTooltip.style.transform = 'translateY(-50%)';
-            sidebarTooltip.classList.remove('d-none');
-        });
-
-        link.addEventListener('mouseleave', esconderTooltipSidebar);
-    });
-
-    sidebarMenu.addEventListener('scroll', esconderTooltipSidebar);
 
     sidebarToggle.addEventListener('click', () => {
 
-        esconderTooltipSidebar();
         sidebar.classList.toggle('collapsed');
 
         if (sidebar.classList.contains('collapsed')) {
