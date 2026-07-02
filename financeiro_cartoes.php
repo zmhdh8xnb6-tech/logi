@@ -6,18 +6,30 @@ exigirPermissao('financeiro');
 
 $usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
 $cartaoSelecionadoId = (int)($_GET['cartao'] ?? $_POST['cartao_retorno'] ?? 0);
+$mes = financeiroMesValido($_GET['mes'] ?? $_POST['mes'] ?? null);
+$inicioMes = $mes . '-01';
+$fimMes = date('Y-m-d', strtotime($inicioMes . ' +1 month'));
+$mesAnterior = date('Y-m', strtotime($inicioMes . ' -1 month'));
+$proximoMes = date('Y-m', strtotime($inicioMes . ' +1 month'));
+$dataPadraoCompra = $mes === date('Y-m') ? date('Y-m-d') : $inicioMes;
 $tabelasDisponiveis = financeiroTabelasDisponiveis(
     $pdo,
     ['financeiro_cartoes', 'financeiro_cartao_lancamentos']
 );
 
-function urlCartoes(int $cartaoId = 0): string
+function urlCartoes(int $cartaoId = 0, ?string $mes = null): string
 {
-    return 'financeiro_cartoes.php' . ($cartaoId > 0 ? '?cartao=' . $cartaoId : '');
+    $parametros = ['mes' => financeiroMesValido($mes)];
+
+    if ($cartaoId > 0) {
+        $parametros['cartao'] = $cartaoId;
+    }
+
+    return 'financeiro_cartoes.php?' . http_build_query($parametros);
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $urlRetorno = urlCartoes($cartaoSelecionadoId);
+    $urlRetorno = urlCartoes($cartaoSelecionadoId, $mes);
 
     if (!$tabelasDisponiveis) {
         financeiroRedirecionar($urlRetorno, 'Execute o SQL do financeiro antes de cadastrar.', 'danger');
@@ -80,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             $mudancas = auditoriaMudancas($cartaoAntes, $cartaoDepois);
             registrarAuditoria($pdo, 'Financeiro - Cartões', 'editar', 'cartao', $id, 'Alterou o cartão ' . $nome, $mudancas['antes'], $mudancas['depois']);
-            financeiroRedirecionar(urlCartoes($id), 'Cartão atualizado com sucesso.');
+            financeiroRedirecionar(urlCartoes($id, $mes), 'Cartão atualizado com sucesso.');
         }
 
         $stmt = $pdo->prepare("
@@ -100,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             null,
             ['nome' => $nome, 'limite_total' => $limite, 'tipo' => $tipo, 'dia_vencimento' => $diaVencimento]
         );
-        financeiroRedirecionar(urlCartoes($novoId), 'Cartão cadastrado com sucesso.');
+        financeiroRedirecionar(urlCartoes($novoId, $mes), 'Cartão cadastrado com sucesso.');
     }
 
     if ($acao === 'excluir_cartao') {
@@ -136,7 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             financeiroRedirecionar($urlRetorno, 'Não foi possível excluir o cartão.', 'danger');
         }
 
-        financeiroRedirecionar('financeiro_cartoes.php', 'Cartão e lançamentos excluídos com sucesso.');
+        financeiroRedirecionar(urlCartoes(0, $mes), 'Cartão e lançamentos excluídos com sucesso.');
     }
 
     if ($acao === 'salvar_lancamento') {
@@ -173,7 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($totalEmAberto + $valor > (float)$cartaoDestino['limite_total']) {
             financeiroRedirecionar(
-                urlCartoes($cartaoId),
+                urlCartoes($cartaoId, $mes),
                 'A compra ultrapassa o limite disponível deste cartão.',
                 'danger'
             );
@@ -197,13 +209,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             $mudancas = auditoriaMudancas($lancamentoAntes, $lancamentoDepois);
             registrarAuditoria($pdo, 'Financeiro - Cartões', 'editar', 'compra_cartao', $id, 'Alterou a compra ' . $descricao, $mudancas['antes'], $mudancas['depois']);
-            financeiroRedirecionar(urlCartoes($cartaoId), 'Compra atualizada com sucesso.');
+            financeiroRedirecionar(urlCartoes($cartaoId, $mes), 'Compra atualizada com sucesso.');
         }
 
         if ($tipoCompra === 'parcelada') {
             if ($parcelasTotal < 2 || $parcelasTotal > 600) {
                 financeiroRedirecionar(
-                    urlCartoes($cartaoId),
+                    urlCartoes($cartaoId, $mes),
                     'Informe corretamente a quantidade de parcelas.',
                     'danger'
                 );
@@ -250,7 +262,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->commit();
             } catch (Throwable $e) {
                 $pdo->rollBack();
-                financeiroRedirecionar(urlCartoes($cartaoId), 'Não foi possível gerar as parcelas da compra.', 'danger');
+                financeiroRedirecionar(urlCartoes($cartaoId, $mes), 'Não foi possível gerar as parcelas da compra.', 'danger');
             }
 
             registrarAuditoria(
@@ -270,7 +282,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]
             );
             financeiroRedirecionar(
-                urlCartoes($cartaoId),
+                urlCartoes($cartaoId, $mes),
                 $parcelasTotal . ' parcelas lançadas e limite atualizado.'
             );
         }
@@ -301,7 +313,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             null,
             ['cartao_id' => $cartaoId, 'data_compra' => $dataCompra, 'descricao' => $descricao, 'valor' => $valor]
         );
-        financeiroRedirecionar(urlCartoes($cartaoId), 'Compra lançada e limite atualizado.');
+        financeiroRedirecionar(urlCartoes($cartaoId, $mes), 'Compra lançada e limite atualizado.');
     }
 
     if ($acao === 'excluir_lancamento') {
@@ -332,6 +344,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cartaoId = (int)($_POST['cartao_id'] ?? 0);
         $dataPagamento = trim($_POST['data_pagamento'] ?? '');
         $mesFatura = financeiroMesValido($_POST['mes_fatura'] ?? null);
+        $inicioMesFatura = $mesFatura . '-01';
         $fimMesFatura = date('Y-m-d', strtotime($mesFatura . '-01 +1 month'));
 
         if (
@@ -345,9 +358,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmtFatura = $pdo->prepare("
             SELECT COUNT(*) AS quantidade, COALESCE(SUM(valor), 0) AS total
             FROM financeiro_cartao_lancamentos
-            WHERE cartao_id = ? AND usuario_id = ? AND status = 'aberto' AND data_compra < ?
+            WHERE cartao_id = ?
+              AND usuario_id = ?
+              AND status = 'aberto'
+              AND data_compra >= ?
+              AND data_compra < ?
         ");
-        $stmtFatura->execute([$cartaoId, $usuarioId, $fimMesFatura]);
+        $stmtFatura->execute([$cartaoId, $usuarioId, $inicioMesFatura, $fimMesFatura]);
         $faturaAntes = $stmtFatura->fetch(PDO::FETCH_ASSOC) ?: ['quantidade' => 0, 'total' => 0];
         $stmt = $pdo->prepare("
             UPDATE financeiro_cartao_lancamentos l
@@ -357,20 +374,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               AND l.usuario_id = ?
               AND c.usuario_id = ?
               AND l.status = 'aberto'
+              AND l.data_compra >= ?
               AND l.data_compra < ?
         ");
-        $stmt->execute([$dataPagamento, $cartaoId, $usuarioId, $usuarioId, $fimMesFatura]);
+        $stmt->execute([
+            $dataPagamento,
+            $cartaoId,
+            $usuarioId,
+            $usuarioId,
+            $inicioMesFatura,
+            $fimMesFatura,
+        ]);
         registrarAuditoria(
             $pdo,
             'Financeiro - Cartões',
             'pagar_fatura',
             'cartao',
             $cartaoId,
-            'Pagou a fatura do cartão até ' . $mesFatura,
+            'Pagou a fatura do cartão de ' . $mesFatura,
             ['parcelas_em_aberto' => (int)$faturaAntes['quantidade'], 'valor' => (float)$faturaAntes['total']],
             ['parcelas_em_aberto' => 0, 'data_pagamento' => $dataPagamento]
         );
-        financeiroRedirecionar(urlCartoes($cartaoId), 'Fatura paga e limite liberado.');
+        financeiroRedirecionar(urlCartoes($cartaoId, $mes), 'Fatura paga e limite liberado.');
     }
 
     if ($acao === 'reabrir_lancamento') {
@@ -413,7 +438,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ['status' => 'pago'],
             ['status' => 'aberto', 'data_pagamento' => null]
         );
-        financeiroRedirecionar(urlCartoes((int)$lancamento['cartao_id']), 'Compra reaberta e limite recalculado.');
+        financeiroRedirecionar(urlCartoes((int)$lancamento['cartao_id'], $mes), 'Compra reaberta e limite recalculado.');
     }
 
     financeiroRedirecionar($urlRetorno, 'Ação de cartão inválida.', 'danger');
@@ -431,17 +456,19 @@ $resumo = [
 ];
 
 if ($tabelasDisponiveis) {
-    $fimMesAtual = date('Y-m-d', strtotime(date('Y-m-01') . ' +1 month'));
     $stmt = $pdo->prepare("
         SELECT
             c.*,
             COALESCE(SUM(CASE WHEN l.status = 'aberto' THEN l.valor ELSE 0 END), 0) AS total_aberto,
             COALESCE(SUM(
                 CASE
-                    WHEN l.status = 'aberto' AND l.data_compra < ? THEN l.valor
+                    WHEN l.status = 'aberto'
+                     AND l.data_compra >= ?
+                     AND l.data_compra < ?
+                    THEN l.valor
                     ELSE 0
                 END
-            ), 0) AS fatura_atual
+            ), 0) AS fatura_mes
         FROM financeiro_cartoes c
         LEFT JOIN financeiro_cartao_lancamentos l
             ON l.cartao_id = c.id
@@ -450,7 +477,7 @@ if ($tabelasDisponiveis) {
         GROUP BY c.id
         ORDER BY c.tipo ASC, c.nome ASC
     ");
-    $stmt->execute([$fimMesAtual, $usuarioId]);
+    $stmt->execute([$inicioMes, $fimMes, $usuarioId]);
     $cartoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($cartoes as &$cartao) {
@@ -474,13 +501,34 @@ if ($tabelasDisponiveis) {
         $stmt = $pdo->prepare("
             SELECT *
             FROM financeiro_cartao_lancamentos
-            WHERE cartao_id = ? AND usuario_id = ?
+            WHERE cartao_id = ?
+              AND usuario_id = ?
+              AND data_compra >= ?
+              AND data_compra < ?
             ORDER BY status ASC, data_compra DESC, id DESC
         ");
-        $stmt->execute([$cartaoSelecionadoId, $usuarioId]);
+        $stmt->execute([$cartaoSelecionadoId, $usuarioId, $inicioMes, $fimMes]);
         $lancamentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }
+
+$nomesMeses = [
+    1 => 'Janeiro',
+    2 => 'Fevereiro',
+    3 => 'Março',
+    4 => 'Abril',
+    5 => 'Maio',
+    6 => 'Junho',
+    7 => 'Julho',
+    8 => 'Agosto',
+    9 => 'Setembro',
+    10 => 'Outubro',
+    11 => 'Novembro',
+    12 => 'Dezembro',
+];
+$nomeMes = $nomesMeses[(int)date('n', strtotime($inicioMes))]
+    . '/'
+    . date('Y', strtotime($inicioMes));
 ?>
 
 <!DOCTYPE html>
@@ -540,6 +588,42 @@ if ($tabelasDisponiveis) {
                     </div>
                 </section>
 
+                <div class="financeiro-filtros mb-4">
+                    <span class="financeiro-mes-titulo">Fatura de <?= htmlspecialchars($nomeMes) ?></span>
+
+                    <div class="financeiro-navegacao-mes">
+                        <a
+                            href="<?= htmlspecialchars(urlCartoes($cartaoSelecionadoId, $mesAnterior)) ?>"
+                            class="btn btn-outline-secondary"
+                            title="Fatura anterior"
+                            aria-label="Fatura anterior">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+
+                        <form method="get" id="formMesCartao">
+                            <?php if ($cartaoSelecionadoId > 0): ?>
+                                <input type="hidden" name="cartao" value="<?= $cartaoSelecionadoId ?>">
+                            <?php endif; ?>
+                            <label for="mesCartao" class="visually-hidden">Escolher mês da fatura</label>
+                            <input
+                                type="month"
+                                class="form-control"
+                                name="mes"
+                                id="mesCartao"
+                                value="<?= htmlspecialchars($mes) ?>"
+                                title="Escolher outro mês">
+                        </form>
+
+                        <a
+                            href="<?= htmlspecialchars(urlCartoes($cartaoSelecionadoId, $proximoMes)) ?>"
+                            class="btn btn-outline-secondary"
+                            title="Próxima fatura"
+                            aria-label="Próxima fatura">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </div>
+                </div>
+
                 <div class="financeiro-cartoes-layout">
                     <aside class="financeiro-painel financeiro-lista-cartoes">
                         <div class="financeiro-painel-titulo">
@@ -559,7 +643,7 @@ if ($tabelasDisponiveis) {
 
                             <?php foreach ($cartoes as $cartao): ?>
                                 <a
-                                    href="financeiro_cartoes.php?cartao=<?= (int)$cartao['id'] ?>"
+                                    href="<?= htmlspecialchars(urlCartoes((int)$cartao['id'], $mes)) ?>"
                                     class="financeiro-cartao-item<?= (int)$cartao['id'] === $cartaoSelecionadoId ? ' ativo' : '' ?>">
                                     <span class="financeiro-cartao-icone">
                                         <i class="bi <?= $cartao['tipo'] === 'loja' ? 'bi-shop' : 'bi-credit-card' ?>"></i>
@@ -619,7 +703,7 @@ if ($tabelasDisponiveis) {
                                         class="btn btn-success btn-sm"
                                         data-bs-toggle="modal"
                                         data-bs-target="#modalPagarFatura"
-                                        <?= (float)$cartaoSelecionado['fatura_atual'] <= 0 ? 'disabled' : '' ?>>
+                                        <?= (float)$cartaoSelecionado['fatura_mes'] <= 0 ? 'disabled' : '' ?>>
                                         <i class="bi bi-check-lg"></i> Pagar fatura
                                     </button>
                                     <button type="button" class="btn btn-primary btn-sm" id="btnNovaCompra" data-bs-toggle="modal" data-bs-target="#modalCompra">
@@ -635,7 +719,7 @@ if ($tabelasDisponiveis) {
                                     : 0;
                                 ?>
                                 <div class="d-flex justify-content-between gap-3 mb-2">
-                                    <span>Fatura atual: <strong><?= financeiroMoeda((float)$cartaoSelecionado['fatura_atual']) ?></strong></span>
+                                    <span>Fatura de <?= htmlspecialchars($nomeMes) ?>: <strong><?= financeiroMoeda((float)$cartaoSelecionado['fatura_mes']) ?></strong></span>
                                     <span>Compras comprometidas: <strong><?= financeiroMoeda((float)$cartaoSelecionado['total_aberto']) ?></strong></span>
                                     <span>Disponível: <strong><?= financeiroMoeda((float)$cartaoSelecionado['disponivel']) ?></strong></span>
                                 </div>
@@ -659,7 +743,7 @@ if ($tabelasDisponiveis) {
                                     <tbody>
                                         <?php if ($lancamentos === []): ?>
                                             <tr>
-                                                <td colspan="6" class="financeiro-vazio">Nenhuma compra lançada neste cartão.</td>
+                                                <td colspan="6" class="financeiro-vazio">Nenhuma compra nesta fatura.</td>
                                             </tr>
                                         <?php endif; ?>
 
@@ -705,6 +789,7 @@ if ($tabelasDisponiveis) {
                                                             <form method="post">
                                                                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
                                                                 <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                                                                <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
                                                                 <input type="hidden" name="acao" value="reabrir_lancamento">
                                                                 <input type="hidden" name="id" value="<?= (int)$lancamento['id'] ?>">
                                                                 <button type="submit" class="btn btn-outline-warning btn-sm" title="Reabrir compra">
@@ -743,6 +828,7 @@ if ($tabelasDisponiveis) {
                     <form method="post" class="financeiro-form" novalidate>
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
                         <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                        <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
                         <input type="hidden" name="acao" value="salvar_cartao">
                         <input type="hidden" name="id" id="cartaoId">
                         <div class="modal-header">
@@ -790,6 +876,7 @@ if ($tabelasDisponiveis) {
                     <form method="post" class="financeiro-form" novalidate>
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
                         <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                        <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
                         <input type="hidden" name="acao" value="salvar_lancamento">
                         <input type="hidden" name="id" id="compraId">
                         <div class="modal-header">
@@ -856,6 +943,7 @@ if ($tabelasDisponiveis) {
                         <form method="post" class="financeiro-form" novalidate>
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
                             <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                            <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
                             <input type="hidden" name="acao" value="pagar_fatura">
                             <input type="hidden" name="cartao_id" value="<?= $cartaoSelecionadoId ?>">
                             <div class="modal-header">
@@ -864,15 +952,12 @@ if ($tabelasDisponiveis) {
                             </div>
                             <div class="modal-body">
                                 <p>
-                                    Pagar a fatura do cartão <?= htmlspecialchars($cartaoSelecionado['nome']) ?>.
-                                    Somente as parcelas até o mês escolhido serão quitadas.
+                                    Pagar a fatura de <strong><?= htmlspecialchars($nomeMes) ?></strong>
+                                    do cartão <?= htmlspecialchars($cartaoSelecionado['nome']) ?>.
                                 </p>
+                                <input type="hidden" name="mes_fatura" value="<?= htmlspecialchars($mes) ?>">
                                 <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label for="mesPagamentoFatura" class="form-label">Mês da fatura</label>
-                                        <input type="month" class="form-control" name="mes_fatura" id="mesPagamentoFatura" value="<?= date('Y-m') ?>" required>
-                                    </div>
-                                    <div class="col-md-6 mb-3">
+                                    <div class="col-12 mb-3">
                                         <label for="dataPagamentoFatura" class="form-label">Data do pagamento</label>
                                         <input type="date" class="form-control" name="data_pagamento" id="dataPagamentoFatura" value="<?= date('Y-m-d') ?>" required>
                                     </div>
@@ -906,6 +991,7 @@ if ($tabelasDisponiveis) {
                         <form method="post">
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
                             <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                            <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
                             <input type="hidden" name="acao" value="excluir_cartao">
                             <input type="hidden" name="id" id="cartaoExcluirId">
                             <button type="submit" class="btn btn-danger">Sim, excluir</button>
@@ -931,6 +1017,7 @@ if ($tabelasDisponiveis) {
                         <form method="post">
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
                             <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                            <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
                             <input type="hidden" name="acao" value="excluir_lancamento">
                             <input type="hidden" name="id" id="lancamentoExcluirId">
                             <button type="submit" class="btn btn-danger">Sim, excluir</button>
@@ -946,7 +1033,11 @@ if ($tabelasDisponiveis) {
     <?php if ($tabelasDisponiveis): ?>
         <script>
             const cartaoSelecionado = <?= json_encode($cartaoSelecionadoId) ?>;
-            const dataHoje = <?= json_encode(date('Y-m-d')) ?>;
+            const dataPadraoCompra = <?= json_encode($dataPadraoCompra) ?>;
+
+            document.getElementById('mesCartao').addEventListener('change', function() {
+                document.getElementById('formMesCartao').submit();
+            });
 
             document.getElementById('btnNovoCartao').addEventListener('click', function() {
                 document.getElementById('tituloModalCartao').textContent = 'Novo cartão';
@@ -984,7 +1075,7 @@ if ($tabelasDisponiveis) {
                     document.getElementById('grupoTipoCompra').classList.remove('d-none');
                     document.getElementById('compraTipo').value = 'unica';
                     document.getElementById('compraCartao').value = String(cartaoSelecionado);
-                    document.getElementById('compraData').value = dataHoje;
+                    document.getElementById('compraData').value = dataPadraoCompra;
                     document.getElementById('compraDescricao').value = '';
                     document.getElementById('compraValor').value = '';
                     document.getElementById('compraParcelasTotal').value = '';

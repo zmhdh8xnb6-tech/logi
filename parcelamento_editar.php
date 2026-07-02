@@ -29,6 +29,7 @@ if (!empty($parcelamento['liquidado_em'])) {
 }
 
 $orgaosPermitidos = orgaosParcelamento();
+$clienteSelecionadoId = (int)$parcelamento['cliente_id'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? 'salvar';
@@ -78,6 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    $clienteSelecionadoId = (int)($_POST['cliente_id'] ?? 0);
     $orgao = trim($_POST['orgao'] ?? '');
     $numeroParcelamento = trim($_POST['numero_parcelamento'] ?? '');
     $formaEnvio = trim($_POST['forma_envio'] ?? '');
@@ -89,8 +91,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'parcelas_emitidas' => (int)($_POST['parcelas_emitidas'] ?? 0),
     ]);
     $parcelasAtrasadas = (int)($_POST['parcelas_atrasadas'] ?? 0);
+    $stmtCliente = $pdo->prepare("SELECT id, codigo, nome FROM clientes WHERE id = ?");
+    $stmtCliente->execute([$clienteSelecionadoId]);
+    $clienteSelecionado = $stmtCliente->fetch(PDO::FETCH_ASSOC);
 
     if (
+        !$clienteSelecionado ||
         !array_key_exists($orgao, $orgaosPermitidos) ||
         $numeroParcelamento === '' ||
         $formaEnvio === '' ||
@@ -102,6 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $stmt = $pdo->prepare("
             UPDATE parcelamentos SET
+                cliente_id = ?,
                 orgao = ?,
                 numero_parcelamento = ?,
                 forma_envio = ?,
@@ -113,6 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ");
 
         $stmt->execute([
+            $clienteSelecionadoId,
             $orgao,
             $numeroParcelamento,
             $formaEnvio,
@@ -124,6 +132,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
 
         $depois = $parcelamento;
+        $depois['cliente_id'] = $clienteSelecionadoId;
+        $depois['cliente_codigo'] = $clienteSelecionado['codigo'];
+        $depois['cliente_nome'] = $clienteSelecionado['nome'];
         $depois['orgao'] = $orgao;
         $depois['numero_parcelamento'] = $numeroParcelamento;
         $depois['forma_envio'] = $formaEnvio;
@@ -132,19 +143,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $depois['parcelas_emitidas'] = $parcelasEmitidas;
         $depois['parcelas_atrasadas'] = $parcelasAtrasadas;
         $mudancas = auditoriaMudancas($parcelamento, $depois);
+        $clienteFoiAlterado = (int)$parcelamento['cliente_id'] !== $clienteSelecionadoId;
+        $descricaoAuditoria = $clienteFoiAlterado
+            ? 'Transferiu o parcelamento de '
+            . $parcelamento['cliente_codigo']
+            . ' - '
+            . $parcelamento['cliente_nome']
+            . ' para '
+            . $clienteSelecionado['codigo']
+            . ' - '
+            . $clienteSelecionado['nome']
+            : 'Alterou o parcelamento de '
+            . $parcelamento['cliente_codigo']
+            . ' - '
+            . $parcelamento['cliente_nome'];
         registrarAuditoria(
             $pdo,
             'Parcelamentos',
             'editar',
             'parcelamento',
             $id,
-            'Alterou o parcelamento de ' . $parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome'],
+            $descricaoAuditoria,
             $mudancas['antes'],
             $mudancas['depois']
         );
 
         header('Location: ' . urlOrgaoParcelamento($orgao) . '?editado=1');
         exit;
+    }
+}
+
+$stmt = $pdo->query("
+    SELECT id, codigo, nome
+    FROM clientes
+    ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
+");
+$clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$clienteSelecionadoTexto = '';
+
+foreach ($clientes as $clienteLista) {
+    if ((int)$clienteLista['id'] === $clienteSelecionadoId) {
+        $clienteSelecionadoTexto = $clienteLista['codigo'] . ' - ' . $clienteLista['nome'];
+        break;
     }
 }
 ?>
@@ -189,6 +229,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <form id="formParcelamentoEditar" method="post">
                     <div class="row">
+
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Cliente</label>
+
+                            <div class="cliente-seletor" id="clienteSeletor">
+                                <button
+                                    type="button"
+                                    class="form-select text-start"
+                                    id="clienteSeletorBotao"
+                                    aria-haspopup="listbox"
+                                    aria-expanded="false">
+                                    <span id="clienteSeletorTexto">
+                                        <?= $clienteSelecionadoTexto !== '' ? htmlspecialchars($clienteSelecionadoTexto) : 'Selecione' ?>
+                                    </span>
+                                </button>
+
+                                <div class="cliente-seletor-menu d-none" id="clienteSeletorMenu">
+                                    <div class="cliente-seletor-busca">
+                                        <i class="bi bi-search"></i>
+                                        <input
+                                            type="search"
+                                            class="form-control"
+                                            id="cliente_busca"
+                                            placeholder="Digite o código ou a razão social"
+                                            autocomplete="off">
+                                    </div>
+
+                                    <div class="cliente-seletor-opcoes" role="listbox">
+                                        <?php foreach ($clientes as $clienteLista):
+                                            $textoCliente = $clienteLista['codigo'] . ' - ' . $clienteLista['nome'];
+                                        ?>
+                                            <button
+                                                type="button"
+                                                class="cliente-seletor-opcao<?= (int)$clienteLista['id'] === $clienteSelecionadoId ? ' selecionado' : '' ?>"
+                                                data-id="<?= (int)$clienteLista['id'] ?>"
+                                                data-texto="<?= htmlspecialchars($textoCliente) ?>"
+                                                role="option"
+                                                aria-selected="<?= (int)$clienteLista['id'] === $clienteSelecionadoId ? 'true' : 'false' ?>">
+                                                <strong><?= htmlspecialchars($clienteLista['codigo']) ?></strong>
+                                                <span><?= htmlspecialchars($clienteLista['nome']) ?></span>
+                                            </button>
+                                        <?php endforeach; ?>
+
+                                        <div class="cliente-seletor-vazio d-none" id="clienteSeletorVazio">
+                                            Nenhum cliente encontrado.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <input
+                                type="hidden"
+                                name="cliente_id"
+                                id="cliente_id"
+                                value="<?= $clienteSelecionadoId > 0 ? $clienteSelecionadoId : '' ?>">
+
+                            <div class="invalid-feedback" id="clienteFeedback">
+                                Selecione um cliente da lista.
+                            </div>
+                        </div>
 
                         <div class="col-md-3 mb-3">
                             <label class="form-label">Órgão</label>
@@ -377,8 +477,94 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         document.getElementById('data_primeira_parcela').addEventListener('change', atualizarParcelasEmitidas);
         document.getElementById('parcelas_total').addEventListener('input', atualizarParcelasEmitidas);
 
+        const seletorCliente = document.getElementById('clienteSeletor');
+        const botaoCliente = document.getElementById('clienteSeletorBotao');
+        const textoBotaoCliente = document.getElementById('clienteSeletorTexto');
+        const menuCliente = document.getElementById('clienteSeletorMenu');
+        const campoBuscaCliente = document.getElementById('cliente_busca');
+        const campoClienteId = document.getElementById('cliente_id');
+        const feedbackCliente = document.getElementById('clienteFeedback');
+        const avisoClienteVazio = document.getElementById('clienteSeletorVazio');
+        const opcoesClientes = Array.from(document.querySelectorAll('.cliente-seletor-opcao'));
+
+        function normalizarBuscaCliente(texto) {
+            return texto
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .trim();
+        }
+
+        function filtrarClientes() {
+            const busca = normalizarBuscaCliente(campoBuscaCliente.value);
+            let totalVisivel = 0;
+
+            opcoesClientes.forEach(function(opcao) {
+                const visivel = normalizarBuscaCliente(opcao.dataset.texto).includes(busca);
+                opcao.classList.toggle('d-none', !visivel);
+                totalVisivel += visivel ? 1 : 0;
+            });
+
+            avisoClienteVazio.classList.toggle('d-none', totalVisivel > 0);
+        }
+
+        function fecharListaClientes() {
+            menuCliente.classList.add('d-none');
+            botaoCliente.setAttribute('aria-expanded', 'false');
+        }
+
+        botaoCliente.addEventListener('click', function() {
+            const abrir = menuCliente.classList.contains('d-none');
+            menuCliente.classList.toggle('d-none', !abrir);
+            botaoCliente.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+
+            if (abrir) {
+                campoBuscaCliente.value = '';
+                filtrarClientes();
+                campoBuscaCliente.focus();
+            }
+        });
+
+        campoBuscaCliente.addEventListener('input', filtrarClientes);
+
+        opcoesClientes.forEach(function(opcao) {
+            opcao.addEventListener('click', function() {
+                campoClienteId.value = opcao.dataset.id;
+                textoBotaoCliente.textContent = opcao.dataset.texto;
+                botaoCliente.classList.remove('is-invalid');
+                feedbackCliente.classList.remove('d-block');
+
+                opcoesClientes.forEach(function(item) {
+                    const selecionado = item === opcao;
+                    item.classList.toggle('selecionado', selecionado);
+                    item.setAttribute('aria-selected', selecionado ? 'true' : 'false');
+                });
+
+                fecharListaClientes();
+            });
+        });
+
+        document.addEventListener('click', function(event) {
+            if (!seletorCliente.contains(event.target)) {
+                fecharListaClientes();
+            }
+        });
+
+        campoBuscaCliente.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                fecharListaClientes();
+                botaoCliente.focus();
+            }
+        });
+
         document.getElementById('formParcelamentoEditar').addEventListener('submit', function(e) {
             let valido = true;
+
+            if (!campoClienteId.value.trim()) {
+                botaoCliente.classList.add('is-invalid');
+                feedbackCliente.classList.add('d-block');
+                valido = false;
+            }
 
             document.querySelectorAll('.campo-obrigatorio').forEach(function(campo) {
                 if (!campo.value.trim()) {

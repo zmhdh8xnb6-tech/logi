@@ -833,6 +833,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                 <tr>
                                     <th>Despesa</th>
                                     <th>Vencimento</th>
+                                    <th>Prazo</th>
                                     <th class="text-end">Previsto</th>
                                     <th class="text-end">Pago</th>
                                     <th>Data do pagamento</th>
@@ -843,13 +844,16 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             <tbody>
                                 <?php if ($contas === []): ?>
                                     <tr>
-                                        <td colspan="7" class="financeiro-vazio">Nenhuma conta cadastrada neste mês.</td>
+                                        <td colspan="8" class="financeiro-vazio">Nenhuma conta cadastrada neste mês.</td>
                                     </tr>
                                 <?php endif; ?>
 
                                 <?php foreach ($contas as $conta):
                                     $paga = $conta['status'] === 'pago';
                                     $atrasada = !$paga && $conta['vencimento'] < date('Y-m-d');
+                                    $diasParaVencer = (int)(new DateTimeImmutable('today'))
+                                        ->diff(new DateTimeImmutable($conta['vencimento']))
+                                        ->format('%r%a');
                                     $faturaCartao = !empty($conta['cartao_id']);
                                     $contaRecorrente = !empty($conta['recorrencia_id']);
                                     $recorrencia = $contaRecorrente
@@ -875,6 +879,24 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                             <?php endif; ?>
                                         </td>
                                         <td><?= financeiroData($conta['vencimento']) ?></td>
+                                        <td>
+                                            <?php if ($paga): ?>
+                                                <span class="text-muted">-</span>
+                                            <?php elseif ($diasParaVencer < 0): ?>
+                                                <span class="text-danger fw-semibold">
+                                                    Vencida há <?= abs($diasParaVencer) ?>
+                                                    <?= abs($diasParaVencer) === 1 ? 'dia' : 'dias' ?>
+                                                </span>
+                                            <?php elseif ($diasParaVencer === 0): ?>
+                                                <span class="text-warning fw-semibold">Vence hoje</span>
+                                            <?php else: ?>
+                                                <span class="text-muted">
+                                                    <?= $diasParaVencer === 1 ? 'Falta' : 'Faltam' ?>
+                                                    <?= $diasParaVencer ?>
+                                                    <?= $diasParaVencer === 1 ? 'dia' : 'dias' ?>
+                                                </span>
+                                            <?php endif; ?>
+                                        </td>
                                         <td class="text-end"><?= financeiroMoeda((float)$conta['valor_previsto']) ?></td>
                                         <td class="text-end"><?= $paga ? financeiroMoeda((float)$conta['valor_pago']) : '-' ?></td>
                                         <td><?= financeiroData($conta['data_pagamento']) ?></td>
@@ -975,7 +997,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             </tbody>
                             <tfoot>
                                 <tr>
-                                    <th colspan="2" class="text-end">Totais</th>
+                                    <th colspan="3" class="text-end">Totais</th>
                                     <th class="text-end"><?= financeiroMoeda($totalPrevisto) ?></th>
                                     <th class="text-end text-success"><?= financeiroMoeda($totalPago) ?></th>
                                     <th colspan="3"></th>
