@@ -98,18 +98,155 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $valorPrevistoInformado = $_POST['valor_previsto'] ?? '';
         $valorPrevisto = financeiroValorEntrada($valorPrevistoInformado);
         $vencimento = trim($_POST['vencimento'] ?? '');
-        $tipoLancamento = ($_POST['tipo_lancamento'] ?? '') === 'parcelada' ? 'parcelada' : 'unica';
+        $tiposPermitidos = ['unica', 'parcelada', 'recorrente'];
+        $tipoLancamento = in_array($_POST['tipo_lancamento'] ?? '', $tiposPermitidos, true)
+            ? $_POST['tipo_lancamento']
+            : 'unica';
         $parcelaInicial = (int)($_POST['parcela_inicial'] ?? 1);
         $parcelasTotal = (int)($_POST['parcelas_total'] ?? 1);
+        $recorrenciaId = (int)($_POST['recorrencia_id'] ?? 0);
+        $fimRecorrencia = trim($_POST['fim_recorrencia'] ?? '');
 
         if ($descricao === '' || !financeiroValorValido($valorPrevistoInformado) || $vencimento === '') {
             financeiroRedirecionar($urlRetorno, 'Preencha os dados da conta corretamente.', 'danger');
+        }
+
+        if ($tipoLancamento === 'recorrente') {
+            if (
+                !financeiroTabelasDisponiveis($pdo, ['financeiro_contas_recorrentes'])
+                || !financeiroColunaExiste($pdo, 'financeiro_contas', 'recorrencia_id')
+                || !financeiroColunaExiste($pdo, 'financeiro_contas', 'competencia_recorrencia')
+            ) {
+                financeiroRedirecionar(
+                    $urlRetorno,
+                    'Execute o SQL das contas recorrentes antes de cadastrar.',
+                    'danger'
+                );
+            }
+
+            $fimMes = null;
+            if ($fimRecorrencia !== '') {
+                if (!preg_match('/^\d{4}-\d{2}$/', $fimRecorrencia)) {
+                    financeiroRedirecionar($urlRetorno, 'Informe corretamente o último mês da recorrência.', 'danger');
+                }
+
+                $fimMes = $fimRecorrencia . '-01';
+                if ($fimMes < date('Y-m-01', strtotime($vencimento))) {
+                    financeiroRedirecionar(
+                        $urlRetorno,
+                        'O último mês não pode ser anterior ao primeiro vencimento.',
+                        'danger'
+                    );
+                }
+            }
+
+            if ($recorrenciaId > 0) {
+                $stmtAntes = $pdo->prepare("
+                    SELECT *
+                    FROM financeiro_contas_recorrentes
+                    WHERE id = ? AND usuario_id = ?
+                ");
+                $stmtAntes->execute([$recorrenciaId, $usuarioId]);
+                $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+                if (!$antes) {
+                    financeiroRedirecionar($urlRetorno, 'Conta recorrente não encontrada.', 'danger');
+                }
+
+                $stmt = $pdo->prepare("
+                    UPDATE financeiro_contas_recorrentes
+                    SET descricao = ?, valor = ?, primeiro_vencimento = ?, fim_mes = ?, ativa = 1
+                    WHERE id = ? AND usuario_id = ?
+                ");
+                $stmt->execute([
+                    $descricao,
+                    $valorPrevisto,
+                    $vencimento,
+                    $fimMes,
+                    $recorrenciaId,
+                    $usuarioId,
+                ]);
+                $stmt = $pdo->prepare("
+                    DELETE FROM financeiro_contas
+                    WHERE usuario_id = ?
+                      AND recorrencia_id = ?
+                      AND status = 'pendente'
+                      AND vencimento >= ?
+                ");
+                $stmt->execute([$usuarioId, $recorrenciaId, date('Y-m-01')]);
+                $depois = array_merge($antes, [
+                    'descricao' => $descricao,
+                    'valor' => $valorPrevisto,
+                    'primeiro_vencimento' => $vencimento,
+                    'fim_mes' => $fimMes,
+                    'ativa' => 1,
+                ]);
+                $mudancas = auditoriaMudancas($antes, $depois);
+                registrarAuditoria(
+                    $pdo,
+                    'Financeiro',
+                    'editar',
+                    'recorrencia',
+                    $recorrenciaId,
+                    'Alterou a conta recorrente ' . $descricao,
+                    $mudancas['antes'],
+                    $mudancas['depois']
+                );
+                financeiroRedirecionar($urlRetorno, 'Conta recorrente atualizada com sucesso.');
+            }
+
+            $stmt = $pdo->prepare("
+                INSERT INTO financeiro_contas_recorrentes (
+                    usuario_id,
+                    descricao,
+                    valor,
+                    primeiro_vencimento,
+                    fim_mes,
+                    ativa
+                )
+                VALUES (?, ?, ?, ?, ?, 1)
+            ");
+            $stmt->execute([$usuarioId, $descricao, $valorPrevisto, $vencimento, $fimMes]);
+            $novaRecorrenciaId = (int)$pdo->lastInsertId();
+            registrarAuditoria(
+                $pdo,
+                'Financeiro',
+                'criar',
+                'recorrencia',
+                $novaRecorrenciaId,
+                'Cadastrou a conta recorrente ' . $descricao,
+                null,
+                [
+                    'descricao' => $descricao,
+                    'valor' => $valorPrevisto,
+                    'primeiro_vencimento' => $vencimento,
+                    'fim_mes' => $fimMes,
+                ]
+            );
+            financeiroRedirecionar($urlRetorno, 'Conta recorrente cadastrada com sucesso.');
         }
 
         if ($id > 0) {
             $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_contas WHERE id = ? AND usuario_id = ?");
             $stmtAntes->execute([$id, $usuarioId]);
             $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC) ?: [];
+
+            if (!empty($antes['cartao_id'])) {
+                financeiroRedirecionar(
+                    $urlRetorno,
+                    'Faturas automáticas devem ser alteradas pela tela de cartões.',
+                    'warning'
+                );
+            }
+
+            if (!empty($antes['recorrencia_id'])) {
+                financeiroRedirecionar(
+                    $urlRetorno,
+                    'Edite a regra da conta recorrente pelo botão de lápis.',
+                    'warning'
+                );
+            }
+
             $stmt = $pdo->prepare("
                 UPDATE financeiro_contas
                 SET descricao = ?, valor_previsto = ?, vencimento = ?
@@ -237,12 +374,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_contas WHERE id = ? AND usuario_id = ?");
         $stmtAntes->execute([$id, $usuarioId]);
         $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
-        $stmt = $pdo->prepare("
-            UPDATE financeiro_contas
-            SET status = 'pago', valor_pago = ?, data_pagamento = ?
-            WHERE id = ? AND usuario_id = ?
-        ");
-        $stmt->execute([$valorPago, $dataPagamento, $id, $usuarioId]);
+
+        if (!empty($antes['cartao_id']) && !empty($antes['competencia_cartao'])) {
+            $inicioCompetencia = $antes['competencia_cartao'] . '-01';
+            $fimCompetencia = date('Y-m-d', strtotime($inicioCompetencia . ' +1 month'));
+            $valorPago = (float)$antes['valor_previsto'];
+            $pdo->beginTransaction();
+
+            try {
+                $stmt = $pdo->prepare("
+                    UPDATE financeiro_cartao_lancamentos
+                    SET status = 'pago', data_pagamento = ?
+                    WHERE usuario_id = ?
+                      AND cartao_id = ?
+                      AND data_compra >= ?
+                      AND data_compra < ?
+                      AND status = 'aberto'
+                ");
+                $stmt->execute([
+                    $dataPagamento,
+                    $usuarioId,
+                    $antes['cartao_id'],
+                    $inicioCompetencia,
+                    $fimCompetencia,
+                ]);
+
+                $stmt = $pdo->prepare("
+                    UPDATE financeiro_contas
+                    SET status = 'pago', valor_pago = ?, data_pagamento = ?
+                    WHERE id = ? AND usuario_id = ?
+                ");
+                $stmt->execute([$valorPago, $dataPagamento, $id, $usuarioId]);
+                $pdo->commit();
+            } catch (Throwable $e) {
+                $pdo->rollBack();
+                financeiroRedirecionar($urlRetorno, 'Não foi possível pagar a fatura do cartão.', 'danger');
+            }
+        } else {
+            $stmt = $pdo->prepare("
+                UPDATE financeiro_contas
+                SET status = 'pago', valor_pago = ?, data_pagamento = ?
+                WHERE id = ? AND usuario_id = ?
+            ");
+            $stmt->execute([$valorPago, $dataPagamento, $id, $usuarioId]);
+        }
+
         if ($antes) {
             registrarAuditoria(
                 $pdo,
@@ -262,6 +438,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_contas WHERE id = ? AND usuario_id = ?");
         $stmtAntes->execute([$id, $usuarioId]);
         $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+        if (!empty($antes['cartao_id'])) {
+            financeiroRedirecionar(
+                'financeiro_cartoes.php?cartao=' . (int)$antes['cartao_id'],
+                'Reabra as compras pela tela do cartão para conferir o limite disponível.',
+                'warning'
+            );
+        }
+
         $stmt = $pdo->prepare("
             UPDATE financeiro_contas
             SET status = 'pendente', valor_pago = NULL, data_pagamento = NULL
@@ -287,12 +472,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_contas WHERE id = ? AND usuario_id = ?");
         $stmtAntes->execute([$id, $usuarioId]);
         $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+        if (!empty($antes['cartao_id'])) {
+            financeiroRedirecionar(
+                $urlRetorno,
+                'A fatura automática é removida ao excluir as compras do cartão.',
+                'warning'
+            );
+        }
+
+        if (!empty($antes['recorrencia_id'])) {
+            financeiroRedirecionar(
+                $urlRetorno,
+                'Use a opção de encerrar para excluir a conta recorrente.',
+                'warning'
+            );
+        }
+
         $stmt = $pdo->prepare("DELETE FROM financeiro_contas WHERE id = ? AND usuario_id = ?");
         $stmt->execute([$id, $usuarioId]);
         if ($antes) {
             registrarAuditoria($pdo, 'Financeiro', 'excluir', 'conta', $id, 'Excluiu a conta ' . $antes['descricao'], $antes, null);
         }
         financeiroRedirecionar($urlRetorno, 'Conta excluída com sucesso.');
+    }
+
+    if ($acao === 'excluir_recorrencia') {
+        if (!financeiroTabelasDisponiveis($pdo, ['financeiro_contas_recorrentes'])) {
+            financeiroRedirecionar($urlRetorno, 'A tabela de contas recorrentes não foi encontrada.', 'danger');
+        }
+
+        $stmtAntes = $pdo->prepare("
+            SELECT *
+            FROM financeiro_contas_recorrentes
+            WHERE id = ? AND usuario_id = ?
+        ");
+        $stmtAntes->execute([$id, $usuarioId]);
+        $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+        if (!$antes) {
+            financeiroRedirecionar($urlRetorno, 'Conta recorrente não encontrada.', 'danger');
+        }
+
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("
+                UPDATE financeiro_contas
+                SET recorrencia_id = NULL, competencia_recorrencia = NULL
+                WHERE usuario_id = ?
+                  AND recorrencia_id = ?
+                  AND (status = 'pago' OR vencimento < ?)
+            ");
+            $stmt->execute([
+                $usuarioId,
+                $id,
+                date('Y-m-d', strtotime(date('Y-m-01') . ' +1 month')),
+            ]);
+
+            $stmt = $pdo->prepare("
+                DELETE FROM financeiro_contas
+                WHERE usuario_id = ? AND recorrencia_id = ? AND status = 'pendente'
+            ");
+            $stmt->execute([$usuarioId, $id]);
+
+            $stmt = $pdo->prepare("
+                DELETE FROM financeiro_contas_recorrentes
+                WHERE id = ? AND usuario_id = ?
+            ");
+            $stmt->execute([$id, $usuarioId]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            financeiroRedirecionar($urlRetorno, 'Não foi possível encerrar a conta recorrente.', 'danger');
+        }
+
+        registrarAuditoria(
+            $pdo,
+            'Financeiro',
+            'excluir',
+            'recorrencia',
+            $id,
+            'Encerrou a conta recorrente ' . $antes['descricao'],
+            $antes,
+            null
+        );
+        financeiroRedirecionar($urlRetorno, 'Conta recorrente encerrada com sucesso.');
     }
 
     financeiroRedirecionar($urlRetorno, 'Ação financeira inválida.', 'danger');
@@ -305,8 +569,24 @@ $totalReceitas = 0.0;
 $totalPrevisto = 0.0;
 $totalPago = 0.0;
 $totalPendente = 0.0;
+$recorrenciasPorId = [];
 
 if ($tabelasDisponiveis) {
+    financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
+    financeiroSincronizarContasRecorrentes($pdo, $usuarioId, $mes);
+
+    if (financeiroTabelasDisponiveis($pdo, ['financeiro_contas_recorrentes'])) {
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM financeiro_contas_recorrentes
+            WHERE usuario_id = ?
+        ");
+        $stmt->execute([$usuarioId]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $recorrencia) {
+            $recorrenciasPorId[(int)$recorrencia['id']] = $recorrencia;
+        }
+    }
+
     $stmt = $pdo->prepare("
         SELECT *
         FROM financeiro_recebimentos
@@ -570,6 +850,11 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                 <?php foreach ($contas as $conta):
                                     $paga = $conta['status'] === 'pago';
                                     $atrasada = !$paga && $conta['vencimento'] < date('Y-m-d');
+                                    $faturaCartao = !empty($conta['cartao_id']);
+                                    $contaRecorrente = !empty($conta['recorrencia_id']);
+                                    $recorrencia = $contaRecorrente
+                                        ? ($recorrenciasPorId[(int)$conta['recorrencia_id']] ?? null)
+                                        : null;
                                     $textoConta = $conta['descricao'];
 
                                     if (!empty($conta['parcela_numero']) && !empty($conta['parcelas_total'])) {
@@ -581,6 +866,12 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                             <?= htmlspecialchars($textoConta) ?>
                                             <?php if (!empty($conta['grupo_parcelamento'])): ?>
                                                 <span class="badge bg-light text-dark border ms-1">Parcelada</span>
+                                            <?php endif; ?>
+                                            <?php if ($faturaCartao): ?>
+                                                <span class="badge bg-primary ms-1">Cartão</span>
+                                            <?php endif; ?>
+                                            <?php if ($contaRecorrente): ?>
+                                                <span class="badge bg-info text-dark ms-1">Recorrente</span>
                                             <?php endif; ?>
                                         </td>
                                         <td><?= financeiroData($conta['vencimento']) ?></td>
@@ -607,40 +898,76 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                                         <i class="bi bi-check-lg"></i>
                                                     </button>
                                                 <?php else: ?>
-                                                    <form method="post" class="d-inline">
-                                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
-                                                        <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
-                                                        <input type="hidden" name="acao" value="reabrir_conta">
-                                                        <input type="hidden" name="id" value="<?= (int)$conta['id'] ?>">
-                                                        <button type="submit" class="btn btn-outline-warning btn-sm" title="Voltar para pendente">
-                                                            <i class="bi bi-arrow-counterclockwise"></i>
-                                                        </button>
-                                                    </form>
+                                                    <?php if ($faturaCartao): ?>
+                                                        <a
+                                                            href="financeiro_cartoes.php?cartao=<?= (int)$conta['cartao_id'] ?>"
+                                                            class="btn btn-outline-secondary btn-sm"
+                                                            title="Abrir cartão">
+                                                            <i class="bi bi-credit-card"></i>
+                                                        </a>
+                                                    <?php else: ?>
+                                                        <form method="post" class="d-inline">
+                                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
+                                                            <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
+                                                            <input type="hidden" name="acao" value="reabrir_conta">
+                                                            <input type="hidden" name="id" value="<?= (int)$conta['id'] ?>">
+                                                            <button type="submit" class="btn btn-outline-warning btn-sm" title="Voltar para pendente">
+                                                                <i class="bi bi-arrow-counterclockwise"></i>
+                                                            </button>
+                                                        </form>
+                                                    <?php endif; ?>
                                                 <?php endif; ?>
 
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-outline-primary btn-sm btn-editar-conta"
-                                                    data-id="<?= (int)$conta['id'] ?>"
-                                                    data-descricao="<?= htmlspecialchars($conta['descricao']) ?>"
-                                                    data-valor="<?= number_format((float)$conta['valor_previsto'], 2, ',', '.') ?>"
-                                                    data-vencimento="<?= htmlspecialchars($conta['vencimento']) ?>"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#modalConta"
-                                                    title="Editar conta">
-                                                    <i class="bi bi-pencil"></i>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-outline-danger btn-sm btn-excluir-financeiro"
-                                                    data-acao="excluir_conta"
-                                                    data-id="<?= (int)$conta['id'] ?>"
-                                                    data-descricao="<?= htmlspecialchars($textoConta) ?>"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#modalExcluirFinanceiro"
-                                                    title="Excluir conta">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
+                                                <?php if ($contaRecorrente && $recorrencia): ?>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline-primary btn-sm btn-editar-recorrencia"
+                                                        data-recorrencia-id="<?= (int)$recorrencia['id'] ?>"
+                                                        data-descricao="<?= htmlspecialchars($recorrencia['descricao']) ?>"
+                                                        data-valor="<?= number_format((float)$recorrencia['valor'], 2, ',', '.') ?>"
+                                                        data-vencimento="<?= htmlspecialchars($recorrencia['primeiro_vencimento']) ?>"
+                                                        data-fim="<?= $recorrencia['fim_mes'] ? htmlspecialchars(date('Y-m', strtotime($recorrencia['fim_mes']))) : '' ?>"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalConta"
+                                                        title="Editar recorrência">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline-danger btn-sm btn-excluir-financeiro"
+                                                        data-acao="excluir_recorrencia"
+                                                        data-id="<?= (int)$recorrencia['id'] ?>"
+                                                        data-descricao="<?= htmlspecialchars($recorrencia['descricao']) ?>"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalExcluirFinanceiro"
+                                                        title="Encerrar recorrência">
+                                                        <i class="bi bi-stop-circle"></i>
+                                                    </button>
+                                                <?php elseif (!$faturaCartao): ?>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline-primary btn-sm btn-editar-conta"
+                                                        data-id="<?= (int)$conta['id'] ?>"
+                                                        data-descricao="<?= htmlspecialchars($conta['descricao']) ?>"
+                                                        data-valor="<?= number_format((float)$conta['valor_previsto'], 2, ',', '.') ?>"
+                                                        data-vencimento="<?= htmlspecialchars($conta['vencimento']) ?>"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalConta"
+                                                        title="Editar conta">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline-danger btn-sm btn-excluir-financeiro"
+                                                        data-acao="excluir_conta"
+                                                        data-id="<?= (int)$conta['id'] ?>"
+                                                        data-descricao="<?= htmlspecialchars($textoConta) ?>"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalExcluirFinanceiro"
+                                                        title="Excluir conta">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                <?php endif; ?>
                                             </div>
                                         </td>
                                     </tr>
@@ -714,6 +1041,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                         <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
                         <input type="hidden" name="acao" value="salvar_conta">
                         <input type="hidden" name="id" id="contaId">
+                        <input type="hidden" name="recorrencia_id" id="contaRecorrenciaId">
                         <div class="modal-header">
                             <h5 class="modal-title" id="tituloModalConta">Nova conta</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
@@ -724,6 +1052,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                 <select class="form-select" name="tipo_lancamento" id="contaTipoLancamento">
                                     <option value="unica">Conta única</option>
                                     <option value="parcelada">Parcelada</option>
+                                    <option value="recorrente">Recorrente mensal</option>
                                 </select>
                             </div>
                             <div class="mb-3">
@@ -759,6 +1088,10 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                         Exemplo: informe parcela atual 17 e total 48 para gerar da 17/48 até a 48/48.
                                     </small>
                                 </div>
+                            </div>
+                            <div class="d-none" id="camposRecorrenciaConta">
+                                <label for="contaFimRecorrencia" class="form-label">Último mês (opcional)</label>
+                                <input type="month" class="form-control" name="fim_recorrencia" id="contaFimRecorrencia">
                             </div>
                         </div>
                         <div class="modal-footer">
@@ -812,12 +1145,12 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title">Excluir lançamento</h5>
+                        <h5 class="modal-title" id="tituloExcluirFinanceiro">Excluir lançamento</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                     </div>
                     <div class="modal-body">
                         <p class="mb-1">Tem certeza que deseja excluir <strong id="descricaoExcluirFinanceiro"></strong>?</p>
-                        <small class="text-danger">Essa ação não poderá ser desfeita.</small>
+                        <small class="text-danger" id="avisoExcluirFinanceiro">Essa ação não poderá ser desfeita.</small>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Não</button>
@@ -826,8 +1159,8 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
                             <input type="hidden" name="acao" id="acaoExcluirFinanceiro">
                             <input type="hidden" name="id" id="idExcluirFinanceiro">
-                            <button type="submit" class="btn btn-danger">
-                                <i class="bi bi-trash"></i> Sim, excluir
+                            <button type="submit" class="btn btn-danger" id="btnConfirmarExcluirFinanceiro">
+                                <i class="bi bi-trash"></i> <span>Sim, excluir</span>
                             </button>
                         </form>
                     </div>
@@ -870,6 +1203,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
             document.getElementById('btnNovaConta').addEventListener('click', function() {
                 document.getElementById('tituloModalConta').textContent = 'Nova conta';
                 document.getElementById('contaId').value = '';
+                document.getElementById('contaRecorrenciaId').value = '';
                 document.getElementById('grupoTipoConta').classList.remove('d-none');
                 document.getElementById('contaTipoLancamento').value = 'unica';
                 document.getElementById('contaDescricao').value = '';
@@ -877,6 +1211,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 document.getElementById('contaVencimento').value = mesSelecionado + '-01';
                 document.getElementById('contaParcelaInicial').value = '1';
                 document.getElementById('contaParcelasTotal').value = '';
+                document.getElementById('contaFimRecorrencia').value = '';
                 atualizarCamposParcelamentoConta();
             });
 
@@ -884,21 +1219,44 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 botao.addEventListener('click', function() {
                     document.getElementById('tituloModalConta').textContent = 'Editar conta';
                     document.getElementById('contaId').value = this.dataset.id;
+                    document.getElementById('contaRecorrenciaId').value = '';
+                    document.getElementById('contaTipoLancamento').value = 'unica';
                     document.getElementById('grupoTipoConta').classList.add('d-none');
                     document.getElementById('camposParcelamentoConta').classList.add('d-none');
+                    document.getElementById('camposRecorrenciaConta').classList.add('d-none');
                     document.getElementById('contaDescricao').value = this.dataset.descricao;
                     document.getElementById('contaValor').value = this.dataset.valor;
                     document.getElementById('contaVencimento').value = this.dataset.vencimento;
+                    document.getElementById('contaFimRecorrencia').value = '';
+                });
+            });
+
+            document.querySelectorAll('.btn-editar-recorrencia').forEach(function(botao) {
+                botao.addEventListener('click', function() {
+                    document.getElementById('tituloModalConta').textContent = 'Editar conta recorrente';
+                    document.getElementById('contaId').value = '';
+                    document.getElementById('contaRecorrenciaId').value = this.dataset.recorrenciaId;
+                    document.getElementById('grupoTipoConta').classList.remove('d-none');
+                    document.getElementById('contaTipoLancamento').value = 'recorrente';
+                    document.getElementById('contaDescricao').value = this.dataset.descricao;
+                    document.getElementById('contaValor').value = this.dataset.valor;
+                    document.getElementById('contaVencimento').value = this.dataset.vencimento;
+                    document.getElementById('contaFimRecorrencia').value = this.dataset.fim;
+                    atualizarCamposParcelamentoConta();
                 });
             });
 
             function atualizarCamposParcelamentoConta() {
-                const parcelada = document.getElementById('contaTipoLancamento').value === 'parcelada';
+                const tipo = document.getElementById('contaTipoLancamento').value;
+                const parcelada = tipo === 'parcelada';
+                const recorrente = tipo === 'recorrente';
                 const campos = document.getElementById('camposParcelamentoConta');
+                const camposRecorrencia = document.getElementById('camposRecorrenciaConta');
                 const parcelaInicial = document.getElementById('contaParcelaInicial');
                 const parcelasTotal = document.getElementById('contaParcelasTotal');
 
                 campos.classList.toggle('d-none', !parcelada);
+                camposRecorrencia.classList.toggle('d-none', !recorrente);
                 parcelaInicial.required = parcelada;
                 parcelasTotal.required = parcelada;
 
@@ -923,9 +1281,19 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
 
             document.querySelectorAll('.btn-excluir-financeiro').forEach(function(botao) {
                 botao.addEventListener('click', function() {
+                    const recorrencia = this.dataset.acao === 'excluir_recorrencia';
                     document.getElementById('acaoExcluirFinanceiro').value = this.dataset.acao;
                     document.getElementById('idExcluirFinanceiro').value = this.dataset.id;
                     document.getElementById('descricaoExcluirFinanceiro').textContent = this.dataset.descricao;
+                    document.getElementById('tituloExcluirFinanceiro').textContent = recorrencia ?
+                        'Encerrar conta recorrente' :
+                        'Excluir lançamento';
+                    document.getElementById('avisoExcluirFinanceiro').textContent = recorrencia ?
+                        'As contas pendentes dessa recorrência serão removidas. As já pagas serão mantidas no histórico.' :
+                        'Essa ação não poderá ser desfeita.';
+                    document.querySelector('#btnConfirmarExcluirFinanceiro span').textContent = recorrencia ?
+                        'Sim, encerrar' :
+                        'Sim, excluir';
                 });
             });
 

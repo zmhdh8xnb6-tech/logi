@@ -36,10 +36,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $limite = financeiroValorEntrada($limiteInformado);
         $tipo = ($_POST['tipo'] ?? '') === 'loja' ? 'loja' : 'credito';
         $diaVencimento = (int)($_POST['dia_vencimento'] ?? 0);
-        $diaVencimento = $diaVencimento >= 1 && $diaVencimento <= 31 ? $diaVencimento : null;
 
-        if ($nome === '' || !financeiroValorValido($limiteInformado)) {
-            financeiroRedirecionar($urlRetorno, 'Informe o nome e o limite do cartão.', 'danger');
+        if (
+            $nome === ''
+            || !financeiroValorValido($limiteInformado)
+            || $diaVencimento < 1
+            || $diaVencimento > 31
+        ) {
+            financeiroRedirecionar($urlRetorno, 'Informe o nome, o limite e o dia de vencimento do cartão.', 'danger');
         }
 
         if ($id > 0) {
@@ -767,7 +771,8 @@ if ($tabelasDisponiveis) {
                             </div>
                             <div class="mb-3">
                                 <label for="cartaoVencimento" class="form-label">Dia do vencimento</label>
-                                <input type="number" min="1" max="31" class="form-control" name="dia_vencimento" id="cartaoVencimento" placeholder="Opcional">
+                                <input type="number" min="1" max="31" class="form-control" name="dia_vencimento" id="cartaoVencimento" required>
+                                <div class="invalid-feedback">Informe um dia entre 1 e 31.</div>
                             </div>
                         </div>
                         <div class="modal-footer">
