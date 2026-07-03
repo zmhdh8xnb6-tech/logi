@@ -35,15 +35,159 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $recebidoDe = trim($_POST['recebido_de'] ?? '');
         $valorInformado = $_POST['valor'] ?? '';
         $valor = financeiroValorEntrada($valorInformado);
+        $tipoRecebimento = ($_POST['tipo_recebimento'] ?? '') === 'recorrente'
+            ? 'recorrente'
+            : 'unico';
+        $recorrenciaRecebimentoId = (int)($_POST['recorrencia_recebimento_id'] ?? 0);
+        $fimRecorrenciaRecebimento = trim($_POST['fim_recorrencia_recebimento'] ?? '');
 
         if ($data === '' || $descricao === '' || !financeiroValorValido($valorInformado)) {
             financeiroRedirecionar($urlRetorno, 'Preencha os dados do recebimento corretamente.', 'danger');
+        }
+
+        if ($tipoRecebimento === 'recorrente') {
+            if (
+                !financeiroTabelasDisponiveis($pdo, ['financeiro_recebimentos_recorrentes'])
+                || !financeiroColunaExiste($pdo, 'financeiro_recebimentos', 'recorrencia_id')
+                || !financeiroColunaExiste($pdo, 'financeiro_recebimentos', 'competencia_recorrencia')
+            ) {
+                financeiroRedirecionar(
+                    $urlRetorno,
+                    'Execute o SQL dos recebimentos recorrentes antes de cadastrar.',
+                    'danger'
+                );
+            }
+
+            $fimMesRecebimento = null;
+            if ($fimRecorrenciaRecebimento !== '') {
+                if (!preg_match('/^\d{4}-\d{2}$/', $fimRecorrenciaRecebimento)) {
+                    financeiroRedirecionar($urlRetorno, 'Informe corretamente o último mês da recorrência.', 'danger');
+                }
+
+                $fimMesRecebimento = $fimRecorrenciaRecebimento . '-01';
+                if ($fimMesRecebimento < date('Y-m-01', strtotime($data))) {
+                    financeiroRedirecionar(
+                        $urlRetorno,
+                        'O último mês não pode ser anterior ao primeiro recebimento.',
+                        'danger'
+                    );
+                }
+            }
+
+            if ($recorrenciaRecebimentoId > 0) {
+                $stmtAntes = $pdo->prepare("
+                    SELECT *
+                    FROM financeiro_recebimentos_recorrentes
+                    WHERE id = ? AND usuario_id = ?
+                ");
+                $stmtAntes->execute([$recorrenciaRecebimentoId, $usuarioId]);
+                $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+                if (!$antes) {
+                    financeiroRedirecionar($urlRetorno, 'Recebimento recorrente não encontrado.', 'danger');
+                }
+
+                $stmt = $pdo->prepare("
+                    UPDATE financeiro_recebimentos_recorrentes
+                    SET descricao = ?,
+                        recebido_de = ?,
+                        valor = ?,
+                        primeiro_recebimento = ?,
+                        fim_mes = ?,
+                        ativa = 1
+                    WHERE id = ? AND usuario_id = ?
+                ");
+                $stmt->execute([
+                    $descricao,
+                    $recebidoDe,
+                    $valor,
+                    $data,
+                    $fimMesRecebimento,
+                    $recorrenciaRecebimentoId,
+                    $usuarioId,
+                ]);
+                $stmt = $pdo->prepare("
+                    DELETE FROM financeiro_recebimentos
+                    WHERE usuario_id = ?
+                      AND recorrencia_id = ?
+                      AND data_recebimento >= ?
+                ");
+                $stmt->execute([$usuarioId, $recorrenciaRecebimentoId, date('Y-m-01')]);
+                $depois = array_merge($antes, [
+                    'descricao' => $descricao,
+                    'recebido_de' => $recebidoDe,
+                    'valor' => $valor,
+                    'primeiro_recebimento' => $data,
+                    'fim_mes' => $fimMesRecebimento,
+                    'ativa' => 1,
+                ]);
+                $mudancas = auditoriaMudancas($antes, $depois);
+                registrarAuditoria(
+                    $pdo,
+                    'Financeiro',
+                    'editar',
+                    'recebimento_recorrente',
+                    $recorrenciaRecebimentoId,
+                    'Alterou o recebimento recorrente ' . $descricao,
+                    $mudancas['antes'],
+                    $mudancas['depois']
+                );
+                financeiroRedirecionar($urlRetorno, 'Recebimento recorrente atualizado com sucesso.');
+            }
+
+            $stmt = $pdo->prepare("
+                INSERT INTO financeiro_recebimentos_recorrentes (
+                    usuario_id,
+                    descricao,
+                    recebido_de,
+                    valor,
+                    primeiro_recebimento,
+                    fim_mes,
+                    ativa
+                )
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+            ");
+            $stmt->execute([
+                $usuarioId,
+                $descricao,
+                $recebidoDe,
+                $valor,
+                $data,
+                $fimMesRecebimento,
+            ]);
+            $novaRecorrenciaId = (int)$pdo->lastInsertId();
+            registrarAuditoria(
+                $pdo,
+                'Financeiro',
+                'criar',
+                'recebimento_recorrente',
+                $novaRecorrenciaId,
+                'Cadastrou o recebimento recorrente ' . $descricao,
+                null,
+                [
+                    'descricao' => $descricao,
+                    'recebido_de' => $recebidoDe,
+                    'valor' => $valor,
+                    'primeiro_recebimento' => $data,
+                    'fim_mes' => $fimMesRecebimento,
+                ]
+            );
+            financeiroRedirecionar($urlRetorno, 'Recebimento recorrente cadastrado com sucesso.');
         }
 
         if ($id > 0) {
             $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_recebimentos WHERE id = ? AND usuario_id = ?");
             $stmtAntes->execute([$id, $usuarioId]);
             $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC) ?: [];
+
+            if (!empty($antes['recorrencia_id'])) {
+                financeiroRedirecionar(
+                    $urlRetorno,
+                    'Edite a regra do recebimento recorrente pelo botão de lápis.',
+                    'warning'
+                );
+            }
+
             $stmt = $pdo->prepare("
                 UPDATE financeiro_recebimentos
                 SET data_recebimento = ?, descricao = ?, recebido_de = ?, valor = ?
@@ -85,12 +229,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_recebimentos WHERE id = ? AND usuario_id = ?");
         $stmtAntes->execute([$id, $usuarioId]);
         $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+        if (!empty($antes['recorrencia_id'])) {
+            financeiroRedirecionar(
+                $urlRetorno,
+                'Use a opção de encerrar para excluir o recebimento recorrente.',
+                'warning'
+            );
+        }
+
         $stmt = $pdo->prepare("DELETE FROM financeiro_recebimentos WHERE id = ? AND usuario_id = ?");
         $stmt->execute([$id, $usuarioId]);
         if ($antes) {
             registrarAuditoria($pdo, 'Financeiro', 'excluir', 'recebimento', $id, 'Excluiu o recebimento ' . $antes['descricao'], $antes, null);
         }
         financeiroRedirecionar($urlRetorno, 'Recebimento excluído com sucesso.');
+    }
+
+    if ($acao === 'excluir_recorrencia_recebimento') {
+        if (!financeiroTabelasDisponiveis($pdo, ['financeiro_recebimentos_recorrentes'])) {
+            financeiroRedirecionar($urlRetorno, 'A tabela de recebimentos recorrentes não foi encontrada.', 'danger');
+        }
+
+        $stmtAntes = $pdo->prepare("
+            SELECT *
+            FROM financeiro_recebimentos_recorrentes
+            WHERE id = ? AND usuario_id = ?
+        ");
+        $stmtAntes->execute([$id, $usuarioId]);
+        $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+        if (!$antes) {
+            financeiroRedirecionar($urlRetorno, 'Recebimento recorrente não encontrado.', 'danger');
+        }
+
+        $pdo->beginTransaction();
+        try {
+            $inicioProximoMes = date('Y-m-d', strtotime(date('Y-m-01') . ' +1 month'));
+            $stmt = $pdo->prepare("
+                UPDATE financeiro_recebimentos
+                SET recorrencia_id = NULL, competencia_recorrencia = NULL
+                WHERE usuario_id = ?
+                  AND recorrencia_id = ?
+                  AND data_recebimento < ?
+            ");
+            $stmt->execute([$usuarioId, $id, $inicioProximoMes]);
+
+            $stmt = $pdo->prepare("
+                DELETE FROM financeiro_recebimentos
+                WHERE usuario_id = ? AND recorrencia_id = ?
+            ");
+            $stmt->execute([$usuarioId, $id]);
+
+            $stmt = $pdo->prepare("
+                DELETE FROM financeiro_recebimentos_recorrentes
+                WHERE id = ? AND usuario_id = ?
+            ");
+            $stmt->execute([$id, $usuarioId]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            financeiroRedirecionar($urlRetorno, 'Não foi possível encerrar o recebimento recorrente.', 'danger');
+        }
+
+        registrarAuditoria(
+            $pdo,
+            'Financeiro',
+            'excluir',
+            'recebimento_recorrente',
+            $id,
+            'Encerrou o recebimento recorrente ' . $antes['descricao'],
+            $antes,
+            null
+        );
+        financeiroRedirecionar($urlRetorno, 'Recebimento recorrente encerrado com sucesso.');
     }
 
     if ($acao === 'salvar_conta') {
@@ -570,10 +782,12 @@ $totalPrevisto = 0.0;
 $totalPago = 0.0;
 $totalPendente = 0.0;
 $recorrenciasPorId = [];
+$recorrenciasRecebimentosPorId = [];
 
 if ($tabelasDisponiveis) {
     financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
     financeiroSincronizarContasRecorrentes($pdo, $usuarioId, $mes);
+    financeiroSincronizarRecebimentosRecorrentes($pdo, $usuarioId, $mes);
 
     if (financeiroTabelasDisponiveis($pdo, ['financeiro_contas_recorrentes'])) {
         $stmt = $pdo->prepare("
@@ -584,6 +798,18 @@ if ($tabelasDisponiveis) {
         $stmt->execute([$usuarioId]);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $recorrencia) {
             $recorrenciasPorId[(int)$recorrencia['id']] = $recorrencia;
+        }
+    }
+
+    if (financeiroTabelasDisponiveis($pdo, ['financeiro_recebimentos_recorrentes'])) {
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM financeiro_recebimentos_recorrentes
+            WHERE usuario_id = ?
+        ");
+        $stmt->execute([$usuarioId]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $recorrenciaRecebimento) {
+            $recorrenciasRecebimentosPorId[(int)$recorrenciaRecebimento['id']] = $recorrenciaRecebimento;
         }
     }
 
@@ -768,38 +994,76 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                     </tr>
                                 <?php endif; ?>
 
-                                <?php foreach ($recebimentos as $recebimento): ?>
+                                <?php foreach ($recebimentos as $recebimento):
+                                    $recebimentoRecorrente = !empty($recebimento['recorrencia_id']);
+                                    $regraRecebimento = $recebimentoRecorrente
+                                        ? ($recorrenciasRecebimentosPorId[(int)$recebimento['recorrencia_id']] ?? null)
+                                        : null;
+                                ?>
                                     <tr>
                                         <td><?= financeiroData($recebimento['data_recebimento']) ?></td>
-                                        <td><?= htmlspecialchars($recebimento['descricao']) ?></td>
+                                        <td>
+                                            <?= htmlspecialchars($recebimento['descricao']) ?>
+                                            <?php if ($recebimentoRecorrente): ?>
+                                                <span class="badge bg-info text-dark ms-1">Recorrente</span>
+                                            <?php endif; ?>
+                                        </td>
                                         <td><?= htmlspecialchars($recebimento['recebido_de'] ?: '-') ?></td>
                                         <td class="text-end fw-semibold text-success"><?= financeiroMoeda((float)$recebimento['valor']) ?></td>
                                         <td class="text-end">
                                             <div class="d-inline-flex gap-1">
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-outline-primary btn-sm btn-editar-recebimento"
-                                                    data-id="<?= (int)$recebimento['id'] ?>"
-                                                    data-data="<?= htmlspecialchars($recebimento['data_recebimento']) ?>"
-                                                    data-descricao="<?= htmlspecialchars($recebimento['descricao']) ?>"
-                                                    data-recebido-de="<?= htmlspecialchars($recebimento['recebido_de']) ?>"
-                                                    data-valor="<?= number_format((float)$recebimento['valor'], 2, ',', '.') ?>"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#modalRecebimento"
-                                                    title="Editar recebimento">
-                                                    <i class="bi bi-pencil"></i>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-outline-danger btn-sm btn-excluir-financeiro"
-                                                    data-acao="excluir_recebimento"
-                                                    data-id="<?= (int)$recebimento['id'] ?>"
-                                                    data-descricao="<?= htmlspecialchars($recebimento['descricao']) ?>"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#modalExcluirFinanceiro"
-                                                    title="Excluir recebimento">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
+                                                <?php if ($recebimentoRecorrente && $regraRecebimento): ?>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline-primary btn-sm btn-editar-recebimento-recorrente"
+                                                        data-recorrencia-id="<?= (int)$regraRecebimento['id'] ?>"
+                                                        data-data="<?= htmlspecialchars($regraRecebimento['primeiro_recebimento']) ?>"
+                                                        data-descricao="<?= htmlspecialchars($regraRecebimento['descricao']) ?>"
+                                                        data-recebido-de="<?= htmlspecialchars($regraRecebimento['recebido_de']) ?>"
+                                                        data-valor="<?= number_format((float)$regraRecebimento['valor'], 2, ',', '.') ?>"
+                                                        data-fim="<?= $regraRecebimento['fim_mes'] ? htmlspecialchars(date('Y-m', strtotime($regraRecebimento['fim_mes']))) : '' ?>"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalRecebimento"
+                                                        title="Editar recorrência">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline-danger btn-sm btn-excluir-financeiro"
+                                                        data-acao="excluir_recorrencia_recebimento"
+                                                        data-id="<?= (int)$regraRecebimento['id'] ?>"
+                                                        data-descricao="<?= htmlspecialchars($regraRecebimento['descricao']) ?>"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalExcluirFinanceiro"
+                                                        title="Encerrar recorrência">
+                                                        <i class="bi bi-stop-circle"></i>
+                                                    </button>
+                                                <?php else: ?>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline-primary btn-sm btn-editar-recebimento"
+                                                        data-id="<?= (int)$recebimento['id'] ?>"
+                                                        data-data="<?= htmlspecialchars($recebimento['data_recebimento']) ?>"
+                                                        data-descricao="<?= htmlspecialchars($recebimento['descricao']) ?>"
+                                                        data-recebido-de="<?= htmlspecialchars($recebimento['recebido_de']) ?>"
+                                                        data-valor="<?= number_format((float)$recebimento['valor'], 2, ',', '.') ?>"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalRecebimento"
+                                                        title="Editar recebimento">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline-danger btn-sm btn-excluir-financeiro"
+                                                        data-acao="excluir_recebimento"
+                                                        data-id="<?= (int)$recebimento['id'] ?>"
+                                                        data-descricao="<?= htmlspecialchars($recebimento['descricao']) ?>"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalExcluirFinanceiro"
+                                                        title="Excluir recebimento">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                <?php endif; ?>
                                             </div>
                                         </td>
                                     </tr>
@@ -1019,11 +1283,19 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                         <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
                         <input type="hidden" name="acao" value="salvar_recebimento">
                         <input type="hidden" name="id" id="recebimentoId">
+                        <input type="hidden" name="recorrencia_recebimento_id" id="recebimentoRecorrenciaId">
                         <div class="modal-header">
                             <h5 class="modal-title" id="tituloModalRecebimento">Novo recebimento</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                         </div>
                         <div class="modal-body">
+                            <div class="mb-3" id="grupoTipoRecebimento">
+                                <label for="recebimentoTipo" class="form-label">Tipo de recebimento</label>
+                                <select class="form-select" name="tipo_recebimento" id="recebimentoTipo">
+                                    <option value="unico">Recebimento único</option>
+                                    <option value="recorrente">Recorrente mensal</option>
+                                </select>
+                            </div>
                             <div class="row">
                                 <div class="col-md-5 mb-3">
                                     <label for="recebimentoData" class="form-label">Data</label>
@@ -1044,6 +1316,14 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             <div class="mb-3">
                                 <label for="recebimentoOrigem" class="form-label">Recebido de</label>
                                 <input type="text" class="form-control" name="recebido_de" id="recebimentoOrigem">
+                            </div>
+                            <div class="d-none" id="camposRecorrenciaRecebimento">
+                                <label for="recebimentoFimRecorrencia" class="form-label">Último mês (opcional)</label>
+                                <input
+                                    type="month"
+                                    class="form-control"
+                                    name="fim_recorrencia_recebimento"
+                                    id="recebimentoFimRecorrencia">
                             </div>
                         </div>
                         <div class="modal-footer">
@@ -1205,22 +1485,55 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
             document.getElementById('btnNovoRecebimento').addEventListener('click', function() {
                 document.getElementById('tituloModalRecebimento').textContent = 'Novo recebimento';
                 document.getElementById('recebimentoId').value = '';
+                document.getElementById('recebimentoRecorrenciaId').value = '';
+                document.getElementById('grupoTipoRecebimento').classList.remove('d-none');
+                document.getElementById('recebimentoTipo').value = 'unico';
                 document.getElementById('recebimentoData').value = mesSelecionado + '-01';
                 document.getElementById('recebimentoDescricao').value = '';
                 document.getElementById('recebimentoOrigem').value = '';
                 document.getElementById('recebimentoValor').value = '';
+                document.getElementById('recebimentoFimRecorrencia').value = '';
+                atualizarCamposRecorrenciaRecebimento();
             });
 
             document.querySelectorAll('.btn-editar-recebimento').forEach(function(botao) {
                 botao.addEventListener('click', function() {
                     document.getElementById('tituloModalRecebimento').textContent = 'Editar recebimento';
                     document.getElementById('recebimentoId').value = this.dataset.id;
+                    document.getElementById('recebimentoRecorrenciaId').value = '';
+                    document.getElementById('recebimentoTipo').value = 'unico';
+                    document.getElementById('grupoTipoRecebimento').classList.add('d-none');
+                    document.getElementById('camposRecorrenciaRecebimento').classList.add('d-none');
                     document.getElementById('recebimentoData').value = this.dataset.data;
                     document.getElementById('recebimentoDescricao').value = this.dataset.descricao;
                     document.getElementById('recebimentoOrigem').value = this.dataset.recebidoDe;
                     document.getElementById('recebimentoValor').value = this.dataset.valor;
+                    document.getElementById('recebimentoFimRecorrencia').value = '';
                 });
             });
+
+            document.querySelectorAll('.btn-editar-recebimento-recorrente').forEach(function(botao) {
+                botao.addEventListener('click', function() {
+                    document.getElementById('tituloModalRecebimento').textContent = 'Editar recebimento recorrente';
+                    document.getElementById('recebimentoId').value = '';
+                    document.getElementById('recebimentoRecorrenciaId').value = this.dataset.recorrenciaId;
+                    document.getElementById('grupoTipoRecebimento').classList.remove('d-none');
+                    document.getElementById('recebimentoTipo').value = 'recorrente';
+                    document.getElementById('recebimentoData').value = this.dataset.data;
+                    document.getElementById('recebimentoDescricao').value = this.dataset.descricao;
+                    document.getElementById('recebimentoOrigem').value = this.dataset.recebidoDe;
+                    document.getElementById('recebimentoValor').value = this.dataset.valor;
+                    document.getElementById('recebimentoFimRecorrencia').value = this.dataset.fim;
+                    atualizarCamposRecorrenciaRecebimento();
+                });
+            });
+
+            function atualizarCamposRecorrenciaRecebimento() {
+                const recorrente = document.getElementById('recebimentoTipo').value === 'recorrente';
+                document.getElementById('camposRecorrenciaRecebimento').classList.toggle('d-none', !recorrente);
+            }
+
+            document.getElementById('recebimentoTipo').addEventListener('change', atualizarCamposRecorrenciaRecebimento);
 
             document.getElementById('btnNovaConta').addEventListener('click', function() {
                 document.getElementById('tituloModalConta').textContent = 'Nova conta';
@@ -1303,15 +1616,19 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
 
             document.querySelectorAll('.btn-excluir-financeiro').forEach(function(botao) {
                 botao.addEventListener('click', function() {
-                    const recorrencia = this.dataset.acao === 'excluir_recorrencia';
+                    const recorrenciaConta = this.dataset.acao === 'excluir_recorrencia';
+                    const recorrenciaRecebimento = this.dataset.acao === 'excluir_recorrencia_recebimento';
+                    const recorrencia = recorrenciaConta || recorrenciaRecebimento;
                     document.getElementById('acaoExcluirFinanceiro').value = this.dataset.acao;
                     document.getElementById('idExcluirFinanceiro').value = this.dataset.id;
                     document.getElementById('descricaoExcluirFinanceiro').textContent = this.dataset.descricao;
                     document.getElementById('tituloExcluirFinanceiro').textContent = recorrencia ?
-                        'Encerrar conta recorrente' :
+                        (recorrenciaRecebimento ? 'Encerrar recebimento recorrente' : 'Encerrar conta recorrente') :
                         'Excluir lançamento';
                     document.getElementById('avisoExcluirFinanceiro').textContent = recorrencia ?
-                        'As contas pendentes dessa recorrência serão removidas. As já pagas serão mantidas no histórico.' :
+                        (recorrenciaRecebimento ?
+                            'Os recebimentos dos meses anteriores e do mês atual serão mantidos no histórico.' :
+                            'As contas pendentes dessa recorrência serão removidas. As já pagas serão mantidas no histórico.') :
                         'Essa ação não poderá ser desfeita.';
                     document.querySelector('#btnConfirmarExcluirFinanceiro span').textContent = recorrencia ?
                         'Sim, encerrar' :

@@ -103,6 +103,7 @@ function financeiroColunaExiste(PDO $pdo, string $tabela, string $coluna): bool
 {
     static $cache = [];
     $tabelasPermitidas = [
+        'financeiro_recebimentos',
         'financeiro_contas',
         'financeiro_cartoes',
         'financeiro_cartao_lancamentos',
@@ -329,6 +330,70 @@ function financeiroSincronizarContasRecorrentes(PDO $pdo, int $usuarioId, string
         }
     } catch (Throwable $e) {
         // A recorrência nunca deve impedir a abertura do financeiro.
+    }
+}
+
+function financeiroSincronizarRecebimentosRecorrentes(PDO $pdo, int $usuarioId, string $mes): void
+{
+    $mes = financeiroMesValido($mes);
+
+    if (
+        !financeiroTabelasDisponiveis(
+            $pdo,
+            ['financeiro_recebimentos', 'financeiro_recebimentos_recorrentes']
+        )
+        || !financeiroColunaExiste($pdo, 'financeiro_recebimentos', 'recorrencia_id')
+        || !financeiroColunaExiste($pdo, 'financeiro_recebimentos', 'competencia_recorrencia')
+    ) {
+        return;
+    }
+
+    $inicioMes = $mes . '-01';
+    $fimMes = date('Y-m-d', strtotime($inicioMes . ' +1 month'));
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM financeiro_recebimentos_recorrentes
+            WHERE usuario_id = ?
+              AND ativa = 1
+              AND primeiro_recebimento < ?
+              AND (fim_mes IS NULL OR fim_mes >= ?)
+        ");
+        $stmt->execute([$usuarioId, $fimMes, $inicioMes]);
+        $recorrencias = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmtSalvar = $pdo->prepare("
+            INSERT INTO financeiro_recebimentos (
+                usuario_id,
+                data_recebimento,
+                descricao,
+                recebido_de,
+                valor,
+                recorrencia_id,
+                competencia_recorrencia
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                data_recebimento = VALUES(data_recebimento),
+                descricao = VALUES(descricao),
+                recebido_de = VALUES(recebido_de),
+                valor = VALUES(valor)
+        ");
+
+        foreach ($recorrencias as $recorrencia) {
+            $dia = (int)date('d', strtotime($recorrencia['primeiro_recebimento']));
+            $stmtSalvar->execute([
+                $usuarioId,
+                financeiroVencimentoFatura($mes, $dia),
+                $recorrencia['descricao'],
+                $recorrencia['recebido_de'],
+                $recorrencia['valor'],
+                $recorrencia['id'],
+                $mes,
+            ]);
+        }
+    } catch (Throwable $e) {
+        // A sincronização automática não deve impedir a abertura do financeiro.
     }
 }
 

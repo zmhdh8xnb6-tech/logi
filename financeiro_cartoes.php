@@ -320,23 +320,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_cartao_lancamentos WHERE id = ? AND usuario_id = ?");
         $stmtAntes->execute([$id, $usuarioId]);
         $lancamentoAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+        if (!$lancamentoAntes) {
+            financeiroRedirecionar($urlRetorno, 'Compra não encontrada.', 'danger');
+        }
+
+        if (!empty($lancamentoAntes['grupo_parcelamento'])) {
+            $stmtResumo = $pdo->prepare("
+                SELECT COUNT(*) AS quantidade, COALESCE(SUM(valor), 0) AS valor_total
+                FROM financeiro_cartao_lancamentos
+                WHERE usuario_id = ? AND grupo_parcelamento = ?
+            ");
+            $stmtResumo->execute([$usuarioId, $lancamentoAntes['grupo_parcelamento']]);
+            $resumoExclusao = $stmtResumo->fetch(PDO::FETCH_ASSOC) ?: [
+                'quantidade' => 0,
+                'valor_total' => 0,
+            ];
+            $stmt = $pdo->prepare("
+                DELETE FROM financeiro_cartao_lancamentos
+                WHERE usuario_id = ? AND grupo_parcelamento = ?
+            ");
+            $stmt->execute([$usuarioId, $lancamentoAntes['grupo_parcelamento']]);
+            registrarAuditoria(
+                $pdo,
+                'Financeiro - Cartões',
+                'excluir_parcelamento',
+                'compra_cartao',
+                $lancamentoAntes['grupo_parcelamento'],
+                'Excluiu todas as parcelas da compra ' . $lancamentoAntes['descricao'],
+                [
+                    'compra' => $lancamentoAntes,
+                    'quantidade_parcelas' => (int)$resumoExclusao['quantidade'],
+                    'valor_total' => (float)$resumoExclusao['valor_total'],
+                ],
+                null
+            );
+            financeiroRedirecionar(
+                $urlRetorno,
+                (int)$resumoExclusao['quantidade'] . ' parcelas excluídas e limite atualizado.'
+            );
+        }
+
         $stmt = $pdo->prepare("
             DELETE FROM financeiro_cartao_lancamentos
             WHERE id = ? AND usuario_id = ?
         ");
         $stmt->execute([$id, $usuarioId]);
-        if ($lancamentoAntes) {
-            registrarAuditoria(
-                $pdo,
-                'Financeiro - Cartões',
-                'excluir',
-                'compra_cartao',
-                $id,
-                'Excluiu a compra ' . $lancamentoAntes['descricao'],
-                $lancamentoAntes,
-                null
-            );
-        }
+        registrarAuditoria(
+            $pdo,
+            'Financeiro - Cartões',
+            'excluir',
+            'compra_cartao',
+            $id,
+            'Excluiu a compra ' . $lancamentoAntes['descricao'],
+            $lancamentoAntes,
+            null
+        );
         financeiroRedirecionar($urlRetorno, 'Lançamento excluído e limite atualizado.');
     }
 
@@ -529,6 +568,35 @@ $nomesMeses = [
 $nomeMes = $nomesMeses[(int)date('n', strtotime($inicioMes))]
     . '/'
     . date('Y', strtotime($inicioMes));
+$vencimentoFaturaSelecionada = null;
+$diasParaVencimentoFatura = null;
+$faturaAtrasada = false;
+$textoPrazoFatura = 'Dia de vencimento não informado';
+
+if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
+    $vencimentoFaturaSelecionada = financeiroVencimentoFatura(
+        $mes,
+        (int)$cartaoSelecionado['dia_vencimento']
+    );
+    $diasParaVencimentoFatura = (int)(new DateTimeImmutable('today'))
+        ->diff(new DateTimeImmutable($vencimentoFaturaSelecionada))
+        ->format('%r%a');
+    $faturaAtrasada = (float)$cartaoSelecionado['fatura_mes'] > 0
+        && $diasParaVencimentoFatura < 0;
+
+    if ((float)$cartaoSelecionado['fatura_mes'] <= 0) {
+        $textoPrazoFatura = 'Sem valor em aberto';
+    } elseif ($diasParaVencimentoFatura < 0) {
+        $diasAtraso = abs($diasParaVencimentoFatura);
+        $textoPrazoFatura = 'Vencida há ' . $diasAtraso . ($diasAtraso === 1 ? ' dia' : ' dias');
+    } elseif ($diasParaVencimentoFatura === 0) {
+        $textoPrazoFatura = 'Vence hoje';
+    } else {
+        $textoPrazoFatura = ($diasParaVencimentoFatura === 1 ? 'Falta ' : 'Faltam ')
+            . $diasParaVencimentoFatura
+            . ($diasParaVencimentoFatura === 1 ? ' dia' : ' dias');
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -671,8 +739,9 @@ $nomeMes = $nomesMeses[(int)date('n', strtotime($inicioMes))]
                                     <h5 class="mb-1"><?= htmlspecialchars($cartaoSelecionado['nome']) ?></h5>
                                     <p class="text-muted small mb-0">
                                         Limite <?= financeiroMoeda((float)$cartaoSelecionado['limite_total']) ?>
-                                        <?php if (!empty($cartaoSelecionado['dia_vencimento'])): ?>
-                                            · vence dia <?= (int)$cartaoSelecionado['dia_vencimento'] ?>
+                                        <?php if ($vencimentoFaturaSelecionada): ?>
+                                            · fatura de <?= htmlspecialchars($nomeMes) ?>
+                                            vence em <?= financeiroData($vencimentoFaturaSelecionada) ?>
                                         <?php endif; ?>
                                     </p>
                                 </div>
@@ -718,8 +787,15 @@ $nomeMes = $nomesMeses[(int)date('n', strtotime($inicioMes))]
                                     ? min(100, ((float)$cartaoSelecionado['total_aberto'] / (float)$cartaoSelecionado['limite_total']) * 100)
                                     : 0;
                                 ?>
-                                <div class="d-flex justify-content-between gap-3 mb-2">
+                                <div class="d-flex flex-wrap justify-content-between gap-3 mb-2">
                                     <span>Fatura de <?= htmlspecialchars($nomeMes) ?>: <strong><?= financeiroMoeda((float)$cartaoSelecionado['fatura_mes']) ?></strong></span>
+                                    <span>
+                                        Vencimento:
+                                        <strong><?= $vencimentoFaturaSelecionada ? financeiroData($vencimentoFaturaSelecionada) : '-' ?></strong>
+                                    </span>
+                                    <span class="<?= $faturaAtrasada ? 'text-danger' : '' ?>">
+                                        Prazo: <strong><?= htmlspecialchars($textoPrazoFatura) ?></strong>
+                                    </span>
                                     <span>Compras comprometidas: <strong><?= financeiroMoeda((float)$cartaoSelecionado['total_aberto']) ?></strong></span>
                                     <span>Disponível: <strong><?= financeiroMoeda((float)$cartaoSelecionado['disponivel']) ?></strong></span>
                                 </div>
@@ -749,6 +825,7 @@ $nomeMes = $nomesMeses[(int)date('n', strtotime($inicioMes))]
 
                                         <?php foreach ($lancamentos as $lancamento):
                                             $textoCompra = $lancamento['descricao'];
+                                            $lancamentoAtrasado = $lancamento['status'] === 'aberto' && $faturaAtrasada;
 
                                             if (!empty($lancamento['parcela_numero']) && !empty($lancamento['parcelas_total'])) {
                                                 $textoCompra .= ' ' . (int)$lancamento['parcela_numero'] . '/' . (int)$lancamento['parcelas_total'];
@@ -764,8 +841,8 @@ $nomeMes = $nomesMeses[(int)date('n', strtotime($inicioMes))]
                                                 </td>
                                                 <td class="text-end fw-semibold"><?= financeiroMoeda((float)$lancamento['valor']) ?></td>
                                                 <td>
-                                                    <span class="badge <?= $lancamento['status'] === 'aberto' ? 'bg-warning text-dark' : 'bg-success' ?>">
-                                                        <?= $lancamento['status'] === 'aberto' ? 'Em aberto' : 'Pago' ?>
+                                                    <span class="badge <?= $lancamento['status'] === 'aberto' ? ($lancamentoAtrasado ? 'bg-danger' : 'bg-warning text-dark') : 'bg-success' ?>">
+                                                        <?= $lancamento['status'] === 'aberto' ? ($lancamentoAtrasado ? 'Atrasado' : 'Em aberto') : 'Pago' ?>
                                                     </span>
                                                 </td>
                                                 <td><?= financeiroData($lancamento['data_pagamento']) ?></td>
@@ -802,6 +879,8 @@ $nomeMes = $nomesMeses[(int)date('n', strtotime($inicioMes))]
                                                             class="btn btn-outline-danger btn-sm btn-excluir-lancamento"
                                                             data-id="<?= (int)$lancamento['id'] ?>"
                                                             data-descricao="<?= htmlspecialchars($textoCompra) ?>"
+                                                            data-parcelada="<?= !empty($lancamento['grupo_parcelamento']) ? '1' : '0' ?>"
+                                                            data-total-parcelas="<?= (int)($lancamento['parcelas_total'] ?? 1) ?>"
                                                             data-bs-toggle="modal"
                                                             data-bs-target="#modalExcluirLancamento"
                                                             title="Excluir compra">
@@ -1005,12 +1084,12 @@ $nomeMes = $nomesMeses[(int)date('n', strtotime($inicioMes))]
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title">Excluir compra</h5>
+                        <h5 class="modal-title" id="tituloExcluirLancamento">Excluir compra</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                     </div>
                     <div class="modal-body">
                         <p class="mb-1">Tem certeza que deseja excluir <strong id="descricaoLancamentoExcluir"></strong>?</p>
-                        <small class="text-danger">O limite do cartão será recalculado.</small>
+                        <small class="text-danger" id="avisoExcluirLancamento">O limite do cartão será recalculado.</small>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Não</button>
@@ -1118,8 +1197,15 @@ $nomeMes = $nomesMeses[(int)date('n', strtotime($inicioMes))]
 
             document.querySelectorAll('.btn-excluir-lancamento').forEach(function(botao) {
                 botao.addEventListener('click', function() {
+                    const parcelada = this.dataset.parcelada === '1';
                     document.getElementById('lancamentoExcluirId').value = this.dataset.id;
                     document.getElementById('descricaoLancamentoExcluir').textContent = this.dataset.descricao;
+                    document.getElementById('tituloExcluirLancamento').textContent = parcelada ?
+                        'Excluir compra parcelada' :
+                        'Excluir compra';
+                    document.getElementById('avisoExcluirLancamento').textContent = parcelada ?
+                        'Todas as ' + this.dataset.totalParcelas + ' parcelas desta compra serão excluídas e o limite será recalculado.' :
+                        'O limite do cartão será recalculado.';
                 });
             });
 
