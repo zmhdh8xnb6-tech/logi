@@ -453,6 +453,9 @@ function renderizarLinhasParcelamentos(
 
     foreach ($parcelamentos as $parcelamento):
         $parcelasEmitidas = parcelasEmitidasAtual($parcelamento);
+        $parcelasAtrasadas = max(0, (int)$parcelamento['parcelas_atrasadas']);
+        $parcelasPagas = max(0, $parcelasEmitidas - $parcelasAtrasadas);
+        $parcelasRestantes = max(0, (int)$parcelamento['parcelas_total'] - $parcelasPagas);
         $parcelasAoReativar = parcelasEmitidasNaData(
             $parcelamento,
             new DateTime(date('Y-m-d'))
@@ -468,7 +471,23 @@ function renderizarLinhasParcelamentos(
             $badge = 'dark';
         }
     ?>
-        <tr class="linha-cliente">
+        <tr
+            class="linha-cliente linha-parcelamento linha-parcelamento-detalhes"
+            role="button"
+            tabindex="0"
+            title="Consultar detalhes do parcelamento"
+            data-id="<?= (int)$parcelamento['id'] ?>"
+            data-cliente="<?= htmlspecialchars($parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome']) ?>"
+            data-orgao="<?= htmlspecialchars($parcelamento['orgao']) ?>"
+            data-numero="<?= htmlspecialchars($parcelamento['numero_parcelamento']) ?>"
+            data-forma-envio="<?= htmlspecialchars($parcelamento['forma_envio']) ?>"
+            data-primeira-parcela="<?= !empty($parcelamento['data_primeira_parcela']) ? (new DateTime($parcelamento['data_primeira_parcela']))->format('d/m/Y') : '-' ?>"
+            data-total="<?= (int)$parcelamento['parcelas_total'] ?>"
+            data-emitidas="<?= $parcelasEmitidas ?>"
+            data-pagas="<?= $parcelasPagas ?>"
+            data-atrasadas="<?= $parcelasAtrasadas ?>"
+            data-restantes="<?= $parcelasRestantes ?>"
+            data-status="<?= htmlspecialchars($status) ?>">
             <td>
                 <?= htmlspecialchars($parcelamento['cliente_codigo']) ?>
                 -
@@ -552,5 +571,176 @@ function renderizarLinhasParcelamentos(
                 </td>
             <?php endif; ?>
         </tr>
-<?php endforeach;
+    <?php endforeach;
+}
+
+function renderizarModalDetalhesParcelamento(): void
+{
+    ?>
+    <div class="modal fade" id="modalDetalhesParcelamento" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title">Detalhes do parcelamento</h5>
+                        <small class="text-muted" id="detalhesParcelamentoCliente"></small>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3" id="detalhesParcelamentoImpressao">
+                        <div class="col-md-6">
+                            <span class="text-muted small d-block">Órgão</span>
+                            <strong data-detalhe="orgao"></strong>
+                        </div>
+                        <div class="col-md-6">
+                            <span class="text-muted small d-block">Número do parcelamento</span>
+                            <strong data-detalhe="numero"></strong>
+                        </div>
+                        <div class="col-md-4">
+                            <span class="text-muted small d-block">Forma de envio</span>
+                            <strong data-detalhe="formaEnvio"></strong>
+                        </div>
+                        <div class="col-md-4">
+                            <span class="text-muted small d-block">Primeira parcela</span>
+                            <strong data-detalhe="primeiraParcela"></strong>
+                        </div>
+                        <div class="col-md-4">
+                            <span class="text-muted small d-block">Status</span>
+                            <strong data-detalhe="status"></strong>
+                        </div>
+                        <div class="col-12">
+                            <hr class="my-1">
+                        </div>
+                        <div class="col-6 col-md">
+                            <span class="text-muted small d-block">Total</span>
+                            <strong data-detalhe="total"></strong>
+                        </div>
+                        <div class="col-6 col-md">
+                            <span class="text-muted small d-block">Emitidas</span>
+                            <strong data-detalhe="emitidas"></strong>
+                        </div>
+                        <div class="col-6 col-md">
+                            <span class="text-muted small d-block">Pagas/regularizadas</span>
+                            <strong class="text-success" data-detalhe="pagas"></strong>
+                        </div>
+                        <div class="col-6 col-md">
+                            <span class="text-muted small d-block">Atrasadas</span>
+                            <strong class="text-danger" data-detalhe="atrasadas"></strong>
+                        </div>
+                        <div class="col-6 col-md">
+                            <span class="text-muted small d-block">Faltam</span>
+                            <strong data-detalhe="restantes"></strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-primary" id="btnImprimirDetalhesParcelamento">
+                        <i class="bi bi-printer"></i> Imprimir
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            const modal = document.getElementById('modalDetalhesParcelamento');
+            const modalBootstrap = bootstrap.Modal.getOrCreateInstance(modal);
+            const cliente = document.getElementById('detalhesParcelamentoCliente');
+            let dadosAtuais = null;
+
+            modal.addEventListener('show.bs.modal', function(event) {
+                const linha = event.relatedTarget;
+                dadosAtuais = {
+                    ...linha.dataset
+                };
+                cliente.textContent = dadosAtuais.cliente;
+
+                modal.querySelectorAll('[data-detalhe]').forEach(function(campo) {
+                    campo.textContent = dadosAtuais[campo.dataset.detalhe] || '-';
+                });
+            });
+
+            document.getElementById('btnImprimirDetalhesParcelamento').addEventListener('click', function() {
+                if (!dadosAtuais) {
+                    return;
+                }
+
+                const escapar = function(valor) {
+                    const elemento = document.createElement('div');
+                    elemento.textContent = valor || '-';
+                    return elemento.innerHTML;
+                };
+                const janela = window.open('', '_blank', 'width=900,height=700');
+
+                if (!janela) {
+                    return;
+                }
+
+                janela.document.write(
+                    '<!doctype html><html><head><meta charset="utf-8"><title>Parcelamento</title>' +
+                    '<style>body{font-family:Arial,sans-serif;color:#111827;margin:32px}h1{font-size:22px;margin:0 0 6px}' +
+                    'p{color:#4b5563;margin:0 0 24px}.dados{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}' +
+                    '.item{border-bottom:1px solid #d1d5db;padding:10px 0}.item span{display:block;color:#6b7280;font-size:12px;margin-bottom:4px}' +
+                    '.item strong{font-size:15px}@media print{body{margin:12mm}}</style></head><body>' +
+                    '<h1>Parcelamento</h1><p>' + escapar(dadosAtuais.cliente) + '</p><div class="dados">' +
+                    '<div class="item"><span>Órgão</span><strong>' + escapar(dadosAtuais.orgao) + '</strong></div>' +
+                    '<div class="item"><span>Número</span><strong>' + escapar(dadosAtuais.numero) + '</strong></div>' +
+                    '<div class="item"><span>Forma de envio</span><strong>' + escapar(dadosAtuais.formaEnvio) + '</strong></div>' +
+                    '<div class="item"><span>Primeira parcela</span><strong>' + escapar(dadosAtuais.primeiraParcela) + '</strong></div>' +
+                    '<div class="item"><span>Status</span><strong>' + escapar(dadosAtuais.status) + '</strong></div>' +
+                    '<div class="item"><span>Total de parcelas</span><strong>' + escapar(dadosAtuais.total) + '</strong></div>' +
+                    '<div class="item"><span>Emitidas</span><strong>' + escapar(dadosAtuais.emitidas) + '</strong></div>' +
+                    '<div class="item"><span>Pagas/regularizadas</span><strong>' + escapar(dadosAtuais.pagas) + '</strong></div>' +
+                    '<div class="item"><span>Atrasadas</span><strong>' + escapar(dadosAtuais.atrasadas) + '</strong></div>' +
+                    '<div class="item"><span>Faltam</span><strong>' + escapar(dadosAtuais.restantes) + '</strong></div>' +
+                    '</div><script>window.onload=function(){window.print();window.onafterprint=function(){window.close()}};<\/script></body></html>'
+                );
+                janela.document.close();
+            });
+
+            document.querySelectorAll('.linha-parcelamento-detalhes').forEach(function(linha) {
+                linha.addEventListener('click', function(event) {
+                    if (event.target.closest('.coluna-acoes')) {
+                        return;
+                    }
+
+                    modalBootstrap.show(linha);
+                });
+
+                linha.addEventListener('keydown', function(event) {
+                    if (
+                        (event.key === 'Enter' || event.key === ' ') &&
+                        !event.target.closest('.coluna-acoes')
+                    ) {
+                        event.preventDefault();
+                        modalBootstrap.show(linha);
+                    }
+                });
+            });
+
+            const busca = document.getElementById('buscaParcelamento');
+
+            if (busca) {
+                busca.addEventListener('input', function() {
+                    const termo = this.value
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .toLowerCase()
+                        .trim();
+
+                    document.querySelectorAll('.linha-parcelamento').forEach(function(linha) {
+                        const texto = linha.textContent
+                            .normalize('NFD')
+                            .replace(/[\u0300-\u036f]/g, '')
+                            .toLowerCase();
+                        linha.classList.toggle('d-none', !texto.includes(termo));
+                    });
+                });
+            }
+        })();
+    </script>
+<?php
 }

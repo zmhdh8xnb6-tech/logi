@@ -212,6 +212,42 @@ if ($action === 'read') {
     exit;
 }
 
+if ($action === 'print_clientes') {
+    $busca = trim($_GET['busca'] ?? '');
+    $ufFiltro = strtoupper(trim($_GET['uf'] ?? ''));
+    $filtros = ['cliente_contabil = 1'];
+    $parametros = [];
+
+    if ($busca !== '') {
+        $filtros[] = "(
+            codigo LIKE ?
+            OR documento LIKE ?
+            OR nome LIKE ?
+            OR nome_fantasia LIKE ?
+            OR email LIKE ?
+        )";
+        $termo = '%' . $busca . '%';
+        array_push($parametros, $termo, $termo, $termo, $termo, $termo);
+    }
+
+    if ($ufFiltro !== '') {
+        $filtros[] = 'UPPER(uf) = ?';
+        $parametros[] = $ufFiltro;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT codigo, documento, nome, nome_fantasia, cidade, uf, telefone, email
+        FROM clientes
+        WHERE " . implode(' AND ', $filtros) . "
+        ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
+    ");
+    $stmt->execute($parametros);
+
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+    exit;
+}
+
 if ($action === 'check_documento') {
     $documento = $_GET['documento'] ?? '';
     $id = (int)($_GET['id'] ?? 0);
@@ -271,7 +307,11 @@ if ($action === 'create' || $action === 'update') {
     $procuracao_sefaz = $_POST['procuracao_sefaz'] ?? '';
     $contrato_prestacao_servicos = $_POST['contrato_prestacao_servicos'] ?? '';
     $tributacao = $_POST['tributacao'] ?? '';
-    $possui_parcelamento = $servico_parcelamento ? 'possui' : 'nao_possui';
+    $possui_parcelamento = in_array(
+        $_POST['possui_parcelamento'] ?? '',
+        ['possui', 'nao_possui'],
+        true
+    ) ? $_POST['possui_parcelamento'] : '';
     $alvaras = is_array($_POST['alvaras'] ?? null) ? $_POST['alvaras'] : [];
 
     $vencimento_certificado = !empty($_POST['vencimento_certificado'])
@@ -285,9 +325,18 @@ if ($action === 'create' || $action === 'update') {
 
     $cliente_contabil = (int)$cliente_contabil_enviado;
 
+    if ($cliente_contabil === 1 && $possui_parcelamento === '') {
+        echo 'parcelamento_obrigatorio';
+        exit;
+    }
+
     if ($action === 'create' && $cliente_contabil === 1) {
         $servico_parcelamento = 0;
         $servico_certificado = 0;
+    }
+
+    if ($cliente_contabil === 0) {
+        $possui_parcelamento = $servico_parcelamento ? 'possui' : 'nao_possui';
     }
 
     if ($cliente_contabil === 0 && !$servico_parcelamento && !$servico_certificado) {

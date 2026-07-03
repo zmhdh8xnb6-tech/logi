@@ -84,6 +84,12 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'PGFN');
 
                 <div class="orgao-impressao">Órgão: PGFN - Dívida Ativa</div>
 
+                <div class="row mb-3 busca-parcelamentos">
+                    <div class="col-md-6">
+                        <input type="search" class="form-control" id="buscaParcelamento" placeholder="Buscar por código, cliente, número ou status...">
+                    </div>
+                </div>
+
                 <div class="table-responsive">
                     <table class="table align-middle">
                         <thead>
@@ -111,6 +117,8 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'PGFN');
     </main>
 
     <?php renderizarAvisoLiquidacoesAutomaticas('PGFN'); ?>
+    <?php renderizarModalQuitarParcelamento(); ?>
+    <?php renderizarModalDetalhesParcelamento(); ?>
 
     <script>
         setTimeout(function() {

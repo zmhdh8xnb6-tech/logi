@@ -1,5 +1,5 @@
 let paginaAtual = 1;
-let limitePorPagina = 10;
+let limitePorPagina = 15;
 let documentoDuplicado = false;
 let ultimaConsultaDocumento = '';
 
@@ -88,6 +88,7 @@ $(document).ready(function () {
                 const respostaPartes = resposta.split('|');
                 const cadastroSalvo = respostaPartes[0] === 'ok';
                 const clienteIdSalvo = respostaPartes[1] || $('#id').val();
+                const possuiParcelamento = $('#possui_parcelamento').val() === 'possui';
                 const servicoParcelamento = $('#servico_parcelamento').is(':checked');
                 const clienteContabil = $('#cliente_contabil').val() === '1';
 
@@ -116,7 +117,7 @@ $(document).ready(function () {
                             return;
                         }
 
-                        if (clienteContabil && servicoParcelamento) {
+                        if (clienteContabil && possuiParcelamento) {
                             const botaoParcelamento = document.getElementById('btnCadastrarParcelamentoAgora');
                             botaoParcelamento.href =
                                 'parcelamento_novo.php?cliente_id=' + encodeURIComponent(clienteIdSalvo);
@@ -179,6 +180,11 @@ $(document).ready(function () {
                     $('#alvara').addClass('is-invalid').focus();
                     mostrarAviso('Informe a situação do alvará.');
 
+                } else if (resp.trim() === 'parcelamento_obrigatorio') {
+
+                    $('#possui_parcelamento').addClass('is-invalid').focus();
+                    mostrarAviso('Informe se o cliente possui parcelamento.');
+
                 } else {
 
                     mostrarAviso(resp);
@@ -215,7 +221,7 @@ $(document).ready(function () {
         filtrarClientesNaTela();
     });
 
-    $('#cliente_contabil, #servico_parcelamento, #servico_certificado').on('change', atualizarVinculoServicos);
+    $('#cliente_contabil, #possui_parcelamento, #servico_parcelamento, #servico_certificado').on('change', atualizarVinculoServicos);
     atualizarVinculoServicos();
 
     $(document).on('input', '#nome_fantasia', function () {
@@ -246,6 +252,8 @@ $(document).ready(function () {
     });
 
     $('#alvara').on('change', function () {
+        $('#btnEditarAlvaras').toggleClass('d-none', this.value !== 'possui');
+
         if (this.value === 'possui') {
             document.querySelectorAll('.alvara-situacao').forEach(function (campo) {
                 campo.required = true;
@@ -260,6 +268,16 @@ $(document).ready(function () {
 
             $('.alvara-situacao').val('').trigger('change');
         }
+    });
+
+    $('#btnDispensarTodosAlvaras').on('click', function () {
+        document.querySelectorAll('.alvara-situacao').forEach(function (campo) {
+            campo.value = 'dispensado';
+            campo.classList.remove('is-invalid');
+            campo.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        document.getElementById('alertaAlvarasObrigatorios').classList.add('d-none');
     });
 
     $(document).on('change', '.alvara-situacao', function () {
@@ -698,6 +716,7 @@ function validarFormulario() {
     const servicoCertificado = $('#servico_certificado').is(':checked');
 
     if (clienteContabil) {
+        validarObrigatorio('#possui_parcelamento');
         validarObrigatorio('#cep');
         validarObrigatorio('#numero_endereco');
     }
@@ -826,7 +845,6 @@ function atualizarVinculoServicos() {
     });
 
     if (clienteContabil && criandoCliente) {
-        campoServicoParcelamento.checked = false;
         campoServicoCertificado.checked = false;
     }
 
@@ -843,7 +861,10 @@ function atualizarVinculoServicos() {
     });
 
     const campoParcelamento = document.getElementById('possui_parcelamento');
-    campoParcelamento.value = servicoParcelamento ? 'possui' : 'nao_possui';
+
+    if (!clienteContabil) {
+        campoParcelamento.value = servicoParcelamento ? 'possui' : 'nao_possui';
+    }
 
     document.querySelectorAll('.campo-servico-certificado').forEach(function (bloco) {
         bloco.classList.toggle('d-none', !servicoCertificado);

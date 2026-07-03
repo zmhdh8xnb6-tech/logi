@@ -54,6 +54,49 @@ $clienteContabil = (int)($cliente['cliente_contabil'] ?? 1) === 1;
 $servicoParcelamento = (int)($cliente['servico_parcelamento'] ?? 0) === 1;
 $servicoCertificado = (int)($cliente['servico_certificado'] ?? 1) === 1;
 $paginaRetorno = $clienteContabil ? 'clientes.php' : 'servicos_avulsos.php';
+$valorOuNaoInformado = static function ($valor): string {
+    $valor = trim((string)$valor);
+
+    return $valor !== '' ? $valor : 'Não informado';
+};
+
+$controlesImpressao = [];
+
+if ($clienteContabil) {
+    $controlesImpressao = [
+        ['Cadastro DF Legal', $formatarControle($cliente['cadastro_df_legal'] ?? '')],
+        ['Alvará', $formatarControle($cliente['alvara'] ?? '')],
+        ['Contador', $formatarControle($cliente['contador'] ?? '')],
+        ['Cadastro CRF', $formatarControle($cliente['cadastro_crf'] ?? '')],
+        [
+            'Procuração Receita Federal',
+            $formatarControle($cliente['procuracao_receita_federal'] ?? '')
+                . (($cliente['procuracao_receita_federal'] ?? '') === 'possui'
+                    ? ' - ' . $formatarData($cliente['vencimento_procuracao_receita_federal'] ?? null)
+                    : ''),
+        ],
+        [
+            'Procuração Conectividade',
+            $formatarControle($cliente['procuracao_conectividade'] ?? '')
+                . (($cliente['procuracao_conectividade'] ?? '') === 'possui'
+                    ? ' - ' . $formatarData($cliente['vencimento_procuracao_conectividade'] ?? null)
+                    : ''),
+        ],
+        ['Procuração Empregador Web', $formatarControle($cliente['procuracao_empregador_web'] ?? '')],
+        [
+            'Procuração FGTS',
+            $formatarControle($cliente['procuracao_fgts'] ?? '')
+                . (($cliente['procuracao_fgts'] ?? '') === 'possui'
+                    ? ' - ' . $formatarData($cliente['vencimento_procuracao_fgts'] ?? null)
+                    : ''),
+        ],
+        ['Procuração Particular', $formatarControle($cliente['procuracao_particular'] ?? '')],
+        ['Procuração SEFAZ', $formatarControle($cliente['procuracao_sefaz'] ?? '')],
+        ['Contrato de Prestação de Serviços', $formatarControle($cliente['contrato_prestacao_servicos'] ?? '')],
+        ['Tributação', $formatarControle($cliente['tributacao'] ?? '')],
+        ['Parcelamentos', $formatarControle($cliente['possui_parcelamento'] ?? '')],
+    ];
+}
 ?>
 
 <!DOCTYPE html>
@@ -62,6 +105,150 @@ $paginaRetorno = $clienteContabil ? 'clientes.php' : 'servicos_avulsos.php';
 <head>
     <?php include 'includes/head.php'; ?>
     <title><?= htmlspecialchars($cliente['nome']) ?> - Cliente</title>
+    <style>
+        .ficha-cliente-impressao {
+            display: none;
+        }
+
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 10mm;
+            }
+
+            html,
+            body,
+            .app-layout {
+                display: block !important;
+                min-height: 0 !important;
+                height: auto !important;
+                overflow: visible !important;
+                background: #fff !important;
+            }
+
+            .app-sidebar,
+            .container-fluid> :not(.ficha-cliente-impressao),
+            .modal,
+            .modal-backdrop {
+                display: none !important;
+            }
+
+            .app-main,
+            .app-sidebar.collapsed+.app-main {
+                width: 100% !important;
+                min-height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            .container-fluid {
+                width: 100% !important;
+                padding: 0 !important;
+            }
+
+            .ficha-cliente-impressao {
+                display: block !important;
+                color: #111827;
+                font-family: Arial, sans-serif;
+                font-size: 9.5pt;
+            }
+
+            .ficha-impressao-cabecalho {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 20px;
+                margin-bottom: 14px;
+                padding-bottom: 10px;
+                border-bottom: 2px solid #1f2937;
+            }
+
+            .ficha-impressao-marca {
+                margin-bottom: 5px;
+                color: #4b5563;
+                font-size: 8pt;
+                font-weight: 700;
+                text-transform: uppercase;
+            }
+
+            .ficha-impressao-cabecalho h1 {
+                margin: 0 0 4px;
+                font-size: 18pt;
+            }
+
+            .ficha-impressao-cabecalho p {
+                margin: 0;
+                color: #4b5563;
+            }
+
+            .ficha-impressao-data {
+                color: #6b7280;
+                font-size: 8pt;
+                text-align: right;
+            }
+
+            .ficha-impressao-secao {
+                margin-bottom: 12px;
+                break-inside: avoid;
+            }
+
+            .ficha-impressao-secao h2 {
+                margin: 0 0 7px;
+                padding: 5px 7px;
+                background: #e5e7eb !important;
+                color: #111827;
+                font-size: 10pt;
+                text-transform: uppercase;
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+            }
+
+            .ficha-impressao-grade {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 7px 14px;
+                padding: 0 7px;
+            }
+
+            .ficha-impressao-item {
+                min-width: 0;
+                padding-bottom: 4px;
+                border-bottom: 1px solid #e5e7eb;
+                overflow-wrap: anywhere;
+            }
+
+            .ficha-impressao-item span {
+                display: block;
+                margin-bottom: 2px;
+                color: #6b7280;
+                font-size: 7.5pt;
+            }
+
+            .ficha-impressao-item strong {
+                font-weight: 600;
+            }
+
+            .ficha-impressao-tabela {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 8.5pt;
+            }
+
+            .ficha-impressao-tabela th,
+            .ficha-impressao-tabela td {
+                padding: 5px 7px;
+                border: 1px solid #d1d5db;
+                text-align: left;
+            }
+
+            .ficha-impressao-tabela th {
+                background: #f3f4f6 !important;
+                font-size: 7.5pt;
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+            }
+        }
+    </style>
 </head>
 
 <body class="app-layout">
@@ -71,7 +258,7 @@ $paginaRetorno = $clienteContabil ? 'clientes.php' : 'servicos_avulsos.php';
     <main class="app-main">
         <div class="container-fluid">
 
-            <a href="<?= $paginaRetorno ?>" class="btn btn-outline-secondary mb-3">Voltar</a>
+            <a href="<?= $paginaRetorno ?>" class="btn btn-outline-secondary mb-3 nao-imprimir">Voltar</a>
 
             <h3><?= htmlspecialchars($cliente['nome']) ?></h3>
             <p class="text-muted"><?= htmlspecialchars($cliente['documento']) ?></p>
@@ -79,13 +266,17 @@ $paginaRetorno = $clienteContabil ? 'clientes.php' : 'servicos_avulsos.php';
                 <?= $clienteContabil ? 'Cliente contábil' : 'Serviço avulso' ?>
             </span>
 
-            <div class="d-flex gap-2 mb-4">
+            <div class="d-flex gap-2 mb-4 nao-imprimir">
                 <a href="cliente_editar.php?id=<?= (int)$cliente['id'] ?>" class="btn btn-primary">
                     <i class="bi bi-pencil-square"></i> Editar
                 </a>
 
                 <button class="btn btn-danger" onclick="excluirCliente(<?= (int)$cliente['id'] ?>)">
                     <i class="bi bi-trash"></i> Excluir
+                </button>
+
+                <button type="button" class="btn btn-outline-secondary" onclick="window.print()">
+                    <i class="bi bi-printer"></i> Imprimir ficha
                 </button>
             </div>
 
@@ -241,6 +432,153 @@ $paginaRetorno = $clienteContabil ? 'clientes.php' : 'servicos_avulsos.php';
                 <p><strong>Bairro:</strong> <?= htmlspecialchars($cliente['bairro'] ?? '') ?></p>
                 <p><strong>Cidade/UF:</strong> <?= htmlspecialchars($cliente['cidade'] ?? '') ?> / <?= htmlspecialchars($cliente['uf'] ?? '') ?></p>
             </div>
+
+            <article class="ficha-cliente-impressao">
+                <header class="ficha-impressao-cabecalho">
+                    <div>
+                        <div class="ficha-impressao-marca">Logi | Ficha cadastral</div>
+                        <h1><?= htmlspecialchars($cliente['nome']) ?></h1>
+                        <p>
+                            <?= htmlspecialchars($valorOuNaoInformado($cliente['documento'] ?? '')) ?>
+                            | Código <?= htmlspecialchars($valorOuNaoInformado($cliente['codigo'] ?? '')) ?>
+                            | <?= $clienteContabil ? 'Cliente contábil' : 'Serviço avulso' ?>
+                        </p>
+                    </div>
+                    <div class="ficha-impressao-data">
+                        Emitido em <?= date('d/m/Y H:i') ?>
+                    </div>
+                </header>
+
+                <section class="ficha-impressao-secao">
+                    <h2>Dados principais</h2>
+                    <div class="ficha-impressao-grade">
+                        <div class="ficha-impressao-item">
+                            <span>Nome fantasia</span>
+                            <strong><?= htmlspecialchars($valorOuNaoInformado($cliente['nome_fantasia'] ?? '')) ?></strong>
+                        </div>
+                        <div class="ficha-impressao-item">
+                            <span>E-mail</span>
+                            <strong><?= htmlspecialchars($valorOuNaoInformado($cliente['email'] ?? '')) ?></strong>
+                        </div>
+                        <div class="ficha-impressao-item">
+                            <span>Telefone</span>
+                            <strong><?= htmlspecialchars($valorOuNaoInformado($cliente['telefone'] ?? '')) ?></strong>
+                        </div>
+                        <div class="ficha-impressao-item">
+                            <span>Inscrição Estadual</span>
+                            <strong><?= htmlspecialchars($valorOuNaoInformado($cliente['inscricao_estadual'] ?? '')) ?></strong>
+                        </div>
+                        <div class="ficha-impressao-item">
+                            <span>NIRE</span>
+                            <strong><?= htmlspecialchars($valorOuNaoInformado($cliente['nire'] ?? '')) ?></strong>
+                        </div>
+                        <?php if ($servicoCertificado): ?>
+                            <div class="ficha-impressao-item">
+                                <span>Vencimento do certificado digital</span>
+                                <strong><?= htmlspecialchars($formatarData($cliente['vencimento_certificado'] ?? null)) ?></strong>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </section>
+
+                <?php if ($clienteContabil): ?>
+                    <section class="ficha-impressao-secao">
+                        <h2>Controles internos</h2>
+                        <div class="ficha-impressao-grade">
+                            <?php foreach ($controlesImpressao as [$rotuloControle, $valorControle]): ?>
+                                <div class="ficha-impressao-item">
+                                    <span><?= htmlspecialchars($rotuloControle) ?></span>
+                                    <strong><?= htmlspecialchars($valorControle) ?></strong>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </section>
+                <?php else: ?>
+                    <section class="ficha-impressao-secao">
+                        <h2>Serviços acompanhados</h2>
+                        <div class="ficha-impressao-grade">
+                            <div class="ficha-impressao-item">
+                                <span>Parcelamento</span>
+                                <strong><?= $servicoParcelamento ? 'Sim' : 'Não' ?></strong>
+                            </div>
+                            <div class="ficha-impressao-item">
+                                <span>Certificado digital</span>
+                                <strong><?= $servicoCertificado ? 'Sim' : 'Não' ?></strong>
+                            </div>
+                        </div>
+                    </section>
+                <?php endif; ?>
+
+                <?php if ($clienteContabil && !empty($alvarasCliente)): ?>
+                    <section class="ficha-impressao-secao">
+                        <h2>Alvarás e licenças</h2>
+                        <table class="ficha-impressao-tabela">
+                            <thead>
+                                <tr>
+                                    <th>Órgão</th>
+                                    <th>Situação</th>
+                                    <th>Vencimento</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($alvarasCliente as $alvaraCliente):
+                                    $textoSituacaoImpressao = [
+                                        'com_vencimento' => 'Com vencimento',
+                                        'dispensado' => 'Dispensado',
+                                        'em_estudo' => 'Em estudo',
+                                    ][$alvaraCliente['situacao']] ?? 'Não informado';
+                                ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($alvaraCliente['orgao_nome']) ?></td>
+                                        <td><?= htmlspecialchars($textoSituacaoImpressao) ?></td>
+                                        <td>
+                                            <?= $alvaraCliente['situacao'] === 'com_vencimento'
+                                                ? htmlspecialchars($formatarData($alvaraCliente['vencimento']))
+                                                : '-' ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </section>
+                <?php endif; ?>
+
+                <section class="ficha-impressao-secao">
+                    <h2>Endereço</h2>
+                    <div class="ficha-impressao-grade">
+                        <div class="ficha-impressao-item">
+                            <span>CEP</span>
+                            <strong><?= htmlspecialchars($valorOuNaoInformado($cliente['cep'] ?? '')) ?></strong>
+                        </div>
+                        <div class="ficha-impressao-item" style="grid-column: span 2;">
+                            <span>Logradouro e número</span>
+                            <strong>
+                                <?= htmlspecialchars($valorOuNaoInformado(
+                                    trim((string)($cliente['endereco'] ?? ''))
+                                        . (!empty($cliente['numero_endereco']) ? ', ' . $cliente['numero_endereco'] : '')
+                                )) ?>
+                            </strong>
+                        </div>
+                        <div class="ficha-impressao-item">
+                            <span>Complemento</span>
+                            <strong><?= htmlspecialchars($valorOuNaoInformado($cliente['complemento'] ?? '')) ?></strong>
+                        </div>
+                        <div class="ficha-impressao-item">
+                            <span>Bairro</span>
+                            <strong><?= htmlspecialchars($valorOuNaoInformado($cliente['bairro'] ?? '')) ?></strong>
+                        </div>
+                        <div class="ficha-impressao-item">
+                            <span>Cidade/UF</span>
+                            <strong>
+                                <?= htmlspecialchars($valorOuNaoInformado(
+                                    trim((string)($cliente['cidade'] ?? ''))
+                                        . (!empty($cliente['uf']) ? ' / ' . $cliente['uf'] : '')
+                                )) ?>
+                            </strong>
+                        </div>
+                    </div>
+                </section>
+            </article>
 
         </div>
     </main>

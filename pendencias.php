@@ -450,6 +450,57 @@ $limiteGraficoPendencias = 15;
             width: 180px;
         }
 
+        .pendencias-impressao-cabecalho {
+            display: none;
+        }
+
+        @media print {
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+
+            body {
+                background: #fff !important;
+            }
+
+            .app-sidebar,
+            .container-fluid> :not(.clientes-box),
+            .filtros-pendencias,
+            .acoes-pendencia {
+                display: none !important;
+            }
+
+            .app-main,
+            .app-sidebar.collapsed+.app-main {
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            .clientes-box {
+                padding: 0 !important;
+                border: 0 !important;
+                box-shadow: none !important;
+            }
+
+            .pendencias-impressao-cabecalho {
+                display: block !important;
+                margin-bottom: 12px;
+                padding-bottom: 8px;
+                border-bottom: 2px solid #111827;
+            }
+
+            .pendencias-impressao-cabecalho h1 {
+                margin: 0 0 4px;
+                font-size: 18pt;
+            }
+
+            .clientes-box table {
+                font-size: 9pt;
+            }
+        }
+
         @media (max-width: 768px) {
             #formPendenciaAlvaraDf {
                 max-height: calc(100dvh - 1rem);
@@ -513,7 +564,12 @@ $limiteGraficoPendencias = 15;
             </div>
 
             <div class="clientes-box">
-                <div class="row g-2 mb-3">
+                <div class="pendencias-impressao-cabecalho">
+                    <h1>Pendências</h1>
+                    <span id="tipoPendenciaImpressao">Todos os tipos</span>
+                </div>
+
+                <div class="row g-2 mb-3 filtros-pendencias">
                     <div class="col-md-6">
                         <input type="text" id="buscaPendencia" class="form-control" placeholder="Buscar por cliente, código, documento ou pendência...">
                     </div>
@@ -526,6 +582,12 @@ $limiteGraficoPendencias = 15;
                             <?php endforeach; ?>
                         </select>
                     </div>
+
+                    <div class="col-md-3 text-md-end">
+                        <button type="button" class="btn btn-outline-secondary" id="btnImprimirPendencias">
+                            <i class="bi bi-printer"></i> Imprimir filtradas
+                        </button>
+                    </div>
                 </div>
 
                 <div class="table-responsive">
@@ -536,7 +598,7 @@ $limiteGraficoPendencias = 15;
                                 <th>Tipo</th>
                                 <th>Pendência</th>
                                 <th>Status</th>
-                                <th class="text-end">Ações</th>
+                                <th class="text-end acoes-pendencia">Ações</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -559,7 +621,7 @@ $limiteGraficoPendencias = 15;
                                             <?= htmlspecialchars($pendencia['status']) ?>
                                         </span>
                                     </td>
-                                    <td class="text-end">
+                                    <td class="text-end acoes-pendencia">
                                         <div class="d-flex justify-content-end gap-2">
                                             <?php if (!empty($pendencia['resolver'])): ?>
                                                 <button
@@ -771,8 +833,15 @@ $limiteGraficoPendencias = 15;
                         </div>
 
                         <div id="grupoPendenciaOrgaosAlvara" class="d-none">
-                            <h6 class="fw-bold mb-1">Órgãos e vencimentos</h6>
-                            <p class="text-muted small">Para cada órgão, informe o vencimento, marque como dispensado ou em estudo.</p>
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                                <div>
+                                    <h6 class="fw-bold mb-1">Órgãos e vencimentos</h6>
+                                    <p class="text-muted small mb-0">Para cada órgão, informe o vencimento, marque como dispensado ou em estudo.</p>
+                                </div>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnDispensarTodosPendenciaAlvara">
+                                    <i class="bi bi-check2-all"></i> Marcar todos como dispensado
+                                </button>
+                            </div>
 
                             <div class="table-responsive">
                                 <table class="table align-middle tabela-pendencia-alvara mb-0">
@@ -934,6 +1003,15 @@ $limiteGraficoPendencias = 15;
 
             return valido;
         }
+
+        document.getElementById('btnDispensarTodosPendenciaAlvara').addEventListener('click', function() {
+            document.querySelectorAll('.pendencia-orgao-situacao').forEach(function(campo) {
+                campo.value = 'dispensado';
+                campo.classList.remove('is-invalid');
+                atualizarVencimentoOrgaoPendencia(campo);
+            });
+            alertaPendenciaAlvara.classList.add('d-none');
+        });
 
         document.getElementById('modalResolverPendencia').addEventListener('show.bs.modal', function(event) {
             const botao = event.relatedTarget;
@@ -1260,6 +1338,12 @@ $limiteGraficoPendencias = 15;
 
         document.getElementById('buscaPendencia').addEventListener('input', filtrarPendencias);
         document.getElementById('filtroTipoPendencia').addEventListener('change', filtrarPendencias);
+        document.getElementById('btnImprimirPendencias').addEventListener('click', function() {
+            const filtro = document.getElementById('filtroTipoPendencia');
+            document.getElementById('tipoPendenciaImpressao').textContent =
+                filtro.value === '' ? 'Todos os tipos' : 'Tipo: ' + filtro.value;
+            window.print();
+        });
 
         setTimeout(function() {
             document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {

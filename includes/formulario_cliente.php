@@ -109,13 +109,38 @@ $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
 
         <div class="col-md-3 mb-3">
             <label for="alvara" class="form-label">Alvará</label>
-            <select class="form-select controle-interno-obrigatorio" name="alvara" id="alvara" required>
-                <option value="">Selecione</option>
-                <option value="possui">Possui</option>
-                <option value="nao_possui">Não possui</option>
-                <option value="goias">Goiás</option>
-            </select>
+            <div class="d-flex gap-2">
+                <select class="form-select controle-interno-obrigatorio" name="alvara" id="alvara" required>
+                    <option value="">Selecione</option>
+                    <option value="possui">Possui</option>
+                    <option value="nao_possui">Não possui</option>
+                    <option value="goias">Goiás</option>
+                </select>
+                <button
+                    type="button"
+                    class="btn btn-outline-primary<?= (($cliente['alvara'] ?? '') === 'possui') ? '' : ' d-none' ?>"
+                    id="btnEditarAlvaras"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modalAlvaras"
+                    title="Editar órgãos do alvará">
+                    <i class="bi bi-pencil"></i>
+                </button>
+            </div>
             <div class="invalid-feedback">Informe a situação do alvará.</div>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <label for="possui_parcelamento" class="form-label">Parcelamento</label>
+            <select
+                class="form-select controle-interno-obrigatorio"
+                name="possui_parcelamento"
+                id="possui_parcelamento"
+                required>
+                <option value="">Selecione</option>
+                <option value="possui" <?= (($cliente['possui_parcelamento'] ?? '') === 'possui') ? 'selected' : '' ?>>Possui</option>
+                <option value="nao_possui" <?= (($cliente['possui_parcelamento'] ?? '') === 'nao_possui') ? 'selected' : '' ?>>Não possui</option>
+            </select>
+            <div class="invalid-feedback">Informe se possui parcelamento.</div>
         </div>
 
         <div class="col-md-3 mb-3">
@@ -236,7 +261,6 @@ $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
 
 <div class="border rounded p-3 mb-3 secao-servicos-avulsos">
     <h6 class="mb-3 fw-bold">Serviços acompanhados</h6>
-    <input type="hidden" name="possui_parcelamento" id="possui_parcelamento" value="<?= $servicoParcelamentoAtual ? 'possui' : 'nao_possui' ?>">
 
     <div class="d-flex flex-wrap gap-4">
         <div class="form-check form-switch">
@@ -343,6 +367,12 @@ $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
             <div class="modal-body">
                 <div class="alert alert-danger d-none" id="alertaAlvarasObrigatorios">
                     Preencha todos os órgãos. Escolha “Com vencimento” e informe a data, ou marque como “Dispensado”.
+                </div>
+
+                <div class="d-flex justify-content-end mb-3">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnDispensarTodosAlvaras">
+                        <i class="bi bi-check2-all"></i> Marcar todos como dispensado
+                    </button>
                 </div>
 
                 <div class="table-responsive">

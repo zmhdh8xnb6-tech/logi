@@ -15,6 +15,24 @@
     display: none;
 }
 
+.linha-parcelamento-detalhes {
+    cursor: pointer;
+}
+
+.linha-parcelamento-detalhes td {
+    transition: background-color 0.18s ease;
+}
+
+.linha-parcelamento-detalhes:hover td,
+.linha-parcelamento-detalhes:focus td {
+    background-color: #eef4fb;
+}
+
+.linha-parcelamento-detalhes:focus {
+    outline: 2px solid #86b7fe;
+    outline-offset: -2px;
+}
+
 @media print {
     @page {
         size: A4 landscape;
@@ -34,6 +52,7 @@
     .app-sidebar,
     .container-fluid> :not(.parcelamento-box),
     .cabecalho-lista,
+    .busca-parcelamentos,
     .coluna-acoes,
     .coluna-acoes * {
         display: none !important;
@@ -70,6 +89,7 @@
         color: #111827;
         font-size: 12pt;
         font-weight: 700;
+        text-align: right;
     }
 
     .table-responsive {

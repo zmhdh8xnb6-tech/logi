@@ -416,8 +416,15 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                         </div>
 
                         <div id="grupoOrgaosAlvara" class="d-none">
-                            <h6 class="fw-bold mb-1">Órgãos e vencimentos</h6>
-                            <p class="text-muted small">Para cada órgão, informe o vencimento, marque como dispensado ou em estudo.</p>
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                                <div>
+                                    <h6 class="fw-bold mb-1">Órgãos e vencimentos</h6>
+                                    <p class="text-muted small mb-0">Para cada órgão, informe o vencimento, marque como dispensado ou em estudo.</p>
+                                </div>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnDispensarTodosAlvarasDf">
+                                    <i class="bi bi-check2-all"></i> Marcar todos como dispensado
+                                </button>
+                            </div>
 
                             <div class="table-responsive">
                                 <table class="table align-middle modal-alvaras-tabela mb-0">
@@ -820,6 +827,15 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                 this.classList.remove('is-invalid');
                 atualizarVencimentoOrgao(this, true);
             });
+        });
+
+        document.getElementById('btnDispensarTodosAlvarasDf').addEventListener('click', function() {
+            document.querySelectorAll('.modal-orgao-situacao').forEach(function(campo) {
+                campo.value = 'dispensado';
+                campo.classList.remove('is-invalid');
+                atualizarVencimentoOrgao(campo);
+            });
+            alertaModalAlvaras.classList.add('d-none');
         });
 
         formAlvarasDf.addEventListener('submit', function(evento) {
