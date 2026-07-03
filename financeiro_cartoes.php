@@ -100,6 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             $mudancas = auditoriaMudancas($cartaoAntes, $cartaoDepois);
             registrarAuditoria($pdo, 'Financeiro - Cartões', 'editar', 'cartao', $id, 'Alterou o cartão ' . $nome, $mudancas['antes'], $mudancas['depois']);
+            financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
             financeiroRedirecionar(urlCartoes($id, $mes), 'Cartão atualizado com sucesso.');
         }
 
@@ -120,6 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             null,
             ['nome' => $nome, 'limite_total' => $limite, 'tipo' => $tipo, 'dia_vencimento' => $diaVencimento]
         );
+        financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
         financeiroRedirecionar(urlCartoes($novoId, $mes), 'Cartão cadastrado com sucesso.');
     }
 
@@ -156,6 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             financeiroRedirecionar($urlRetorno, 'Não foi possível excluir o cartão.', 'danger');
         }
 
+        financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
         financeiroRedirecionar(urlCartoes(0, $mes), 'Cartão e lançamentos excluídos com sucesso.');
     }
 
@@ -250,6 +253,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             $mudancas = auditoriaMudancas($lancamentoAntes, $lancamentoDepois);
             registrarAuditoria($pdo, 'Financeiro - Cartões', 'editar', 'compra_cartao', $id, 'Alterou a compra ' . $descricao, $mudancas['antes'], $mudancas['depois']);
+            financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
             financeiroRedirecionar(urlCartoes($cartaoId, $mes), 'Compra atualizada com sucesso.');
         }
 
@@ -325,6 +329,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'parcelas_total' => $parcelasTotal,
                 ]
             );
+            financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
             financeiroRedirecionar(
                 urlCartoes($cartaoId, $mes),
                 $parcelasTotal . ' parcelas lançadas e limite atualizado.'
@@ -371,6 +376,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'valor' => $valor,
             ]
         );
+        financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
         financeiroRedirecionar(urlCartoes($cartaoId, $mes), 'Compra lançada e limite atualizado.');
     }
 
@@ -413,6 +419,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ],
                 null
             );
+            financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
             financeiroRedirecionar(
                 $urlRetorno,
                 (int)$resumoExclusao['quantidade'] . ' parcelas excluídas e limite atualizado.'
@@ -434,6 +441,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lancamentoAntes,
             null
         );
+        financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
         financeiroRedirecionar($urlRetorno, 'Lançamento excluído e limite atualizado.');
     }
 
@@ -492,6 +500,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ['parcelas_em_aberto' => (int)$faturaAntes['quantidade'], 'valor' => (float)$faturaAntes['total']],
             ['parcelas_em_aberto' => 0, 'data_pagamento' => $dataPagamento]
         );
+        financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
         financeiroRedirecionar(urlCartoes($cartaoId, $mes), 'Fatura paga e limite liberado.');
     }
 
@@ -535,6 +544,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ['status' => 'pago'],
             ['status' => 'aberto', 'data_pagamento' => null]
         );
+        financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
         financeiroRedirecionar(urlCartoes((int)$lancamento['cartao_id'], $mes), 'Compra reaberta e limite recalculado.');
     }
 

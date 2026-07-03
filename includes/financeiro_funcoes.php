@@ -197,7 +197,16 @@ function financeiroSincronizarFaturasCartoes(PDO $pdo, int $usuarioId): void
             GROUP BY {$expressaoCompetencia}
             ORDER BY competencia
         ");
-        $stmtSalvar = $pdo->prepare("
+        $stmtBuscarConta = $pdo->prepare("
+            SELECT id
+            FROM financeiro_contas
+            WHERE usuario_id = ?
+              AND cartao_id = ?
+              AND competencia_cartao = ?
+            ORDER BY id
+            LIMIT 1
+        ");
+        $stmtInserirConta = $pdo->prepare("
             INSERT INTO financeiro_contas (
                 usuario_id,
                 descricao,
@@ -210,13 +219,23 @@ function financeiroSincronizarFaturasCartoes(PDO $pdo, int $usuarioId): void
                 competencia_cartao
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE
-                descricao = VALUES(descricao),
-                valor_previsto = VALUES(valor_previsto),
-                vencimento = VALUES(vencimento),
-                status = VALUES(status),
-                valor_pago = VALUES(valor_pago),
-                data_pagamento = VALUES(data_pagamento)
+        ");
+        $stmtAtualizarConta = $pdo->prepare("
+            UPDATE financeiro_contas
+            SET descricao = ?,
+                valor_previsto = ?,
+                vencimento = ?,
+                status = ?,
+                valor_pago = ?,
+                data_pagamento = ?
+            WHERE id = ? AND usuario_id = ?
+        ");
+        $stmtExcluirDuplicadas = $pdo->prepare("
+            DELETE FROM financeiro_contas
+            WHERE usuario_id = ?
+              AND cartao_id = ?
+              AND competencia_cartao = ?
+              AND id <> ?
         ");
         $stmtExcluirOrfas = $pdo->prepare("
             DELETE FROM financeiro_contas
@@ -235,16 +254,49 @@ function financeiroSincronizarFaturasCartoes(PDO $pdo, int $usuarioId): void
                 $competencias[] = $competencia;
                 $valorTotal = (float)$fatura['valor_total'];
                 $paga = (int)$fatura['parcelas_abertas'] === 0;
-                $stmtSalvar->execute([
+                $descricao = 'Fatura ' . $cartao['nome'];
+                $vencimento = financeiroVencimentoFatura(
+                    $competencia,
+                    (int)$cartao['dia_vencimento']
+                );
+                $status = $paga ? 'pago' : 'pendente';
+                $valorPago = $paga ? $valorTotal : null;
+                $dataPagamento = $paga ? $fatura['data_pagamento'] : null;
+
+                $stmtBuscarConta->execute([$usuarioId, $cartao['id'], $competencia]);
+                $contaId = (int)$stmtBuscarConta->fetchColumn();
+
+                if ($contaId > 0) {
+                    $stmtAtualizarConta->execute([
+                        $descricao,
+                        $valorTotal,
+                        $vencimento,
+                        $status,
+                        $valorPago,
+                        $dataPagamento,
+                        $contaId,
+                        $usuarioId,
+                    ]);
+                } else {
+                    $stmtInserirConta->execute([
+                        $usuarioId,
+                        $descricao,
+                        $valorTotal,
+                        $vencimento,
+                        $status,
+                        $valorPago,
+                        $dataPagamento,
+                        $cartao['id'],
+                        $competencia,
+                    ]);
+                    $contaId = (int)$pdo->lastInsertId();
+                }
+
+                $stmtExcluirDuplicadas->execute([
                     $usuarioId,
-                    'Fatura ' . $cartao['nome'],
-                    $valorTotal,
-                    financeiroVencimentoFatura($competencia, (int)$cartao['dia_vencimento']),
-                    $paga ? 'pago' : 'pendente',
-                    $paga ? $valorTotal : null,
-                    $paga ? $fatura['data_pagamento'] : null,
                     $cartao['id'],
                     $competencia,
+                    $contaId,
                 ]);
             }
 
