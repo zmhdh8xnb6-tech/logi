@@ -11,11 +11,19 @@ $inicioMes = $mes . '-01';
 $fimMes = date('Y-m-d', strtotime($inicioMes . ' +1 month'));
 $mesAnterior = date('Y-m', strtotime($inicioMes . ' -1 month'));
 $proximoMes = date('Y-m', strtotime($inicioMes . ' +1 month'));
-$dataPadraoCompra = $mes === date('Y-m') ? date('Y-m-d') : $inicioMes;
+$dataPadraoCompra = date('Y-m-d');
 $tabelasDisponiveis = financeiroTabelasDisponiveis(
     $pdo,
     ['financeiro_cartoes', 'financeiro_cartao_lancamentos']
 );
+$temCompetenciaFatura = $tabelasDisponiveis
+    && financeiroColunaExiste($pdo, 'financeiro_cartao_lancamentos', 'competencia_fatura');
+$expressaoCompetenciaFatura = $temCompetenciaFatura
+    ? 'COALESCE(competencia_fatura, DATE_FORMAT(data_compra, \'%Y-%m-01\'))'
+    : 'DATE_FORMAT(data_compra, \'%Y-%m-01\')';
+$expressaoCompetenciaFaturaL = $temCompetenciaFatura
+    ? 'COALESCE(l.competencia_fatura, DATE_FORMAT(l.data_compra, \'%Y-%m-01\'))'
+    : 'DATE_FORMAT(l.data_compra, \'%Y-%m-01\')';
 
 function urlCartoes(int $cartaoId = 0, ?string $mes = null): string
 {
@@ -154,11 +162,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($acao === 'salvar_lancamento') {
         $cartaoId = (int)($_POST['cartao_id'] ?? 0);
         $dataCompra = trim($_POST['data_compra'] ?? '');
+        $mesFaturaCompra = trim($_POST['mes_fatura_compra'] ?? '');
         $descricao = trim($_POST['descricao'] ?? '');
         $valorInformado = $_POST['valor'] ?? '';
         $valor = financeiroValorEntrada($valorInformado);
         $tipoCompra = ($_POST['tipo_compra'] ?? '') === 'parcelada' ? 'parcelada' : 'unica';
         $parcelasTotal = (int)($_POST['parcelas_total'] ?? 1);
+        $dataMesFatura = DateTime::createFromFormat('!Y-m', $mesFaturaCompra);
+        $mesFaturaValido = $dataMesFatura
+            && $dataMesFatura->format('Y-m') === $mesFaturaCompra;
 
         $stmt = $pdo->prepare("
             SELECT id, limite_total
@@ -168,9 +180,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$cartaoId, $usuarioId]);
         $cartaoDestino = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$cartaoDestino || $dataCompra === '' || $descricao === '' || !financeiroValorValido($valorInformado)) {
+        if (
+            !$cartaoDestino
+            || $dataCompra === ''
+            || !$mesFaturaValido
+            || $descricao === ''
+            || !financeiroValorValido($valorInformado)
+        ) {
             financeiroRedirecionar($urlRetorno, 'Preencha os dados da compra corretamente.', 'danger');
         }
+
+        if (!$temCompetenciaFatura) {
+            financeiroRedirecionar(
+                $urlRetorno,
+                'Execute o SQL da competência da fatura antes de lançar a compra.',
+                'danger'
+            );
+        }
+
+        $competenciaFatura = $mesFaturaCompra . '-01';
 
         $stmt = $pdo->prepare("
             SELECT COALESCE(SUM(valor), 0)
@@ -197,13 +225,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lancamentoAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC) ?: [];
             $stmt = $pdo->prepare("
                 UPDATE financeiro_cartao_lancamentos
-                SET cartao_id = ?, data_compra = ?, descricao = ?, valor = ?
+                SET cartao_id = ?,
+                    data_compra = ?,
+                    competencia_fatura = ?,
+                    descricao = ?,
+                    valor = ?
                 WHERE id = ? AND usuario_id = ? AND status = 'aberto'
             ");
-            $stmt->execute([$cartaoId, $dataCompra, $descricao, $valor, $id, $usuarioId]);
+            $stmt->execute([
+                $cartaoId,
+                $dataCompra,
+                $competenciaFatura,
+                $descricao,
+                $valor,
+                $id,
+                $usuarioId,
+            ]);
             $lancamentoDepois = array_merge($lancamentoAntes, [
                 'cartao_id' => $cartaoId,
                 'data_compra' => $dataCompra,
+                'competencia_fatura' => $competenciaFatura,
                 'descricao' => $descricao,
                 'valor' => $valor,
             ]);
@@ -230,6 +271,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     usuario_id,
                     cartao_id,
                     data_compra,
+                    competencia_fatura,
                     descricao,
                     valor,
                     status,
@@ -237,7 +279,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     parcela_numero,
                     parcelas_total
                 )
-                VALUES (?, ?, ?, ?, ?, 'aberto', ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, 'aberto', ?, ?, ?)
             ");
 
             $pdo->beginTransaction();
@@ -246,11 +288,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 for ($numero = 1; $numero <= $parcelasTotal; $numero++) {
                     $valorParcelaCentavos = $valorBaseCentavos + ($numero <= $centavosRestantes ? 1 : 0);
                     $valorParcela = $valorParcelaCentavos / 100;
-                    $dataParcela = financeiroSomarMeses($dataCompra, $numero - 1);
+                    $competenciaParcela = financeiroSomarMeses($competenciaFatura, $numero - 1);
                     $stmt->execute([
                         $usuarioId,
                         $cartaoId,
-                        $dataParcela,
+                        $dataCompra,
+                        $competenciaParcela,
                         $descricao,
                         $valorParcela,
                         $grupoParcelamento,
@@ -275,7 +318,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 null,
                 [
                     'cartao_id' => $cartaoId,
-                    'data_primeira_parcela' => $dataCompra,
+                    'data_compra' => $dataCompra,
+                    'primeira_fatura' => $mesFaturaCompra,
                     'descricao' => $descricao,
                     'valor_total' => $valor,
                     'parcelas_total' => $parcelasTotal,
@@ -292,6 +336,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 usuario_id,
                 cartao_id,
                 data_compra,
+                competencia_fatura,
                 descricao,
                 valor,
                 status,
@@ -299,9 +344,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 parcela_numero,
                 parcelas_total
             )
-            VALUES (?, ?, ?, ?, ?, 'aberto', NULL, NULL, NULL)
+            VALUES (?, ?, ?, ?, ?, ?, 'aberto', NULL, NULL, NULL)
         ");
-        $stmt->execute([$usuarioId, $cartaoId, $dataCompra, $descricao, $valor]);
+        $stmt->execute([
+            $usuarioId,
+            $cartaoId,
+            $dataCompra,
+            $competenciaFatura,
+            $descricao,
+            $valor,
+        ]);
         $novoLancamentoId = (int)$pdo->lastInsertId();
         registrarAuditoria(
             $pdo,
@@ -311,7 +363,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $novoLancamentoId,
             'Lançou a compra ' . $descricao,
             null,
-            ['cartao_id' => $cartaoId, 'data_compra' => $dataCompra, 'descricao' => $descricao, 'valor' => $valor]
+            [
+                'cartao_id' => $cartaoId,
+                'data_compra' => $dataCompra,
+                'competencia_fatura' => $competenciaFatura,
+                'descricao' => $descricao,
+                'valor' => $valor,
+            ]
         );
         financeiroRedirecionar(urlCartoes($cartaoId, $mes), 'Compra lançada e limite atualizado.');
     }
@@ -400,8 +458,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             WHERE cartao_id = ?
               AND usuario_id = ?
               AND status = 'aberto'
-              AND data_compra >= ?
-              AND data_compra < ?
+              AND {$expressaoCompetenciaFatura} >= ?
+              AND {$expressaoCompetenciaFatura} < ?
         ");
         $stmtFatura->execute([$cartaoId, $usuarioId, $inicioMesFatura, $fimMesFatura]);
         $faturaAntes = $stmtFatura->fetch(PDO::FETCH_ASSOC) ?: ['quantidade' => 0, 'total' => 0];
@@ -413,8 +471,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               AND l.usuario_id = ?
               AND c.usuario_id = ?
               AND l.status = 'aberto'
-              AND l.data_compra >= ?
-              AND l.data_compra < ?
+              AND {$expressaoCompetenciaFaturaL} >= ?
+              AND {$expressaoCompetenciaFaturaL} < ?
         ");
         $stmt->execute([
             $dataPagamento,
@@ -502,8 +560,8 @@ if ($tabelasDisponiveis) {
             COALESCE(SUM(
                 CASE
                     WHEN l.status = 'aberto'
-                     AND l.data_compra >= ?
-                     AND l.data_compra < ?
+                     AND {$expressaoCompetenciaFaturaL} >= ?
+                     AND {$expressaoCompetenciaFaturaL} < ?
                     THEN l.valor
                     ELSE 0
                 END
@@ -542,8 +600,8 @@ if ($tabelasDisponiveis) {
             FROM financeiro_cartao_lancamentos
             WHERE cartao_id = ?
               AND usuario_id = ?
-              AND data_compra >= ?
-              AND data_compra < ?
+              AND {$expressaoCompetenciaFatura} >= ?
+              AND {$expressaoCompetenciaFatura} < ?
             ORDER BY status ASC, data_compra DESC, id DESC
         ");
         $stmt->execute([$cartaoSelecionadoId, $usuarioId, $inicioMes, $fimMes]);
@@ -808,7 +866,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 <table class="table align-middle financeiro-tabela">
                                     <thead>
                                         <tr>
-                                            <th>Data</th>
+                                            <th>Data da compra</th>
                                             <th>Compra</th>
                                             <th class="text-end">Valor</th>
                                             <th>Status</th>
@@ -826,6 +884,9 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                         <?php foreach ($lancamentos as $lancamento):
                                             $textoCompra = $lancamento['descricao'];
                                             $lancamentoAtrasado = $lancamento['status'] === 'aberto' && $faturaAtrasada;
+                                            $mesFaturaLancamento = !empty($lancamento['competencia_fatura'])
+                                                ? date('Y-m', strtotime($lancamento['competencia_fatura']))
+                                                : date('Y-m', strtotime($lancamento['data_compra']));
 
                                             if (!empty($lancamento['parcela_numero']) && !empty($lancamento['parcelas_total'])) {
                                                 $textoCompra .= ' ' . (int)$lancamento['parcela_numero'] . '/' . (int)$lancamento['parcelas_total'];
@@ -855,6 +916,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                                                 data-id="<?= (int)$lancamento['id'] ?>"
                                                                 data-cartao="<?= (int)$lancamento['cartao_id'] ?>"
                                                                 data-data="<?= htmlspecialchars($lancamento['data_compra']) ?>"
+                                                                data-fatura="<?= htmlspecialchars($mesFaturaLancamento) ?>"
                                                                 data-descricao="<?= htmlspecialchars($lancamento['descricao']) ?>"
                                                                 data-valor="<?= number_format((float)$lancamento['valor'], 2, ',', '.') ?>"
                                                                 data-bs-toggle="modal"
@@ -981,12 +1043,23 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 </select>
                             </div>
                             <div class="row">
-                                <div class="col-md-6 mb-3">
+                                <div class="col-md-4 mb-3">
                                     <label for="compraData" class="form-label">Data da compra</label>
                                     <input type="date" class="form-control" name="data_compra" id="compraData" value="<?= date('Y-m-d') ?>" required>
                                     <div class="invalid-feedback">Informe a data.</div>
                                 </div>
-                                <div class="col-md-6 mb-3">
+                                <div class="col-md-4 mb-3">
+                                    <label for="compraMesFatura" class="form-label" id="compraMesFaturaLabel">Primeira fatura</label>
+                                    <input
+                                        type="month"
+                                        class="form-control"
+                                        name="mes_fatura_compra"
+                                        id="compraMesFatura"
+                                        value="<?= htmlspecialchars($mes) ?>"
+                                        required>
+                                    <div class="invalid-feedback">Informe o mês da fatura.</div>
+                                </div>
+                                <div class="col-md-4 mb-3">
                                     <label for="compraValor" class="form-label" id="compraValorLabel">Valor da compra</label>
                                     <input type="text" inputmode="decimal" class="form-control campo-moeda" name="valor" id="compraValor" placeholder="0,00" required>
                                     <div class="invalid-feedback">Informe o valor.</div>
@@ -1113,6 +1186,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
         <script>
             const cartaoSelecionado = <?= json_encode($cartaoSelecionadoId) ?>;
             const dataPadraoCompra = <?= json_encode($dataPadraoCompra) ?>;
+            const mesFaturaSelecionado = <?= json_encode($mes) ?>;
 
             document.getElementById('mesCartao').addEventListener('change', function() {
                 document.getElementById('formMesCartao').submit();
@@ -1155,6 +1229,8 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     document.getElementById('compraTipo').value = 'unica';
                     document.getElementById('compraCartao').value = String(cartaoSelecionado);
                     document.getElementById('compraData').value = dataPadraoCompra;
+                    document.getElementById('compraMesFaturaLabel').textContent = 'Primeira fatura';
+                    document.getElementById('compraMesFatura').value = mesFaturaSelecionado;
                     document.getElementById('compraDescricao').value = '';
                     document.getElementById('compraValor').value = '';
                     document.getElementById('compraParcelasTotal').value = '';
@@ -1170,6 +1246,8 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     document.getElementById('campoParcelasCompra').classList.add('d-none');
                     document.getElementById('compraCartao').value = this.dataset.cartao;
                     document.getElementById('compraData').value = this.dataset.data;
+                    document.getElementById('compraMesFaturaLabel').textContent = 'Fatura';
+                    document.getElementById('compraMesFatura').value = this.dataset.fatura;
                     document.getElementById('compraDescricao').value = this.dataset.descricao;
                     document.getElementById('compraValor').value = this.dataset.valor;
                 });

@@ -591,6 +591,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $inicioCompetencia = $antes['competencia_cartao'] . '-01';
             $fimCompetencia = date('Y-m-d', strtotime($inicioCompetencia . ' +1 month'));
             $valorPago = (float)$antes['valor_previsto'];
+            $temCompetenciaFatura = financeiroColunaExiste(
+                $pdo,
+                'financeiro_cartao_lancamentos',
+                'competencia_fatura'
+            );
+            $filtroCompetenciaFatura = $temCompetenciaFatura
+                ? "COALESCE(competencia_fatura, DATE_FORMAT(data_compra, '%Y-%m-01'))"
+                : "DATE_FORMAT(data_compra, '%Y-%m-01')";
             $pdo->beginTransaction();
 
             try {
@@ -599,8 +607,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     SET status = 'pago', data_pagamento = ?
                     WHERE usuario_id = ?
                       AND cartao_id = ?
-                      AND data_compra >= ?
-                      AND data_compra < ?
+                      AND {$filtroCompetenciaFatura} >= ?
+                      AND {$filtroCompetenciaFatura} < ?
                       AND status = 'aberto'
                 ");
                 $stmt->execute([
@@ -778,6 +786,7 @@ $mensagem = financeiroObterMensagem();
 $recebimentos = [];
 $contas = [];
 $totalReceitas = 0.0;
+$totalRecebidoAtual = 0.0;
 $totalPrevisto = 0.0;
 $totalPago = 0.0;
 $totalPendente = 0.0;
@@ -836,6 +845,14 @@ if ($tabelasDisponiveis) {
     $contas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $totalReceitas = array_sum(array_map('floatval', array_column($recebimentos, 'valor')));
+    $hoje = date('Y-m-d');
+
+    foreach ($recebimentos as $recebimento) {
+        if ($recebimento['data_recebimento'] <= $hoje) {
+            $totalRecebidoAtual += (float)$recebimento['valor'];
+        }
+    }
+
     $totalPrevisto = array_sum(array_map('floatval', array_column($contas, 'valor_previsto')));
 
     foreach ($contas as $conta) {
@@ -847,7 +864,7 @@ if ($tabelasDisponiveis) {
     }
 }
 
-$saldoAtual = $totalReceitas - $totalPago;
+$saldoAtual = $totalRecebidoAtual - $totalPago;
 $saldoPrevisto = $totalReceitas - $totalPrevisto;
 $nomesMeses = [
     1 => 'Janeiro',
@@ -944,8 +961,8 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
 
                 <section class="financeiro-resumo mb-4" aria-label="Resumo financeiro">
                     <div class="financeiro-metrica metrica-receita">
-                        <span>Receitas</span>
-                        <strong><?= financeiroMoeda($totalReceitas) ?></strong>
+                        <span>Recebido até hoje</span>
+                        <strong><?= financeiroMoeda($totalRecebidoAtual) ?></strong>
                     </div>
                     <div class="financeiro-metrica metrica-despesa">
                         <span>Despesas previstas</span>
@@ -983,6 +1000,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                     <th>Data</th>
                                     <th>Descrição</th>
                                     <th>Recebido de</th>
+                                    <th>Situação</th>
                                     <th class="text-end">Valor</th>
                                     <th class="text-end">Ações</th>
                                 </tr>
@@ -990,7 +1008,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             <tbody>
                                 <?php if ($recebimentos === []): ?>
                                     <tr>
-                                        <td colspan="5" class="financeiro-vazio">Nenhum recebimento neste mês.</td>
+                                        <td colspan="6" class="financeiro-vazio">Nenhum recebimento neste mês.</td>
                                     </tr>
                                 <?php endif; ?>
 
@@ -999,6 +1017,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                     $regraRecebimento = $recebimentoRecorrente
                                         ? ($recorrenciasRecebimentosPorId[(int)$recebimento['recorrencia_id']] ?? null)
                                         : null;
+                                    $recebimentoDisponivel = $recebimento['data_recebimento'] <= date('Y-m-d');
                                 ?>
                                     <tr>
                                         <td><?= financeiroData($recebimento['data_recebimento']) ?></td>
@@ -1009,7 +1028,14 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                             <?php endif; ?>
                                         </td>
                                         <td><?= htmlspecialchars($recebimento['recebido_de'] ?: '-') ?></td>
-                                        <td class="text-end fw-semibold text-success"><?= financeiroMoeda((float)$recebimento['valor']) ?></td>
+                                        <td>
+                                            <span class="badge <?= $recebimentoDisponivel ? 'bg-success' : 'bg-warning text-dark' ?>">
+                                                <?= $recebimentoDisponivel ? 'Disponível' : 'Agendado' ?>
+                                            </span>
+                                        </td>
+                                        <td class="text-end fw-semibold <?= $recebimentoDisponivel ? 'text-success' : 'text-muted' ?>">
+                                            <?= financeiroMoeda((float)$recebimento['valor']) ?>
+                                        </td>
                                         <td class="text-end">
                                             <div class="d-inline-flex gap-1">
                                                 <?php if ($recebimentoRecorrente && $regraRecebimento): ?>
@@ -1071,7 +1097,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             </tbody>
                             <tfoot>
                                 <tr>
-                                    <th colspan="3" class="text-end">Total recebido</th>
+                                    <th colspan="4" class="text-end">Total previsto no mês</th>
                                     <th class="text-end text-success"><?= financeiroMoeda($totalReceitas) ?></th>
                                     <th></th>
                                 </tr>

@@ -156,6 +156,15 @@ function financeiroSincronizarFaturasCartoes(PDO $pdo, int $usuarioId): void
         return;
     }
 
+    $temCompetenciaFatura = financeiroColunaExiste(
+        $pdo,
+        'financeiro_cartao_lancamentos',
+        'competencia_fatura'
+    );
+    $expressaoCompetencia = $temCompetenciaFatura
+        ? "COALESCE(DATE_FORMAT(competencia_fatura, '%Y-%m'), DATE_FORMAT(data_compra, '%Y-%m'))"
+        : "DATE_FORMAT(data_compra, '%Y-%m')";
+
     try {
         $stmtCartoes = $pdo->prepare("
             SELECT id, nome, dia_vencimento
@@ -178,14 +187,14 @@ function financeiroSincronizarFaturasCartoes(PDO $pdo, int $usuarioId): void
 
         $stmtFaturas = $pdo->prepare("
             SELECT
-                DATE_FORMAT(data_compra, '%Y-%m') AS competencia,
+                {$expressaoCompetencia} AS competencia,
                 SUM(valor) AS valor_total,
                 SUM(CASE WHEN status = 'aberto' THEN 1 ELSE 0 END) AS parcelas_abertas,
                 MAX(data_pagamento) AS data_pagamento
             FROM financeiro_cartao_lancamentos
             WHERE usuario_id = ?
               AND cartao_id = ?
-            GROUP BY DATE_FORMAT(data_compra, '%Y-%m')
+            GROUP BY {$expressaoCompetencia}
             ORDER BY competencia
         ");
         $stmtSalvar = $pdo->prepare("
