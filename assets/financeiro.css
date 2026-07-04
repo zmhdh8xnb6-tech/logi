@@ -286,4 +286,28 @@
     .financeiro-cartao-cabecalho>div:last-child {
         width: 100%;
     }
+
+    .financeiro-cartao-cabecalho .btn,
+    .financeiro-painel-titulo>.btn {
+        width: 100%;
+    }
+
+    .financeiro-painel-titulo,
+    .financeiro-limite-barra {
+        padding: 14px;
+    }
+
+    .financeiro-metrica {
+        min-height: 0;
+        padding: 14px;
+    }
+
+    .financeiro-cartao-item {
+        grid-template-columns: 34px minmax(0, 1fr);
+    }
+
+    .financeiro-cartao-item>.badge {
+        grid-column: 2;
+        justify-self: start;
+    }
 }

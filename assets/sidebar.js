@@ -1,28 +1,58 @@
 const sidebar = document.getElementById('appSidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
+const sidebarBackdrop = document.getElementById('sidebarBackdrop');
 
 if (sidebar && sidebarToggle) {
     const icon = sidebarToggle.querySelector('i');
+    const mobileSidebar = window.matchMedia('(max-width: 768px)');
 
-    sidebarToggle.addEventListener('click', () => {
-
-        sidebar.classList.toggle('collapsed');
-
+    function atualizarSidebar() {
         if (sidebar.classList.contains('collapsed')) {
-
             icon.className = 'bi bi-layout-sidebar';
             sidebarToggle.title = 'Expandir menu';
             sidebarToggle.setAttribute('aria-label', 'Expandir menu');
-
         } else {
-
             icon.className = 'bi bi-layout-sidebar-inset';
             sidebarToggle.title = 'Recolher menu';
             sidebarToggle.setAttribute('aria-label', 'Recolher menu');
-
         }
 
+        const menuMovelAberto = mobileSidebar.matches
+            && !sidebar.classList.contains('collapsed');
+
+        document.body.classList.toggle('sidebar-mobile-open', menuMovelAberto);
+        sidebarBackdrop?.classList.toggle('visible', menuMovelAberto);
+        sidebarToggle.setAttribute('aria-expanded', menuMovelAberto ? 'true' : 'false');
+    }
+
+    function fecharSidebarMovel() {
+        if (!mobileSidebar.matches) {
+            return;
+        }
+
+        sidebar.classList.add('collapsed');
+        atualizarSidebar();
+    }
+
+    sidebarToggle.addEventListener('click', () => {
+        sidebar.classList.toggle('collapsed');
+        atualizarSidebar();
     });
+
+    sidebarBackdrop?.addEventListener('click', fecharSidebarMovel);
+
+    sidebar.querySelectorAll('a.sidebar-link').forEach((link) => {
+        link.addEventListener('click', fecharSidebarMovel);
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            fecharSidebarMovel();
+        }
+    });
+
+    mobileSidebar.addEventListener('change', atualizarSidebar);
+    atualizarSidebar();
 }
 
 const notificationCenter = document.getElementById('appNotificationCenter');

@@ -117,6 +117,13 @@
     </div>
 </div>
 
+<button
+    type="button"
+    class="sidebar-backdrop"
+    id="sidebarBackdrop"
+    aria-label="Fechar menu"
+    tabindex="-1"></button>
+
 <?php if (usuarioPode('pendencias')): ?>
     <div class="notification-panel d-none" id="notificationPanel">
         <div class="notification-panel-header">Notificações</div>

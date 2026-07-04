@@ -70,21 +70,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtCartaoAntes = $pdo->prepare("SELECT * FROM financeiro_cartoes WHERE id = ? AND usuario_id = ?");
             $stmtCartaoAntes->execute([$id, $usuarioId]);
             $cartaoAntes = $stmtCartaoAntes->fetch(PDO::FETCH_ASSOC) ?: [];
-            $stmt = $pdo->prepare("
-                SELECT COALESCE(SUM(valor), 0)
-                FROM financeiro_cartao_lancamentos
-                WHERE cartao_id = ? AND usuario_id = ? AND status = 'aberto'
-            ");
-            $stmt->execute([$id, $usuarioId]);
-            $totalEmAberto = (float)$stmt->fetchColumn();
-
-            if ($limite < $totalEmAberto) {
-                financeiroRedirecionar(
-                    $urlRetorno,
-                    'O limite não pode ser menor que o total de compras em aberto.',
-                    'danger'
-                );
-            }
 
             $stmt = $pdo->prepare("
                 UPDATE financeiro_cartoes
@@ -176,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             && $dataMesFatura->format('Y-m') === $mesFaturaCompra;
 
         $stmt = $pdo->prepare("
-            SELECT id, limite_total
+            SELECT id
             FROM financeiro_cartoes
             WHERE id = ? AND usuario_id = ? AND ativo = 1
         ");
@@ -202,25 +187,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $competenciaFatura = $mesFaturaCompra . '-01';
-
-        $stmt = $pdo->prepare("
-            SELECT COALESCE(SUM(valor), 0)
-            FROM financeiro_cartao_lancamentos
-            WHERE cartao_id = ?
-              AND usuario_id = ?
-              AND status = 'aberto'
-              AND id <> ?
-        ");
-        $stmt->execute([$cartaoId, $usuarioId, $id]);
-        $totalEmAberto = (float)$stmt->fetchColumn();
-
-        if ($totalEmAberto + $valor > (float)$cartaoDestino['limite_total']) {
-            financeiroRedirecionar(
-                urlCartoes($cartaoId, $mes),
-                'A compra ultrapassa o limite disponível deste cartão.',
-                'danger'
-            );
-        }
 
         if ($id > 0) {
             $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_cartao_lancamentos WHERE id = ? AND usuario_id = ?");
@@ -506,14 +472,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($acao === 'reabrir_lancamento') {
         $stmt = $pdo->prepare("
-            SELECT l.valor, l.cartao_id, l.descricao, c.limite_total,
-                (
-                    SELECT COALESCE(SUM(x.valor), 0)
-                    FROM financeiro_cartao_lancamentos x
-                    WHERE x.cartao_id = l.cartao_id
-                      AND x.usuario_id = l.usuario_id
-                      AND x.status = 'aberto'
-                ) AS total_aberto
+            SELECT l.valor, l.cartao_id, l.descricao
             FROM financeiro_cartao_lancamentos l
             INNER JOIN financeiro_cartoes c ON c.id = l.cartao_id AND c.usuario_id = l.usuario_id
             WHERE l.id = ? AND l.usuario_id = ?
@@ -521,11 +480,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$id, $usuarioId]);
         $lancamento = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (
-            !$lancamento
-            || (float)$lancamento['total_aberto'] + (float)$lancamento['valor'] > (float)$lancamento['limite_total']
-        ) {
-            financeiroRedirecionar($urlRetorno, 'Não há limite suficiente para reabrir esta compra.', 'danger');
+        if (!$lancamento) {
+            financeiroRedirecionar($urlRetorno, 'Compra não encontrada.', 'danger');
         }
 
         $stmt = $pdo->prepare("
@@ -710,7 +666,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                         <span>Limite cartões</span>
                         <strong><?= financeiroMoeda($resumo['credito_limite']) ?></strong>
                     </div>
-                    <div class="financeiro-metrica metrica-saldo">
+                    <div class="financeiro-metrica <?= $resumo['credito_disponivel'] < 0 ? 'metrica-negativa' : 'metrica-saldo' ?>">
                         <span>Disponível cartões</span>
                         <strong><?= financeiroMoeda($resumo['credito_disponivel']) ?></strong>
                     </div>
@@ -718,7 +674,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                         <span>Limite lojas</span>
                         <strong><?= financeiroMoeda($resumo['loja_limite']) ?></strong>
                     </div>
-                    <div class="financeiro-metrica metrica-pendente">
+                    <div class="financeiro-metrica <?= $resumo['loja_disponivel'] < 0 ? 'metrica-negativa' : 'metrica-pendente' ?>">
                         <span>Disponível lojas</span>
                         <strong><?= financeiroMoeda($resumo['loja_disponivel']) ?></strong>
                     </div>
@@ -786,7 +742,9 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                     </span>
                                     <span class="financeiro-cartao-dados">
                                         <strong><?= htmlspecialchars($cartao['nome']) ?></strong>
-                                        <small><?= financeiroMoeda((float)$cartao['disponivel']) ?> disponível</small>
+                                        <small class="<?= (float)$cartao['disponivel'] < 0 ? 'text-danger fw-semibold' : '' ?>">
+                                            <?= financeiroMoeda((float)$cartao['disponivel']) ?> disponível
+                                        </small>
                                     </span>
                                     <span class="badge <?= $cartao['tipo'] === 'loja' ? 'bg-warning text-dark' : 'bg-primary' ?>">
                                         <?= $cartao['tipo'] === 'loja' ? 'Loja' : 'Crédito' ?>
@@ -865,7 +823,10 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                         Prazo: <strong><?= htmlspecialchars($textoPrazoFatura) ?></strong>
                                     </span>
                                     <span>Compras comprometidas: <strong><?= financeiroMoeda((float)$cartaoSelecionado['total_aberto']) ?></strong></span>
-                                    <span>Disponível: <strong><?= financeiroMoeda((float)$cartaoSelecionado['disponivel']) ?></strong></span>
+                                    <span class="<?= (float)$cartaoSelecionado['disponivel'] < 0 ? 'text-danger' : '' ?>">
+                                        Disponível:
+                                        <strong><?= financeiroMoeda((float)$cartaoSelecionado['disponivel']) ?></strong>
+                                    </span>
                                 </div>
                                 <div class="progress" role="progressbar" aria-valuenow="<?= round($percentualUsado) ?>" aria-valuemin="0" aria-valuemax="100">
                                     <div class="progress-bar <?= $percentualUsado >= 85 ? 'bg-danger' : ($percentualUsado >= 60 ? 'bg-warning' : 'bg-primary') ?>" style="width: <?= $percentualUsado ?>%"></div>

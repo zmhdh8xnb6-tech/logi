@@ -36,3 +36,34 @@
     font-size: 40px;
     margin-bottom: 15px;
 }
+
+@media (max-width: 768px) {
+    .container-home {
+        margin: 20px auto;
+    }
+
+    .titulo {
+        margin-bottom: 24px;
+    }
+
+    .card-servico {
+        min-height: 0;
+        padding: 22px 16px;
+        border-radius: 8px;
+    }
+
+    .card-servico .icon,
+    .card-servico>.icon {
+        margin-bottom: 10px;
+        font-size: 32px;
+    }
+
+    .card-servico h5 {
+        font-size: 1rem;
+    }
+
+    .card-servico p {
+        margin-bottom: 0;
+        font-size: .9rem;
+    }
+}

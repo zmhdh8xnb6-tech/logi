@@ -1,6 +1,7 @@
 body {
     background-color: #f0f2f5;
     font-family: Arial;
+    overflow-x: hidden;
 }
 
 .senha-wrapper {
@@ -284,5 +285,118 @@ body {
     .cliente-seletor-menu {
         width: 100%;
         max-width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .app-main>.container-fluid {
+        padding-right: 0;
+        padding-left: 0;
+    }
+
+    .app-main h1 {
+        font-size: 1.75rem;
+    }
+
+    .app-main h2 {
+        font-size: 1.5rem;
+    }
+
+    .app-main h3 {
+        font-size: 1.35rem;
+    }
+
+    .app-main>.container-fluid>.d-flex.justify-content-between,
+    .app-main>.container-fluid>.d-flex.flex-wrap.justify-content-between {
+        align-items: stretch !important;
+        flex-direction: column;
+    }
+
+    .app-main>.container-fluid>.d-flex.justify-content-between>.d-flex,
+    .app-main>.container-fluid>.d-flex.flex-wrap.justify-content-between>.d-flex {
+        flex-wrap: wrap;
+    }
+
+    .clientes-box,
+    .parcelamento-box {
+        padding: 14px;
+        border-radius: 8px;
+    }
+
+    .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .table-responsive>.table {
+        width: max-content;
+        min-width: 720px;
+    }
+
+    .table-responsive .btn {
+        flex: 0 0 auto;
+    }
+
+    .form-control,
+    .form-select {
+        min-height: 44px;
+        font-size: 16px;
+    }
+
+    textarea.form-control {
+        min-height: 96px;
+    }
+
+    .modal {
+        padding: 0 !important;
+    }
+
+    .modal-dialog {
+        width: auto;
+        max-width: none;
+        margin: 8px;
+    }
+
+    .modal-dialog-centered {
+        min-height: calc(100dvh - 16px);
+    }
+
+    .modal-content {
+        max-height: calc(100dvh - 16px);
+        border-radius: 8px;
+    }
+
+    .modal-body {
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .modal-footer {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .modal-footer>* {
+        margin: 0;
+    }
+
+    .offcanvas {
+        max-width: 100vw;
+    }
+
+    .login-page {
+        min-height: 100dvh;
+        height: auto;
+        padding: 16px;
+    }
+
+    .login-card {
+        padding: 24px 18px;
+        border-radius: 10px;
+    }
+
+    .logo-img {
+        width: min(160px, 55vw);
     }
 }
