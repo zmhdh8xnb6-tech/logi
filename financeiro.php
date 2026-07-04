@@ -993,8 +993,25 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                         </button>
                     </div>
 
+                    <div class="financeiro-lista-filtros">
+                        <div class="financeiro-campo-busca">
+                            <i class="bi bi-search"></i>
+                            <input
+                                type="search"
+                                class="form-control"
+                                id="filtroBuscaRecebimentos"
+                                placeholder="Buscar recebimento..."
+                                aria-label="Buscar recebimento">
+                        </div>
+                        <select class="form-select" id="filtroStatusRecebimentos" aria-label="Filtrar recebimentos por situação">
+                            <option value="">Todas as situações</option>
+                            <option value="disponivel">Disponível</option>
+                            <option value="agendado">Agendado</option>
+                        </select>
+                    </div>
+
                     <div class="table-responsive">
-                        <table class="table align-middle financeiro-tabela">
+                        <table class="table align-middle financeiro-tabela" id="tabelaRecebimentos">
                             <thead>
                                 <tr>
                                     <th>Data</th>
@@ -1019,7 +1036,10 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                         : null;
                                     $recebimentoDisponivel = $recebimento['data_recebimento'] <= date('Y-m-d');
                                 ?>
-                                    <tr>
+                                    <tr
+                                        class="linha-filtro-recebimento"
+                                        data-filtro="<?= htmlspecialchars($recebimento['descricao'] . ' ' . ($recebimento['recebido_de'] ?? '')) ?>"
+                                        data-status="<?= $recebimentoDisponivel ? 'disponivel' : 'agendado' ?>">
                                         <td><?= financeiroData($recebimento['data_recebimento']) ?></td>
                                         <td>
                                             <?= htmlspecialchars($recebimento['descricao']) ?>
@@ -1094,6 +1114,9 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
+                                <tr class="d-none" id="semResultadoRecebimentos">
+                                    <td colspan="6" class="financeiro-vazio">Nenhum recebimento corresponde aos filtros.</td>
+                                </tr>
                             </tbody>
                             <tfoot>
                                 <tr>
@@ -1117,8 +1140,26 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                         </button>
                     </div>
 
+                    <div class="financeiro-lista-filtros">
+                        <div class="financeiro-campo-busca">
+                            <i class="bi bi-search"></i>
+                            <input
+                                type="search"
+                                class="form-control"
+                                id="filtroBuscaContas"
+                                placeholder="Buscar despesa..."
+                                aria-label="Buscar conta a pagar">
+                        </div>
+                        <select class="form-select" id="filtroStatusContas" aria-label="Filtrar contas por situação">
+                            <option value="">Todas as situações</option>
+                            <option value="pendente">Pendente</option>
+                            <option value="atrasado">Atrasado</option>
+                            <option value="pago">Pago</option>
+                        </select>
+                    </div>
+
                     <div class="table-responsive">
-                        <table class="table align-middle financeiro-tabela">
+                        <table class="table align-middle financeiro-tabela" id="tabelaContas">
                             <thead>
                                 <tr>
                                     <th>Despesa</th>
@@ -1154,8 +1195,12 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                     if (!empty($conta['parcela_numero']) && !empty($conta['parcelas_total'])) {
                                         $textoConta .= ' ' . (int)$conta['parcela_numero'] . '/' . (int)$conta['parcelas_total'];
                                     }
+                                    $statusFiltroConta = $paga ? 'pago' : ($atrasada ? 'atrasado' : 'pendente');
                                 ?>
-                                    <tr>
+                                    <tr
+                                        class="linha-filtro-conta"
+                                        data-filtro="<?= htmlspecialchars($textoConta) ?>"
+                                        data-status="<?= $statusFiltroConta ?>">
                                         <td>
                                             <?= htmlspecialchars($textoConta) ?>
                                             <?php if (!empty($conta['grupo_parcelamento'])): ?>
@@ -1284,6 +1329,9 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
+                                <tr class="d-none" id="semResultadoContas">
+                                    <td colspan="8" class="financeiro-vazio">Nenhuma conta corresponde aos filtros.</td>
+                                </tr>
                             </tbody>
                             <tfoot>
                                 <tr>
@@ -1503,6 +1551,59 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
         <script>
             const mesSelecionado = <?= json_encode($mes) ?>;
             const dataHoje = <?= json_encode(date('Y-m-d')) ?>;
+
+            function normalizarTextoFiltro(texto) {
+                return String(texto || '')
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .toLowerCase()
+                    .trim();
+            }
+
+            function configurarFiltroFinanceiro(configuracao) {
+                const campoBusca = document.getElementById(configuracao.busca);
+                const campoStatus = document.getElementById(configuracao.status);
+                const linhas = Array.from(document.querySelectorAll(configuracao.linhas));
+                const semResultado = document.getElementById(configuracao.vazio);
+
+                if (!campoBusca || !campoStatus || linhas.length === 0 || !semResultado) {
+                    return;
+                }
+
+                function filtrar() {
+                    const busca = normalizarTextoFiltro(campoBusca.value);
+                    const status = campoStatus.value;
+                    let visiveis = 0;
+
+                    linhas.forEach(function(linha) {
+                        const correspondeBusca = normalizarTextoFiltro(linha.dataset.filtro).includes(busca);
+                        const correspondeStatus = status === '' || linha.dataset.status === status;
+                        const mostrar = correspondeBusca && correspondeStatus;
+
+                        linha.classList.toggle('d-none', !mostrar);
+                        visiveis += mostrar ? 1 : 0;
+                    });
+
+                    semResultado.classList.toggle('d-none', visiveis > 0);
+                }
+
+                campoBusca.addEventListener('input', filtrar);
+                campoStatus.addEventListener('change', filtrar);
+            }
+
+            configurarFiltroFinanceiro({
+                busca: 'filtroBuscaRecebimentos',
+                status: 'filtroStatusRecebimentos',
+                linhas: '.linha-filtro-recebimento',
+                vazio: 'semResultadoRecebimentos'
+            });
+
+            configurarFiltroFinanceiro({
+                busca: 'filtroBuscaContas',
+                status: 'filtroStatusContas',
+                linhas: '.linha-filtro-conta',
+                vazio: 'semResultadoContas'
+            });
 
             document.getElementById('mesFinanceiro').addEventListener('change', function() {
                 document.getElementById('formMesFinanceiro').submit();

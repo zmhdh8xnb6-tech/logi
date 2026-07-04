@@ -56,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $limite = financeiroValorEntrada($limiteInformado);
         $tipo = ($_POST['tipo'] ?? '') === 'loja' ? 'loja' : 'credito';
         $diaVencimento = (int)($_POST['dia_vencimento'] ?? 0);
+        $ativo = ($_POST['ativo'] ?? '1') === '0' ? 0 : 1;
 
         if (
             $nome === ''
@@ -73,15 +74,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $stmt = $pdo->prepare("
                 UPDATE financeiro_cartoes
-                SET nome = ?, limite_total = ?, tipo = ?, dia_vencimento = ?
+                SET nome = ?, limite_total = ?, tipo = ?, dia_vencimento = ?, ativo = ?
                 WHERE id = ? AND usuario_id = ?
             ");
-            $stmt->execute([$nome, $limite, $tipo, $diaVencimento, $id, $usuarioId]);
+            $stmt->execute([$nome, $limite, $tipo, $diaVencimento, $ativo, $id, $usuarioId]);
             $cartaoDepois = array_merge($cartaoAntes, [
                 'nome' => $nome,
                 'limite_total' => $limite,
                 'tipo' => $tipo,
                 'dia_vencimento' => $diaVencimento,
+                'ativo' => $ativo,
             ]);
             $mudancas = auditoriaMudancas($cartaoAntes, $cartaoDepois);
             registrarAuditoria($pdo, 'Financeiro - Cartões', 'editar', 'cartao', $id, 'Alterou o cartão ' . $nome, $mudancas['antes'], $mudancas['depois']);
@@ -92,9 +94,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $pdo->prepare("
             INSERT INTO financeiro_cartoes
                 (usuario_id, nome, limite_total, tipo, dia_vencimento, ativo)
-            VALUES (?, ?, ?, ?, ?, 1)
+            VALUES (?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$usuarioId, $nome, $limite, $tipo, $diaVencimento]);
+        $stmt->execute([$usuarioId, $nome, $limite, $tipo, $diaVencimento, $ativo]);
         $novoId = (int)$pdo->lastInsertId();
         registrarAuditoria(
             $pdo,
@@ -104,7 +106,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $novoId,
             'Cadastrou o cartão ' . $nome,
             null,
-            ['nome' => $nome, 'limite_total' => $limite, 'tipo' => $tipo, 'dia_vencimento' => $diaVencimento]
+            [
+                'nome' => $nome,
+                'limite_total' => $limite,
+                'tipo' => $tipo,
+                'dia_vencimento' => $diaVencimento,
+                'ativo' => $ativo,
+            ]
         );
         financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
         financeiroRedirecionar(urlCartoes($novoId, $mes), 'Cartão cadastrado com sucesso.');
@@ -161,12 +169,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             && $dataMesFatura->format('Y-m') === $mesFaturaCompra;
 
         $stmt = $pdo->prepare("
-            SELECT id
+            SELECT id, ativo
             FROM financeiro_cartoes
-            WHERE id = ? AND usuario_id = ? AND ativo = 1
+            WHERE id = ? AND usuario_id = ?
         ");
         $stmt->execute([$cartaoId, $usuarioId]);
         $cartaoDestino = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($cartaoDestino && $id <= 0 && (int)$cartaoDestino['ativo'] !== 1) {
+            financeiroRedirecionar(
+                $urlRetorno,
+                'Cartões cancelados não aceitam novas compras.',
+                'warning'
+            );
+        }
 
         if (
             !$cartaoDestino
@@ -538,16 +554,19 @@ if ($tabelasDisponiveis) {
            AND l.usuario_id = c.usuario_id
         WHERE c.usuario_id = ?
         GROUP BY c.id
-        ORDER BY c.tipo ASC, c.nome ASC
+        ORDER BY c.ativo DESC, c.tipo ASC, c.nome ASC
     ");
     $stmt->execute([$inicioMes, $fimMes, $usuarioId]);
     $cartoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($cartoes as &$cartao) {
         $cartao['disponivel'] = (float)$cartao['limite_total'] - (float)$cartao['total_aberto'];
-        $prefixo = $cartao['tipo'] === 'loja' ? 'loja' : 'credito';
-        $resumo[$prefixo . '_limite'] += (float)$cartao['limite_total'];
-        $resumo[$prefixo . '_disponivel'] += (float)$cartao['disponivel'];
+
+        if ((int)$cartao['ativo'] === 1) {
+            $prefixo = $cartao['tipo'] === 'loja' ? 'loja' : 'credito';
+            $resumo[$prefixo . '_limite'] += (float)$cartao['limite_total'];
+            $resumo[$prefixo . '_disponivel'] += (float)$cartao['disponivel'];
+        }
 
         if ((int)$cartao['id'] === $cartaoSelecionadoId) {
             $cartaoSelecionado = $cartao;
@@ -736,18 +755,22 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                             <?php foreach ($cartoes as $cartao): ?>
                                 <a
                                     href="<?= htmlspecialchars(urlCartoes((int)$cartao['id'], $mes)) ?>"
-                                    class="financeiro-cartao-item<?= (int)$cartao['id'] === $cartaoSelecionadoId ? ' ativo' : '' ?>">
+                                    class="financeiro-cartao-item<?= (int)$cartao['id'] === $cartaoSelecionadoId ? ' ativo' : '' ?><?= (int)$cartao['ativo'] !== 1 ? ' cancelado' : '' ?>">
                                     <span class="financeiro-cartao-icone">
                                         <i class="bi <?= $cartao['tipo'] === 'loja' ? 'bi-shop' : 'bi-credit-card' ?>"></i>
                                     </span>
                                     <span class="financeiro-cartao-dados">
                                         <strong><?= htmlspecialchars($cartao['nome']) ?></strong>
-                                        <small class="<?= (float)$cartao['disponivel'] < 0 ? 'text-danger fw-semibold' : '' ?>">
-                                            <?= financeiroMoeda((float)$cartao['disponivel']) ?> disponível
-                                        </small>
+                                        <?php if ((int)$cartao['ativo'] === 1): ?>
+                                            <small class="<?= (float)$cartao['disponivel'] < 0 ? 'text-danger fw-semibold' : '' ?>">
+                                                <?= financeiroMoeda((float)$cartao['disponivel']) ?> disponível
+                                            </small>
+                                        <?php else: ?>
+                                            <small>Faturas mantidas para controle</small>
+                                        <?php endif; ?>
                                     </span>
-                                    <span class="badge <?= $cartao['tipo'] === 'loja' ? 'bg-warning text-dark' : 'bg-primary' ?>">
-                                        <?= $cartao['tipo'] === 'loja' ? 'Loja' : 'Crédito' ?>
+                                    <span class="badge <?= (int)$cartao['ativo'] !== 1 ? 'bg-secondary' : ($cartao['tipo'] === 'loja' ? 'bg-warning text-dark' : 'bg-primary') ?>">
+                                        <?= (int)$cartao['ativo'] !== 1 ? 'Cancelado' : ($cartao['tipo'] === 'loja' ? 'Loja' : 'Crédito') ?>
                                     </span>
                                 </a>
                             <?php endforeach; ?>
@@ -762,7 +785,12 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                         <?php else: ?>
                             <div class="financeiro-painel-titulo financeiro-cartao-cabecalho">
                                 <div>
-                                    <h5 class="mb-1"><?= htmlspecialchars($cartaoSelecionado['nome']) ?></h5>
+                                    <h5 class="mb-1">
+                                        <?= htmlspecialchars($cartaoSelecionado['nome']) ?>
+                                        <?php if ((int)$cartaoSelecionado['ativo'] !== 1): ?>
+                                            <span class="badge bg-secondary ms-1">Cancelado</span>
+                                        <?php endif; ?>
+                                    </h5>
                                     <p class="text-muted small mb-0">
                                         Limite <?= financeiroMoeda((float)$cartaoSelecionado['limite_total']) ?>
                                         <?php if ($vencimentoFaturaSelecionada): ?>
@@ -780,6 +808,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                         data-limite="<?= number_format((float)$cartaoSelecionado['limite_total'], 2, ',', '.') ?>"
                                         data-tipo="<?= htmlspecialchars($cartaoSelecionado['tipo']) ?>"
                                         data-vencimento="<?= (int)($cartaoSelecionado['dia_vencimento'] ?? 0) ?>"
+                                        data-ativo="<?= (int)$cartaoSelecionado['ativo'] ?>"
                                         data-bs-toggle="modal"
                                         data-bs-target="#modalCartao">
                                         <i class="bi bi-pencil"></i> Editar
@@ -801,7 +830,13 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                         <?= (float)$cartaoSelecionado['fatura_mes'] <= 0 ? 'disabled' : '' ?>>
                                         <i class="bi bi-check-lg"></i> Pagar fatura
                                     </button>
-                                    <button type="button" class="btn btn-primary btn-sm" id="btnNovaCompra" data-bs-toggle="modal" data-bs-target="#modalCompra">
+                                    <button
+                                        type="button"
+                                        class="btn btn-primary btn-sm"
+                                        id="btnNovaCompra"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#modalCompra"
+                                        <?= (int)$cartaoSelecionado['ativo'] !== 1 ? 'disabled title="Reative o cartão para lançar novas compras"' : '' ?>>
                                         <i class="bi bi-plus-lg"></i> Nova compra
                                     </button>
                                 </div>
@@ -833,8 +868,26 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 </div>
                             </div>
 
+                            <div class="financeiro-lista-filtros">
+                                <div class="financeiro-campo-busca">
+                                    <i class="bi bi-search"></i>
+                                    <input
+                                        type="search"
+                                        class="form-control"
+                                        id="filtroBuscaCompras"
+                                        placeholder="Buscar compra..."
+                                        aria-label="Buscar compra do cartão">
+                                </div>
+                                <select class="form-select" id="filtroStatusCompras" aria-label="Filtrar compras por situação">
+                                    <option value="">Todas as situações</option>
+                                    <option value="aberto">Em aberto</option>
+                                    <option value="atrasado">Atrasado</option>
+                                    <option value="pago">Pago</option>
+                                </select>
+                            </div>
+
                             <div class="table-responsive">
-                                <table class="table align-middle financeiro-tabela">
+                                <table class="table align-middle financeiro-tabela" id="tabelaComprasCartao">
                                     <thead>
                                         <tr>
                                             <th>Data da compra</th>
@@ -862,8 +915,14 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                             if (!empty($lancamento['parcela_numero']) && !empty($lancamento['parcelas_total'])) {
                                                 $textoCompra .= ' ' . (int)$lancamento['parcela_numero'] . '/' . (int)$lancamento['parcelas_total'];
                                             }
+                                            $statusFiltroLancamento = $lancamento['status'] === 'pago'
+                                                ? 'pago'
+                                                : ($lancamentoAtrasado ? 'atrasado' : 'aberto');
                                         ?>
-                                            <tr>
+                                            <tr
+                                                class="linha-filtro-compra"
+                                                data-filtro="<?= htmlspecialchars($textoCompra) ?>"
+                                                data-status="<?= $statusFiltroLancamento ?>">
                                                 <td><?= financeiroData($lancamento['data_compra']) ?></td>
                                                 <td>
                                                     <?= htmlspecialchars($textoCompra) ?>
@@ -923,6 +982,9 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
+                                        <tr class="d-none" id="semResultadoCompras">
+                                            <td colspan="6" class="financeiro-vazio">Nenhuma compra corresponde aos filtros.</td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -967,10 +1029,19 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                     </select>
                                 </div>
                             </div>
-                            <div class="mb-3">
-                                <label for="cartaoVencimento" class="form-label">Dia do vencimento</label>
-                                <input type="number" min="1" max="31" class="form-control" name="dia_vencimento" id="cartaoVencimento" required>
-                                <div class="invalid-feedback">Informe um dia entre 1 e 31.</div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="cartaoVencimento" class="form-label">Dia do vencimento</label>
+                                    <input type="number" min="1" max="31" class="form-control" name="dia_vencimento" id="cartaoVencimento" required>
+                                    <div class="invalid-feedback">Informe um dia entre 1 e 31.</div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="cartaoAtivo" class="form-label">Situação</label>
+                                    <select class="form-select" name="ativo" id="cartaoAtivo">
+                                        <option value="1">Ativo</option>
+                                        <option value="0">Cancelado</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         <div class="modal-footer">
@@ -1008,7 +1079,10 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 <select class="form-select" name="cartao_id" id="compraCartao" required>
                                     <?php foreach ($cartoes as $cartao): ?>
                                         <option value="<?= (int)$cartao['id'] ?>" <?= (int)$cartao['id'] === $cartaoSelecionadoId ? 'selected' : '' ?>>
-                                            <?= htmlspecialchars($cartao['nome']) ?> · <?= financeiroMoeda((float)$cartao['disponivel']) ?> disponível
+                                            <?= htmlspecialchars($cartao['nome']) ?>
+                                            <?= (int)$cartao['ativo'] === 1
+                                                ? ' · ' . financeiroMoeda((float)$cartao['disponivel']) . ' disponível'
+                                                : ' · Cancelado' ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
@@ -1159,6 +1233,43 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
             const dataPadraoCompra = <?= json_encode($dataPadraoCompra) ?>;
             const mesFaturaSelecionado = <?= json_encode($mes) ?>;
 
+            function normalizarTextoFiltro(texto) {
+                return String(texto || '')
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .toLowerCase()
+                    .trim();
+            }
+
+            const filtroBuscaCompras = document.getElementById('filtroBuscaCompras');
+            const filtroStatusCompras = document.getElementById('filtroStatusCompras');
+            const linhasCompras = Array.from(document.querySelectorAll('.linha-filtro-compra'));
+            const semResultadoCompras = document.getElementById('semResultadoCompras');
+
+            function filtrarCompras() {
+                if (!filtroBuscaCompras || !filtroStatusCompras || !semResultadoCompras) {
+                    return;
+                }
+
+                const busca = normalizarTextoFiltro(filtroBuscaCompras.value);
+                const status = filtroStatusCompras.value;
+                let visiveis = 0;
+
+                linhasCompras.forEach(function(linha) {
+                    const correspondeBusca = normalizarTextoFiltro(linha.dataset.filtro).includes(busca);
+                    const correspondeStatus = status === '' || linha.dataset.status === status;
+                    const mostrar = correspondeBusca && correspondeStatus;
+
+                    linha.classList.toggle('d-none', !mostrar);
+                    visiveis += mostrar ? 1 : 0;
+                });
+
+                semResultadoCompras.classList.toggle('d-none', visiveis > 0);
+            }
+
+            filtroBuscaCompras?.addEventListener('input', filtrarCompras);
+            filtroStatusCompras?.addEventListener('change', filtrarCompras);
+
             document.getElementById('mesCartao').addEventListener('change', function() {
                 document.getElementById('formMesCartao').submit();
             });
@@ -1170,6 +1281,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                 document.getElementById('cartaoLimite').value = '';
                 document.getElementById('cartaoTipo').value = 'credito';
                 document.getElementById('cartaoVencimento').value = '';
+                document.getElementById('cartaoAtivo').value = '1';
             });
 
             document.querySelectorAll('.btn-editar-cartao').forEach(function(botao) {
@@ -1180,6 +1292,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     document.getElementById('cartaoLimite').value = this.dataset.limite;
                     document.getElementById('cartaoTipo').value = this.dataset.tipo;
                     document.getElementById('cartaoVencimento').value = this.dataset.vencimento || '';
+                    document.getElementById('cartaoAtivo').value = this.dataset.ativo;
                 });
             });
 
