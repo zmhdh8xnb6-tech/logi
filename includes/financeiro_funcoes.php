@@ -168,6 +168,17 @@ function financeiroGarantirCategoriasPadrao(PDO $pdo, int $usuarioId): void
 
     try {
         $stmt = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM financeiro_categorias
+            WHERE usuario_id = ?
+        ");
+        $stmt->execute([$usuarioId]);
+
+        if ((int)$stmt->fetchColumn() > 0) {
+            return;
+        }
+
+        $stmt = $pdo->prepare("
             INSERT IGNORE INTO financeiro_categorias
                 (usuario_id, nome, tipo, cor, ativa)
             VALUES (?, ?, ?, ?, 1)
@@ -181,8 +192,12 @@ function financeiroGarantirCategoriasPadrao(PDO $pdo, int $usuarioId): void
     }
 }
 
-function financeiroListarCategorias(PDO $pdo, int $usuarioId, string $tipo): array
-{
+function financeiroListarCategorias(
+    PDO $pdo,
+    int $usuarioId,
+    string $tipo,
+    bool $somenteAtivas = true
+): array {
     if (
         $usuarioId <= 0
         || !in_array($tipo, ['receita', 'despesa'], true)
@@ -192,13 +207,14 @@ function financeiroListarCategorias(PDO $pdo, int $usuarioId, string $tipo): arr
     }
 
     try {
+        $filtroAtivas = $somenteAtivas ? 'AND ativa = 1' : '';
         $stmt = $pdo->prepare("
-            SELECT id, nome, tipo, cor
+            SELECT id, nome, tipo, cor, ativa
             FROM financeiro_categorias
             WHERE usuario_id = ?
               AND tipo = ?
-              AND ativa = 1
-            ORDER BY nome
+              {$filtroAtivas}
+            ORDER BY ativa DESC, nome
         ");
         $stmt->execute([$usuarioId, $tipo]);
 

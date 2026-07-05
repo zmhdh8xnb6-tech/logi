@@ -26,13 +26,15 @@ $expressaoCompetenciaFaturaL = $temCompetenciaFatura
     : 'DATE_FORMAT(l.data_compra, \'%Y-%m-01\')';
 $categoriasDisponiveis = $tabelasDisponiveis && financeiroCategoriasDisponiveis($pdo);
 $categoriasDespesa = [];
+$todasCategoriasDespesa = [];
 $categoriasPorId = [];
 
 if ($categoriasDisponiveis) {
     financeiroGarantirCategoriasPadrao($pdo, $usuarioId);
     $categoriasDespesa = financeiroListarCategorias($pdo, $usuarioId, 'despesa');
+    $todasCategoriasDespesa = financeiroListarCategorias($pdo, $usuarioId, 'despesa', false);
 
-    foreach ($categoriasDespesa as $categoria) {
+    foreach ($todasCategoriasDespesa as $categoria) {
         $categoriasPorId[(int)$categoria['id']] = $categoria;
     }
 }
@@ -763,6 +765,9 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     <p class="text-muted mb-0">Compras lançadas reduzem o limite disponível automaticamente</p>
                 </div>
                 <div class="d-flex flex-wrap gap-2">
+                    <a href="financeiro_categorias.php" class="btn btn-outline-primary">
+                        <i class="bi bi-tags"></i> Categorias
+                    </a>
                     <a href="financeiro_relatorio.php?mes=<?= htmlspecialchars($mes) ?>" class="btn btn-outline-success">
                         <i class="bi bi-bar-chart"></i> Relatório
                     </a>
@@ -997,8 +1002,10 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 <select class="form-select" id="filtroCategoriaCompras" aria-label="Filtrar compras por categoria">
                                     <option value="">Todas as categorias</option>
                                     <option value="sem_categoria">Sem categoria</option>
-                                    <?php foreach ($categoriasDespesa as $categoria): ?>
-                                        <option value="<?= (int)$categoria['id'] ?>"><?= htmlspecialchars($categoria['nome']) ?></option>
+                                    <?php foreach ($todasCategoriasDespesa as $categoria): ?>
+                                        <option value="<?= (int)$categoria['id'] ?>">
+                                            <?= htmlspecialchars($categoria['nome']) ?><?= (int)$categoria['ativa'] === 1 ? '' : ' (desativada)' ?>
+                                        </option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>

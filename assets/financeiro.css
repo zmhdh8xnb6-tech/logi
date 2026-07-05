@@ -313,6 +313,21 @@
     vertical-align: 1px;
 }
 
+.financeiro-categorias-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 18px;
+}
+
+.financeiro-categoria-inativa {
+    opacity: .68;
+}
+
+.financeiro-categoria-inativa strong {
+    text-decoration: line-through;
+}
+
 @media (max-width: 1200px) {
     .financeiro-resumo {
         grid-template-columns: repeat(3, minmax(150px, 1fr));
@@ -337,6 +352,10 @@
     }
 
     .financeiro-graficos {
+        grid-template-columns: 1fr;
+    }
+
+    .financeiro-categorias-grid {
         grid-template-columns: 1fr;
     }
 }

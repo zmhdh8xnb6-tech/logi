@@ -17,14 +17,18 @@ $tabelasDisponiveis = financeiroTabelasDisponiveis(
 $categoriasDisponiveis = $tabelasDisponiveis && financeiroCategoriasDisponiveis($pdo);
 $categoriasReceita = [];
 $categoriasDespesa = [];
+$todasCategoriasReceita = [];
+$todasCategoriasDespesa = [];
 $categoriasPorId = [];
 
 if ($categoriasDisponiveis) {
     financeiroGarantirCategoriasPadrao($pdo, $usuarioId);
     $categoriasReceita = financeiroListarCategorias($pdo, $usuarioId, 'receita');
     $categoriasDespesa = financeiroListarCategorias($pdo, $usuarioId, 'despesa');
+    $todasCategoriasReceita = financeiroListarCategorias($pdo, $usuarioId, 'receita', false);
+    $todasCategoriasDespesa = financeiroListarCategorias($pdo, $usuarioId, 'despesa', false);
 
-    foreach (array_merge($categoriasReceita, $categoriasDespesa) as $categoria) {
+    foreach (array_merge($todasCategoriasReceita, $todasCategoriasDespesa) as $categoria) {
         $categoriasPorId[(int)$categoria['id']] = $categoria;
     }
 }
@@ -982,6 +986,9 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 </div>
 
                 <div class="d-flex flex-wrap gap-2">
+                    <a href="financeiro_categorias.php" class="btn btn-outline-primary">
+                        <i class="bi bi-tags"></i> Categorias
+                    </a>
                     <a href="financeiro_relatorio.php?mes=<?= htmlspecialchars($mes) ?>" class="btn btn-outline-success">
                         <i class="bi bi-bar-chart"></i> Relatório
                     </a>
@@ -1097,8 +1104,10 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                         <select class="form-select" id="filtroCategoriaRecebimentos" aria-label="Filtrar recebimentos por categoria">
                             <option value="">Todas as categorias</option>
                             <option value="sem_categoria">Sem categoria</option>
-                            <?php foreach ($categoriasReceita as $categoria): ?>
-                                <option value="<?= (int)$categoria['id'] ?>"><?= htmlspecialchars($categoria['nome']) ?></option>
+                            <?php foreach ($todasCategoriasReceita as $categoria): ?>
+                                <option value="<?= (int)$categoria['id'] ?>">
+                                    <?= htmlspecialchars($categoria['nome']) ?><?= (int)$categoria['ativa'] === 1 ? '' : ' (desativada)' ?>
+                                </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -1261,8 +1270,10 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                         <select class="form-select" id="filtroCategoriaContas" aria-label="Filtrar contas por categoria">
                             <option value="">Todas as categorias</option>
                             <option value="sem_categoria">Sem categoria</option>
-                            <?php foreach ($categoriasDespesa as $categoria): ?>
-                                <option value="<?= (int)$categoria['id'] ?>"><?= htmlspecialchars($categoria['nome']) ?></option>
+                            <?php foreach ($todasCategoriasDespesa as $categoria): ?>
+                                <option value="<?= (int)$categoria['id'] ?>">
+                                    <?= htmlspecialchars($categoria['nome']) ?><?= (int)$categoria['ativa'] === 1 ? '' : ' (desativada)' ?>
+                                </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
