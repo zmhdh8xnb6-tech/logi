@@ -43,6 +43,7 @@ for ($indice = 5; $indice >= 0; $indice--) {
 }
 
 $categoriasDespesas = [];
+$lancamentosPorCategoria = [];
 $totalReceitasMes = 0.0;
 $totalDespesasMes = 0.0;
 $totalSemCategoria = 0;
@@ -149,6 +150,7 @@ if ($estruturaDisponivel) {
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
         $chave = (int)$linha['categoria_id'];
         $categoriasDespesas[$chave] = [
+            'id' => $chave,
             'nome' => $linha['categoria'],
             'cor' => $linha['cor'],
             'total' => (float)$linha['total'],
@@ -178,6 +180,7 @@ if ($estruturaDisponivel) {
 
         if (!isset($categoriasDespesas[$chave])) {
             $categoriasDespesas[$chave] = [
+                'id' => $chave,
                 'nome' => $linha['categoria'],
                 'cor' => $linha['cor'],
                 'total' => 0.0,
@@ -188,6 +191,127 @@ if ($estruturaDisponivel) {
         $categoriasDespesas[$chave]['total'] += (float)$linha['total'];
         $categoriasDespesas[$chave]['quantidade'] += (int)$linha['quantidade'];
     }
+
+    $stmt = $pdo->prepare("
+        SELECT
+            COALESCE(c.id, 0) AS categoria_id,
+            fc.descricao,
+            fc.vencimento AS data_lancamento,
+            fc.valor_previsto AS valor,
+            fc.status,
+            fc.parcela_numero,
+            fc.parcelas_total
+        FROM financeiro_contas fc
+        LEFT JOIN financeiro_categorias c
+            ON c.id = fc.categoria_id
+           AND c.usuario_id = fc.usuario_id
+        WHERE fc.usuario_id = ?
+          AND fc.vencimento >= ?
+          AND fc.vencimento < ?
+          AND fc.cartao_id IS NULL
+        ORDER BY fc.vencimento, fc.descricao
+    ");
+    $stmt->execute([$usuarioId, $inicioMes, $fimMes]);
+
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
+        $chave = (int)$linha['categoria_id'];
+        $descricao = $linha['descricao'];
+
+        if (!empty($linha['parcela_numero']) && !empty($linha['parcelas_total'])) {
+            $descricao .= ' ' . (int)$linha['parcela_numero']
+                . '/' . (int)$linha['parcelas_total'];
+        }
+
+        if ($linha['status'] === 'pago') {
+            $status = 'Pago';
+            $statusClasse = 'bg-success';
+        } elseif ($linha['data_lancamento'] < date('Y-m-d')) {
+            $status = 'Atrasado';
+            $statusClasse = 'bg-danger';
+        } else {
+            $status = 'Pendente';
+            $statusClasse = 'bg-warning text-dark';
+        }
+
+        $lancamentosPorCategoria[$chave][] = [
+            'data' => financeiroData($linha['data_lancamento']),
+            'data_ordem' => $linha['data_lancamento'],
+            'descricao' => $descricao,
+            'origem' => 'Conta',
+            'status' => $status,
+            'status_classe' => $statusClasse,
+            'valor' => (float)$linha['valor'],
+        ];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT
+            COALESCE(c.id, 0) AS categoria_id,
+            l.descricao,
+            l.data_compra AS data_lancamento,
+            l.valor,
+            l.status,
+            l.parcela_numero,
+            l.parcelas_total,
+            cartao.nome AS cartao_nome,
+            cartao.dia_vencimento
+        FROM financeiro_cartao_lancamentos l
+        INNER JOIN financeiro_cartoes cartao
+            ON cartao.id = l.cartao_id
+           AND cartao.usuario_id = l.usuario_id
+        LEFT JOIN financeiro_categorias c
+            ON c.id = l.categoria_id
+           AND c.usuario_id = l.usuario_id
+        WHERE l.usuario_id = ?
+          AND {$expressaoDataCompetenciaCartaoComAlias} >= ?
+          AND {$expressaoDataCompetenciaCartaoComAlias} < ?
+        ORDER BY l.data_compra, l.descricao
+    ");
+    $stmt->execute([$usuarioId, $inicioMes, $fimMes]);
+
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
+        $chave = (int)$linha['categoria_id'];
+        $descricao = $linha['descricao'];
+
+        if (!empty($linha['parcela_numero']) && !empty($linha['parcelas_total'])) {
+            $descricao .= ' ' . (int)$linha['parcela_numero']
+                . '/' . (int)$linha['parcelas_total'];
+        }
+
+        $vencimentoFatura = financeiroVencimentoFatura(
+            $mes,
+            (int)$linha['dia_vencimento']
+        );
+
+        if ($linha['status'] === 'pago') {
+            $status = 'Pago';
+            $statusClasse = 'bg-success';
+        } elseif ($vencimentoFatura < date('Y-m-d')) {
+            $status = 'Atrasado';
+            $statusClasse = 'bg-danger';
+        } else {
+            $status = 'Pendente';
+            $statusClasse = 'bg-warning text-dark';
+        }
+
+        $lancamentosPorCategoria[$chave][] = [
+            'data' => financeiroData($linha['data_lancamento']),
+            'data_ordem' => $linha['data_lancamento'],
+            'descricao' => $descricao,
+            'origem' => 'Cartão - ' . $linha['cartao_nome'],
+            'status' => $status,
+            'status_classe' => $statusClasse,
+            'valor' => (float)$linha['valor'],
+        ];
+    }
+
+    foreach ($lancamentosPorCategoria as &$lancamentosCategoria) {
+        usort($lancamentosCategoria, static function (array $a, array $b): int {
+            return [$a['data_ordem'], $a['descricao']]
+                <=> [$b['data_ordem'], $b['descricao']];
+        });
+    }
+    unset($lancamentosCategoria);
 
     usort($categoriasDespesas, static function (array $a, array $b): int {
         return $b['total'] <=> $a['total'];
@@ -218,6 +342,22 @@ $dadosDespesas = array_column($competencias, 'despesas');
 $labelsCategorias = array_column($categoriasDespesas, 'nome');
 $dadosCategorias = array_column($categoriasDespesas, 'total');
 $coresCategorias = array_column($categoriasDespesas, 'cor');
+$idsCategorias = array_column($categoriasDespesas, 'id');
+$detalhesCategorias = [];
+
+foreach ($categoriasDespesas as $categoria) {
+    $detalhesCategorias[(string)$categoria['id']] = [
+        'nome' => $categoria['nome'],
+        'total' => $categoria['total'],
+        'lancamentos' => array_map(
+            static function (array $lancamento): array {
+                unset($lancamento['data_ordem']);
+                return $lancamento;
+            },
+            $lancamentosPorCategoria[$categoria['id']] ?? []
+        ),
+    ];
+}
 ?>
 
 <!DOCTYPE html>
@@ -368,7 +508,12 @@ $coresCategorias = array_column($categoriasDespesas, 'cor');
                                 <?php endif; ?>
                                 <?php foreach ($categoriasDespesas as $categoria): ?>
                                     <?php $participacao = $totalDespesasMes > 0 ? ($categoria['total'] / $totalDespesasMes) * 100 : 0; ?>
-                                    <tr>
+                                    <tr
+                                        class="financeiro-categoria-clicavel"
+                                        data-categoria-id="<?= (int)$categoria['id'] ?>"
+                                        role="button"
+                                        tabindex="0"
+                                        aria-label="Abrir lançamentos de <?= htmlspecialchars($categoria['nome']) ?>">
                                         <td>
                                             <span class="financeiro-categoria-cor" style="background-color:<?= htmlspecialchars($categoria['cor']) ?>"></span>
                                             <?= htmlspecialchars($categoria['nome']) ?>
@@ -387,6 +532,46 @@ $coresCategorias = array_column($categoriasDespesas, 'cor');
     </main>
 
     <?php if ($estruturaDisponivel): ?>
+        <div class="modal fade" id="modalDetalhesCategoria" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <div>
+                            <h5 class="modal-title" id="tituloDetalhesCategoria">Lançamentos da categoria</h5>
+                            <p class="text-muted small mb-0"><?= htmlspecialchars($nomeMes) ?></p>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body p-0">
+                        <div class="table-responsive">
+                            <table class="table align-middle financeiro-tabela mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Data</th>
+                                        <th>Descrição</th>
+                                        <th>Origem</th>
+                                        <th>Status</th>
+                                        <th class="text-end">Valor</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="corpoDetalhesCategoria"></tbody>
+                                <tfoot>
+                                    <tr>
+                                        <th colspan="4" class="text-end">Total</th>
+                                        <th class="text-end" id="totalDetalhesCategoria"></th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
         <script>
             document.getElementById('mesRelatorio').addEventListener('change', function() {
@@ -403,6 +588,11 @@ $coresCategorias = array_column($categoriasDespesas, 'cor');
             const labelsCategorias = <?= json_encode($labelsCategorias, JSON_UNESCAPED_UNICODE) ?>;
             const dadosCategorias = <?= json_encode($dadosCategorias, JSON_NUMERIC_CHECK) ?>;
             const coresCategorias = <?= json_encode($coresCategorias) ?>;
+            const idsCategorias = <?= json_encode($idsCategorias, JSON_NUMERIC_CHECK) ?>;
+            const detalhesCategorias = <?= json_encode(
+                                            $detalhesCategorias,
+                                            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_NUMERIC_CHECK
+                                        ) ?>;
             const tooltipMoeda = {
                 callbacks: {
                     label: function(contexto) {
@@ -410,6 +600,77 @@ $coresCategorias = array_column($categoriasDespesas, 'cor');
                     }
                 }
             };
+
+            function criarCelula(texto, classe) {
+                const celula = document.createElement('td');
+                celula.textContent = texto;
+
+                if (classe) {
+                    celula.className = classe;
+                }
+
+                return celula;
+            }
+
+            function abrirDetalhesCategoria(categoriaId) {
+                const detalhes = detalhesCategorias[String(categoriaId)];
+
+                if (!detalhes) {
+                    return;
+                }
+
+                const corpo = document.getElementById('corpoDetalhesCategoria');
+                corpo.replaceChildren();
+                document.getElementById('tituloDetalhesCategoria').textContent =
+                    'Lançamentos - ' + detalhes.nome;
+                document.getElementById('totalDetalhesCategoria').textContent =
+                    formatoMoeda.format(detalhes.total);
+
+                detalhes.lancamentos.forEach(function(lancamento) {
+                    const linha = document.createElement('tr');
+                    const celulaStatus = document.createElement('td');
+                    const status = document.createElement('span');
+
+                    status.className = 'badge ' + lancamento.status_classe;
+                    status.textContent = lancamento.status;
+                    celulaStatus.appendChild(status);
+                    linha.appendChild(criarCelula(lancamento.data));
+                    linha.appendChild(criarCelula(lancamento.descricao));
+                    linha.appendChild(criarCelula(lancamento.origem));
+                    linha.appendChild(celulaStatus);
+                    linha.appendChild(
+                        criarCelula(formatoMoeda.format(lancamento.valor), 'text-end fw-semibold')
+                    );
+                    corpo.appendChild(linha);
+                });
+
+                if (!detalhes.lancamentos.length) {
+                    const linhaVazia = document.createElement('tr');
+                    const celulaVazia = criarCelula(
+                        'Nenhum lançamento encontrado nesta categoria.',
+                        'financeiro-vazio'
+                    );
+                    celulaVazia.colSpan = 5;
+                    linhaVazia.appendChild(celulaVazia);
+                    corpo.appendChild(linhaVazia);
+                }
+
+                bootstrap.Modal.getOrCreateInstance(
+                    document.getElementById('modalDetalhesCategoria')
+                ).show();
+            }
+
+            document.querySelectorAll('.financeiro-categoria-clicavel').forEach(function(linha) {
+                linha.addEventListener('click', function() {
+                    abrirDetalhesCategoria(this.dataset.categoriaId);
+                });
+                linha.addEventListener('keydown', function(evento) {
+                    if (evento.key === 'Enter' || evento.key === ' ') {
+                        evento.preventDefault();
+                        abrirDetalhesCategoria(this.dataset.categoriaId);
+                    }
+                });
+            });
 
             new Chart(document.getElementById('graficoEvolucao'), {
                 type: 'bar',
@@ -446,7 +707,7 @@ $coresCategorias = array_column($categoriasDespesas, 'cor');
                 }
             });
 
-            new Chart(document.getElementById('graficoCategorias'), {
+            const graficoCategorias = new Chart(document.getElementById('graficoCategorias'), {
                 type: 'doughnut',
                 data: {
                     labels: labelsCategorias.length ? labelsCategorias : ['Sem despesas'],
@@ -468,6 +729,16 @@ $coresCategorias = array_column($categoriasDespesas, 'cor');
                         tooltip: dadosCategorias.length ? tooltipMoeda : {
                             enabled: false
                         }
+                    },
+                    onHover: function(evento, elementos) {
+                        evento.native.target.style.cursor = elementos.length ? 'pointer' : 'default';
+                    },
+                    onClick: function(evento, elementos) {
+                        if (!elementos.length || !idsCategorias.length) {
+                            return;
+                        }
+
+                        abrirDetalhesCategoria(idsCategorias[elementos[0].index]);
                     }
                 }
             });

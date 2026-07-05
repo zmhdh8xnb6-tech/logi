@@ -328,6 +328,19 @@
     text-decoration: line-through;
 }
 
+.financeiro-categoria-clicavel {
+    cursor: pointer;
+}
+
+.financeiro-categoria-clicavel:hover td {
+    background: #eaf2fb !important;
+}
+
+.financeiro-categoria-clicavel:focus-visible {
+    outline: 2px solid #0d6efd;
+    outline-offset: -2px;
+}
+
 @media (max-width: 1200px) {
     .financeiro-resumo {
         grid-template-columns: repeat(3, minmax(150px, 1fr));
