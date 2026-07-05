@@ -141,6 +141,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $usuarioId,
                 ]);
                 $stmt = $pdo->prepare("
+                    UPDATE financeiro_recebimentos
+                    SET categoria_id = ?
+                    WHERE usuario_id = ? AND recorrencia_id = ?
+                ");
+                $stmt->execute([
+                    $categoriaId,
+                    $usuarioId,
+                    $recorrenciaRecebimentoId,
+                ]);
+                $stmt = $pdo->prepare("
                     DELETE FROM financeiro_recebimentos
                     WHERE usuario_id = ?
                       AND recorrencia_id = ?
@@ -439,6 +449,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $recorrenciaId,
                     $usuarioId,
                 ]);
+                $stmt = $pdo->prepare("
+                    UPDATE financeiro_contas
+                    SET categoria_id = ?
+                    WHERE usuario_id = ? AND recorrencia_id = ?
+                ");
+                $stmt->execute([$categoriaId, $usuarioId, $recorrenciaId]);
                 $stmt = $pdo->prepare("
                     DELETE FROM financeiro_contas
                     WHERE usuario_id = ?

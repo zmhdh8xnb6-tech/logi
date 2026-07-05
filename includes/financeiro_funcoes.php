@@ -465,13 +465,28 @@ function financeiroSincronizarContasRecorrentes(PDO $pdo, int $usuarioId, string
     $atualizarCategoria = $temCategoria
         ? ",
                 categoria_id = IF(
-                    financeiro_contas.status = 'pendente',
+                    financeiro_contas.status = 'pendente'
+                        OR financeiro_contas.categoria_id IS NULL,
                     VALUES(categoria_id),
                     financeiro_contas.categoria_id
                 )"
         : '';
 
     try {
+        if ($temCategoria) {
+            $stmtCategoria = $pdo->prepare("
+                UPDATE financeiro_contas c
+                INNER JOIN financeiro_contas_recorrentes r
+                    ON r.id = c.recorrencia_id
+                   AND r.usuario_id = c.usuario_id
+                SET c.categoria_id = r.categoria_id
+                WHERE c.usuario_id = ?
+                  AND c.categoria_id IS NULL
+                  AND r.categoria_id IS NOT NULL
+            ");
+            $stmtCategoria->execute([$usuarioId]);
+        }
+
         $stmt = $pdo->prepare("
             SELECT *
             FROM financeiro_contas_recorrentes
@@ -561,6 +576,20 @@ function financeiroSincronizarRecebimentosRecorrentes(PDO $pdo, int $usuarioId, 
         : '';
 
     try {
+        if ($temCategoria) {
+            $stmtCategoria = $pdo->prepare("
+                UPDATE financeiro_recebimentos r
+                INNER JOIN financeiro_recebimentos_recorrentes rr
+                    ON rr.id = r.recorrencia_id
+                   AND rr.usuario_id = r.usuario_id
+                SET r.categoria_id = rr.categoria_id
+                WHERE r.usuario_id = ?
+                  AND r.categoria_id IS NULL
+                  AND rr.categoria_id IS NOT NULL
+            ");
+            $stmtCategoria->execute([$usuarioId]);
+        }
+
         $stmt = $pdo->prepare("
             SELECT *
             FROM financeiro_recebimentos_recorrentes
