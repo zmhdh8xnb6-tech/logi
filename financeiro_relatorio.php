@@ -1,0 +1,478 @@
+<?php
+require 'config.php';
+require 'includes/financeiro_funcoes.php';
+
+exigirPermissao('financeiro');
+
+$usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
+$mes = financeiroMesValido($_GET['mes'] ?? null);
+$inicioMes = $mes . '-01';
+$fimMes = date('Y-m-d', strtotime($inicioMes . ' +1 month'));
+$mesAnterior = date('Y-m', strtotime($inicioMes . ' -1 month'));
+$proximoMes = date('Y-m', strtotime($inicioMes . ' +1 month'));
+$estruturaDisponivel = financeiroCategoriasDisponiveis($pdo);
+$nomesMeses = [
+    1 => 'Janeiro',
+    2 => 'Fevereiro',
+    3 => 'Março',
+    4 => 'Abril',
+    5 => 'Maio',
+    6 => 'Junho',
+    7 => 'Julho',
+    8 => 'Agosto',
+    9 => 'Setembro',
+    10 => 'Outubro',
+    11 => 'Novembro',
+    12 => 'Dezembro',
+];
+$nomeMes = $nomesMeses[(int)date('n', strtotime($inicioMes))]
+    . '/'
+    . date('Y', strtotime($inicioMes));
+$competencias = [];
+
+for ($indice = 5; $indice >= 0; $indice--) {
+    $competencia = date('Y-m', strtotime($inicioMes . " -{$indice} months"));
+    $competencias[$competencia] = [
+        'mes' => $nomesMeses[(int)date('n', strtotime($competencia . '-01'))]
+            . '/'
+            . date('Y', strtotime($competencia . '-01')),
+        'receitas' => 0.0,
+        'despesas' => 0.0,
+        'resultado' => 0.0,
+    ];
+}
+
+$categoriasDespesas = [];
+$totalReceitasMes = 0.0;
+$totalDespesasMes = 0.0;
+$totalSemCategoria = 0;
+
+if ($estruturaDisponivel) {
+    financeiroGarantirCategoriasPadrao($pdo, $usuarioId);
+    financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
+
+    foreach (array_keys($competencias) as $competencia) {
+        financeiroSincronizarContasRecorrentes($pdo, $usuarioId, $competencia);
+        financeiroSincronizarRecebimentosRecorrentes($pdo, $usuarioId, $competencia);
+    }
+
+    $inicioPeriodo = array_key_first($competencias) . '-01';
+    $fimPeriodo = date('Y-m-d', strtotime($fimMes));
+    $temCompetenciaFatura = financeiroColunaExiste(
+        $pdo,
+        'financeiro_cartao_lancamentos',
+        'competencia_fatura'
+    );
+    $expressaoCompetenciaCartao = $temCompetenciaFatura
+        ? "DATE_FORMAT(COALESCE(competencia_fatura, data_compra), '%Y-%m')"
+        : "DATE_FORMAT(data_compra, '%Y-%m')";
+    $expressaoDataCompetenciaCartao = $temCompetenciaFatura
+        ? 'COALESCE(competencia_fatura, data_compra)'
+        : 'data_compra';
+    $expressaoDataCompetenciaCartaoComAlias = $temCompetenciaFatura
+        ? 'COALESCE(l.competencia_fatura, l.data_compra)'
+        : 'l.data_compra';
+
+    $stmt = $pdo->prepare("
+        SELECT DATE_FORMAT(data_recebimento, '%Y-%m') AS competencia, SUM(valor) AS total
+        FROM financeiro_recebimentos
+        WHERE usuario_id = ?
+          AND data_recebimento >= ?
+          AND data_recebimento < ?
+        GROUP BY DATE_FORMAT(data_recebimento, '%Y-%m')
+    ");
+    $stmt->execute([$usuarioId, $inicioPeriodo, $fimPeriodo]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
+        if (isset($competencias[$linha['competencia']])) {
+            $competencias[$linha['competencia']]['receitas'] = (float)$linha['total'];
+        }
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT DATE_FORMAT(vencimento, '%Y-%m') AS competencia, SUM(valor_previsto) AS total
+        FROM financeiro_contas
+        WHERE usuario_id = ?
+          AND vencimento >= ?
+          AND vencimento < ?
+          AND cartao_id IS NULL
+        GROUP BY DATE_FORMAT(vencimento, '%Y-%m')
+    ");
+    $stmt->execute([$usuarioId, $inicioPeriodo, $fimPeriodo]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
+        if (isset($competencias[$linha['competencia']])) {
+            $competencias[$linha['competencia']]['despesas'] += (float)$linha['total'];
+        }
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT {$expressaoCompetenciaCartao} AS competencia, SUM(valor) AS total
+        FROM financeiro_cartao_lancamentos
+        WHERE usuario_id = ?
+          AND {$expressaoDataCompetenciaCartao} >= ?
+          AND {$expressaoDataCompetenciaCartao} < ?
+        GROUP BY {$expressaoCompetenciaCartao}
+    ");
+    $stmt->execute([$usuarioId, $inicioPeriodo, $fimPeriodo]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
+        if (isset($competencias[$linha['competencia']])) {
+            $competencias[$linha['competencia']]['despesas'] += (float)$linha['total'];
+        }
+    }
+
+    foreach ($competencias as &$dadosCompetencia) {
+        $dadosCompetencia['resultado'] = $dadosCompetencia['receitas']
+            - $dadosCompetencia['despesas'];
+    }
+    unset($dadosCompetencia);
+
+    $totalReceitasMes = $competencias[$mes]['receitas'] ?? 0.0;
+    $totalDespesasMes = $competencias[$mes]['despesas'] ?? 0.0;
+
+    $stmt = $pdo->prepare("
+        SELECT
+            COALESCE(c.id, 0) AS categoria_id,
+            COALESCE(c.nome, 'Sem categoria') AS categoria,
+            COALESCE(c.cor, '#94a3b8') AS cor,
+            SUM(fc.valor_previsto) AS total,
+            COUNT(*) AS quantidade
+        FROM financeiro_contas fc
+        LEFT JOIN financeiro_categorias c
+            ON c.id = fc.categoria_id
+           AND c.usuario_id = fc.usuario_id
+        WHERE fc.usuario_id = ?
+          AND fc.vencimento >= ?
+          AND fc.vencimento < ?
+          AND fc.cartao_id IS NULL
+        GROUP BY c.id, c.nome, c.cor
+    ");
+    $stmt->execute([$usuarioId, $inicioMes, $fimMes]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
+        $chave = (int)$linha['categoria_id'];
+        $categoriasDespesas[$chave] = [
+            'nome' => $linha['categoria'],
+            'cor' => $linha['cor'],
+            'total' => (float)$linha['total'],
+            'quantidade' => (int)$linha['quantidade'],
+        ];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT
+            COALESCE(c.id, 0) AS categoria_id,
+            COALESCE(c.nome, 'Sem categoria') AS categoria,
+            COALESCE(c.cor, '#94a3b8') AS cor,
+            SUM(l.valor) AS total,
+            COUNT(*) AS quantidade
+        FROM financeiro_cartao_lancamentos l
+        LEFT JOIN financeiro_categorias c
+            ON c.id = l.categoria_id
+           AND c.usuario_id = l.usuario_id
+        WHERE l.usuario_id = ?
+          AND {$expressaoDataCompetenciaCartaoComAlias} >= ?
+          AND {$expressaoDataCompetenciaCartaoComAlias} < ?
+        GROUP BY c.id, c.nome, c.cor
+    ");
+    $stmt->execute([$usuarioId, $inicioMes, $fimMes]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
+        $chave = (int)$linha['categoria_id'];
+
+        if (!isset($categoriasDespesas[$chave])) {
+            $categoriasDespesas[$chave] = [
+                'nome' => $linha['categoria'],
+                'cor' => $linha['cor'],
+                'total' => 0.0,
+                'quantidade' => 0,
+            ];
+        }
+
+        $categoriasDespesas[$chave]['total'] += (float)$linha['total'];
+        $categoriasDespesas[$chave]['quantidade'] += (int)$linha['quantidade'];
+    }
+
+    usort($categoriasDespesas, static function (array $a, array $b): int {
+        return $b['total'] <=> $a['total'];
+    });
+
+    foreach ($categoriasDespesas as $categoria) {
+        if ($categoria['nome'] === 'Sem categoria') {
+            $totalSemCategoria += $categoria['quantidade'];
+        }
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM financeiro_recebimentos
+        WHERE usuario_id = ?
+          AND data_recebimento >= ?
+          AND data_recebimento < ?
+          AND categoria_id IS NULL
+    ");
+    $stmt->execute([$usuarioId, $inicioMes, $fimMes]);
+    $totalSemCategoria += (int)$stmt->fetchColumn();
+}
+
+$resultadoMes = $totalReceitasMes - $totalDespesasMes;
+$labelsMeses = array_column($competencias, 'mes');
+$dadosReceitas = array_column($competencias, 'receitas');
+$dadosDespesas = array_column($competencias, 'despesas');
+$labelsCategorias = array_column($categoriasDespesas, 'nome');
+$dadosCategorias = array_column($categoriasDespesas, 'total');
+$coresCategorias = array_column($categoriasDespesas, 'cor');
+?>
+
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <?php include 'includes/head.php'; ?>
+    <title>Demonstrativo Financeiro</title>
+    <link rel="stylesheet" href="<?= assetUrl('assets/financeiro.css') ?>">
+</head>
+
+<body class="app-layout">
+    <?php include 'includes/sidebar.php'; ?>
+
+    <main class="app-main">
+        <div class="container-fluid">
+            <div class="financeiro-cabecalho mb-4">
+                <div>
+                    <h3 class="mb-1">Demonstrativo Financeiro</h3>
+                    <p class="text-muted mb-0">Resultado e composição dos gastos por competência</p>
+                </div>
+                <a href="financeiro.php?mes=<?= htmlspecialchars($mes) ?>" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Voltar
+                </a>
+            </div>
+
+            <?php if (!$estruturaDisponivel): ?>
+                <div class="alert alert-warning">
+                    Execute o SQL das categorias financeiras para gerar este relatório.
+                </div>
+            <?php else: ?>
+                <div class="financeiro-filtros mb-4">
+                    <span class="financeiro-mes-titulo"><?= htmlspecialchars($nomeMes) ?></span>
+                    <div class="financeiro-navegacao-mes">
+                        <a href="financeiro_relatorio.php?mes=<?= htmlspecialchars($mesAnterior) ?>" class="btn btn-outline-secondary" aria-label="Mês anterior">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                        <form method="get" id="formMesRelatorio">
+                            <label for="mesRelatorio" class="visually-hidden">Escolher mês</label>
+                            <input type="month" class="form-control" name="mes" id="mesRelatorio" value="<?= htmlspecialchars($mes) ?>">
+                        </form>
+                        <a href="financeiro_relatorio.php?mes=<?= htmlspecialchars($proximoMes) ?>" class="btn btn-outline-secondary" aria-label="Próximo mês">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <section class="financeiro-resumo financeiro-resumo-relatorio mb-4">
+                    <div class="financeiro-metrica metrica-receita">
+                        <span>Receitas do mês</span>
+                        <strong><?= financeiroMoeda($totalReceitasMes) ?></strong>
+                    </div>
+                    <div class="financeiro-metrica metrica-despesa">
+                        <span>Despesas do mês</span>
+                        <strong><?= financeiroMoeda($totalDespesasMes) ?></strong>
+                    </div>
+                    <div class="financeiro-metrica <?= $resultadoMes < 0 ? 'metrica-negativa' : 'metrica-saldo' ?>">
+                        <span>Resultado mensal</span>
+                        <strong><?= financeiroMoeda($resultadoMes) ?></strong>
+                    </div>
+                    <div class="financeiro-metrica <?= $totalSemCategoria > 0 ? 'metrica-pendente' : 'metrica-saldo' ?>">
+                        <span>Sem categoria</span>
+                        <strong><?= $totalSemCategoria ?></strong>
+                    </div>
+                </section>
+
+                <div class="financeiro-graficos mb-4">
+                    <section class="financeiro-painel financeiro-grafico">
+                        <div class="financeiro-painel-titulo">
+                            <div>
+                                <h5 class="mb-1">Receitas x despesas</h5>
+                                <p class="text-muted small mb-0">Últimos seis meses</p>
+                            </div>
+                        </div>
+                        <div class="financeiro-grafico-corpo">
+                            <canvas id="graficoEvolucao"></canvas>
+                        </div>
+                    </section>
+
+                    <section class="financeiro-painel financeiro-grafico">
+                        <div class="financeiro-painel-titulo">
+                            <div>
+                                <h5 class="mb-1">Despesas por categoria</h5>
+                                <p class="text-muted small mb-0"><?= htmlspecialchars($nomeMes) ?></p>
+                            </div>
+                        </div>
+                        <div class="financeiro-grafico-corpo">
+                            <canvas id="graficoCategorias"></canvas>
+                        </div>
+                    </section>
+                </div>
+
+                <section class="financeiro-painel mb-4">
+                    <div class="financeiro-painel-titulo">
+                        <div>
+                            <h5 class="mb-1">Resultado por mês</h5>
+                            <p class="text-muted small mb-0">Compras do cartão já incluídas, sem duplicar a fatura</p>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table align-middle financeiro-tabela">
+                            <thead>
+                                <tr>
+                                    <th>Mês</th>
+                                    <th class="text-end">Receitas</th>
+                                    <th class="text-end">Despesas</th>
+                                    <th class="text-end">Resultado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($competencias as $dados): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($dados['mes']) ?></td>
+                                        <td class="text-end text-success"><?= financeiroMoeda($dados['receitas']) ?></td>
+                                        <td class="text-end text-danger"><?= financeiroMoeda($dados['despesas']) ?></td>
+                                        <td class="text-end fw-semibold <?= $dados['resultado'] < 0 ? 'text-danger' : 'text-success' ?>">
+                                            <?= financeiroMoeda($dados['resultado']) ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="financeiro-painel">
+                    <div class="financeiro-painel-titulo">
+                        <div>
+                            <h5 class="mb-1">Detalhamento por categoria</h5>
+                            <p class="text-muted small mb-0">Contas e compras do cartão</p>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table align-middle financeiro-tabela">
+                            <thead>
+                                <tr>
+                                    <th>Categoria</th>
+                                    <th class="text-end">Lançamentos</th>
+                                    <th class="text-end">Total</th>
+                                    <th class="text-end">Participação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if ($categoriasDespesas === []): ?>
+                                    <tr>
+                                        <td colspan="4" class="financeiro-vazio">Nenhuma despesa neste mês.</td>
+                                    </tr>
+                                <?php endif; ?>
+                                <?php foreach ($categoriasDespesas as $categoria): ?>
+                                    <?php $participacao = $totalDespesasMes > 0 ? ($categoria['total'] / $totalDespesasMes) * 100 : 0; ?>
+                                    <tr>
+                                        <td>
+                                            <span class="financeiro-categoria-cor" style="background-color:<?= htmlspecialchars($categoria['cor']) ?>"></span>
+                                            <?= htmlspecialchars($categoria['nome']) ?>
+                                        </td>
+                                        <td class="text-end"><?= (int)$categoria['quantidade'] ?></td>
+                                        <td class="text-end"><?= financeiroMoeda($categoria['total']) ?></td>
+                                        <td class="text-end"><?= number_format($participacao, 1, ',', '.') ?>%</td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            <?php endif; ?>
+        </div>
+    </main>
+
+    <?php if ($estruturaDisponivel): ?>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+        <script>
+            document.getElementById('mesRelatorio').addEventListener('change', function() {
+                document.getElementById('formMesRelatorio').submit();
+            });
+
+            const formatoMoeda = new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            });
+            const labelsMeses = <?= json_encode($labelsMeses, JSON_UNESCAPED_UNICODE) ?>;
+            const dadosReceitas = <?= json_encode($dadosReceitas, JSON_NUMERIC_CHECK) ?>;
+            const dadosDespesas = <?= json_encode($dadosDespesas, JSON_NUMERIC_CHECK) ?>;
+            const labelsCategorias = <?= json_encode($labelsCategorias, JSON_UNESCAPED_UNICODE) ?>;
+            const dadosCategorias = <?= json_encode($dadosCategorias, JSON_NUMERIC_CHECK) ?>;
+            const coresCategorias = <?= json_encode($coresCategorias) ?>;
+            const tooltipMoeda = {
+                callbacks: {
+                    label: function(contexto) {
+                        return contexto.dataset.label + ': ' + formatoMoeda.format(contexto.parsed.y ?? contexto.parsed);
+                    }
+                }
+            };
+
+            new Chart(document.getElementById('graficoEvolucao'), {
+                type: 'bar',
+                data: {
+                    labels: labelsMeses,
+                    datasets: [{
+                            label: 'Receitas',
+                            data: dadosReceitas,
+                            backgroundColor: '#198754'
+                        },
+                        {
+                            label: 'Despesas',
+                            data: dadosDespesas,
+                            backgroundColor: '#dc3545'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: tooltipMoeda
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(valor) {
+                                    return formatoMoeda.format(valor);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            new Chart(document.getElementById('graficoCategorias'), {
+                type: 'doughnut',
+                data: {
+                    labels: labelsCategorias.length ? labelsCategorias : ['Sem despesas'],
+                    datasets: [{
+                        label: 'Despesas',
+                        data: dadosCategorias.length ? dadosCategorias : [1],
+                        backgroundColor: coresCategorias.length ? coresCategorias : ['#e2e8f0'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '62%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        tooltip: dadosCategorias.length ? tooltipMoeda : {
+                            enabled: false
+                        }
+                    }
+                }
+            });
+        </script>
+    <?php endif; ?>
+</body>
+
+</html>

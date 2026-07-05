@@ -14,6 +14,20 @@ $tabelasDisponiveis = financeiroTabelasDisponiveis(
     $pdo,
     ['financeiro_recebimentos', 'financeiro_contas']
 );
+$categoriasDisponiveis = $tabelasDisponiveis && financeiroCategoriasDisponiveis($pdo);
+$categoriasReceita = [];
+$categoriasDespesa = [];
+$categoriasPorId = [];
+
+if ($categoriasDisponiveis) {
+    financeiroGarantirCategoriasPadrao($pdo, $usuarioId);
+    $categoriasReceita = financeiroListarCategorias($pdo, $usuarioId, 'receita');
+    $categoriasDespesa = financeiroListarCategorias($pdo, $usuarioId, 'despesa');
+
+    foreach (array_merge($categoriasReceita, $categoriasDespesa) as $categoria) {
+        $categoriasPorId[(int)$categoria['id']] = $categoria;
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $urlRetorno = 'financeiro.php?mes=' . urlencode($mes);
@@ -30,6 +44,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = (int)($_POST['id'] ?? 0);
 
     if ($acao === 'salvar_recebimento') {
+        if (!$categoriasDisponiveis) {
+            financeiroRedirecionar(
+                $urlRetorno,
+                'Execute o SQL das categorias financeiras antes de salvar.',
+                'danger'
+            );
+        }
+
         $data = trim($_POST['data_recebimento'] ?? '');
         $descricao = trim($_POST['descricao'] ?? '');
         $recebidoDe = trim($_POST['recebido_de'] ?? '');
@@ -40,8 +62,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             : 'unico';
         $recorrenciaRecebimentoId = (int)($_POST['recorrencia_recebimento_id'] ?? 0);
         $fimRecorrenciaRecebimento = trim($_POST['fim_recorrencia_recebimento'] ?? '');
+        $categoriaId = (int)($_POST['categoria_id'] ?? 0);
 
-        if ($data === '' || $descricao === '' || !financeiroValorValido($valorInformado)) {
+        if (
+            $data === ''
+            || $descricao === ''
+            || !financeiroValorValido($valorInformado)
+            || !financeiroCategoriaValida($pdo, $usuarioId, $categoriaId, 'receita')
+        ) {
             financeiroRedirecionar($urlRetorno, 'Preencha os dados do recebimento corretamente.', 'danger');
         }
 
@@ -94,6 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         valor = ?,
                         primeiro_recebimento = ?,
                         fim_mes = ?,
+                        categoria_id = ?,
                         ativa = 1
                     WHERE id = ? AND usuario_id = ?
                 ");
@@ -103,6 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $valor,
                     $data,
                     $fimMesRecebimento,
+                    $categoriaId,
                     $recorrenciaRecebimentoId,
                     $usuarioId,
                 ]);
@@ -119,6 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'valor' => $valor,
                     'primeiro_recebimento' => $data,
                     'fim_mes' => $fimMesRecebimento,
+                    'categoria_id' => $categoriaId,
                     'ativa' => 1,
                 ]);
                 $mudancas = auditoriaMudancas($antes, $depois);
@@ -143,9 +174,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     valor,
                     primeiro_recebimento,
                     fim_mes,
+                    categoria_id,
                     ativa
                 )
-                VALUES (?, ?, ?, ?, ?, ?, 1)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1)
             ");
             $stmt->execute([
                 $usuarioId,
@@ -154,6 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $valor,
                 $data,
                 $fimMesRecebimento,
+                $categoriaId,
             ]);
             $novaRecorrenciaId = (int)$pdo->lastInsertId();
             registrarAuditoria(
@@ -170,6 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'valor' => $valor,
                     'primeiro_recebimento' => $data,
                     'fim_mes' => $fimMesRecebimento,
+                    'categoria_id' => $categoriaId,
                 ]
             );
             financeiroRedirecionar($urlRetorno, 'Recebimento recorrente cadastrado com sucesso.');
@@ -190,15 +224,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $stmt = $pdo->prepare("
                 UPDATE financeiro_recebimentos
-                SET data_recebimento = ?, descricao = ?, recebido_de = ?, valor = ?
+                SET data_recebimento = ?, descricao = ?, recebido_de = ?, valor = ?, categoria_id = ?
                 WHERE id = ? AND usuario_id = ?
             ");
-            $stmt->execute([$data, $descricao, $recebidoDe, $valor, $id, $usuarioId]);
+            $stmt->execute([$data, $descricao, $recebidoDe, $valor, $categoriaId, $id, $usuarioId]);
             $depois = array_merge($antes, [
                 'data_recebimento' => $data,
                 'descricao' => $descricao,
                 'recebido_de' => $recebidoDe,
                 'valor' => $valor,
+                'categoria_id' => $categoriaId,
             ]);
             $mudancas = auditoriaMudancas($antes, $depois);
             registrarAuditoria($pdo, 'Financeiro', 'editar', 'recebimento', $id, 'Alterou o recebimento ' . $descricao, $mudancas['antes'], $mudancas['depois']);
@@ -207,10 +242,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $stmt = $pdo->prepare("
             INSERT INTO financeiro_recebimentos
-                (usuario_id, data_recebimento, descricao, recebido_de, valor)
-            VALUES (?, ?, ?, ?, ?)
+                (usuario_id, data_recebimento, descricao, recebido_de, valor, categoria_id)
+            VALUES (?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$usuarioId, $data, $descricao, $recebidoDe, $valor]);
+        $stmt->execute([$usuarioId, $data, $descricao, $recebidoDe, $valor, $categoriaId]);
         $novoId = (int)$pdo->lastInsertId();
         registrarAuditoria(
             $pdo,
@@ -220,7 +255,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $novoId,
             'Cadastrou o recebimento ' . $descricao,
             null,
-            ['data' => $data, 'descricao' => $descricao, 'recebido_de' => $recebidoDe, 'valor' => $valor]
+            [
+                'data' => $data,
+                'descricao' => $descricao,
+                'recebido_de' => $recebidoDe,
+                'valor' => $valor,
+                'categoria_id' => $categoriaId,
+            ]
         );
         financeiroRedirecionar($urlRetorno, 'Recebimento cadastrado com sucesso.');
     }
@@ -306,6 +347,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($acao === 'salvar_conta') {
+        if (!$categoriasDisponiveis) {
+            financeiroRedirecionar(
+                $urlRetorno,
+                'Execute o SQL das categorias financeiras antes de salvar.',
+                'danger'
+            );
+        }
+
         $descricao = trim($_POST['descricao'] ?? '');
         $valorPrevistoInformado = $_POST['valor_previsto'] ?? '';
         $valorPrevisto = financeiroValorEntrada($valorPrevistoInformado);
@@ -318,8 +367,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $parcelasTotal = (int)($_POST['parcelas_total'] ?? 1);
         $recorrenciaId = (int)($_POST['recorrencia_id'] ?? 0);
         $fimRecorrencia = trim($_POST['fim_recorrencia'] ?? '');
+        $categoriaId = (int)($_POST['categoria_id'] ?? 0);
 
-        if ($descricao === '' || !financeiroValorValido($valorPrevistoInformado) || $vencimento === '') {
+        if (
+            $descricao === ''
+            || !financeiroValorValido($valorPrevistoInformado)
+            || $vencimento === ''
+            || !financeiroCategoriaValida($pdo, $usuarioId, $categoriaId, 'despesa')
+        ) {
             financeiroRedirecionar($urlRetorno, 'Preencha os dados da conta corretamente.', 'danger');
         }
 
@@ -367,7 +422,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $stmt = $pdo->prepare("
                     UPDATE financeiro_contas_recorrentes
-                    SET descricao = ?, valor = ?, primeiro_vencimento = ?, fim_mes = ?, ativa = 1
+                    SET descricao = ?, valor = ?, primeiro_vencimento = ?, fim_mes = ?,
+                        categoria_id = ?, ativa = 1
                     WHERE id = ? AND usuario_id = ?
                 ");
                 $stmt->execute([
@@ -375,6 +431,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $valorPrevisto,
                     $vencimento,
                     $fimMes,
+                    $categoriaId,
                     $recorrenciaId,
                     $usuarioId,
                 ]);
@@ -391,6 +448,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'valor' => $valorPrevisto,
                     'primeiro_vencimento' => $vencimento,
                     'fim_mes' => $fimMes,
+                    'categoria_id' => $categoriaId,
                     'ativa' => 1,
                 ]);
                 $mudancas = auditoriaMudancas($antes, $depois);
@@ -414,11 +472,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     valor,
                     primeiro_vencimento,
                     fim_mes,
+                    categoria_id,
                     ativa
                 )
-                VALUES (?, ?, ?, ?, ?, 1)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
             ");
-            $stmt->execute([$usuarioId, $descricao, $valorPrevisto, $vencimento, $fimMes]);
+            $stmt->execute([
+                $usuarioId,
+                $descricao,
+                $valorPrevisto,
+                $vencimento,
+                $fimMes,
+                $categoriaId,
+            ]);
             $novaRecorrenciaId = (int)$pdo->lastInsertId();
             registrarAuditoria(
                 $pdo,
@@ -433,6 +499,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'valor' => $valorPrevisto,
                     'primeiro_vencimento' => $vencimento,
                     'fim_mes' => $fimMes,
+                    'categoria_id' => $categoriaId,
                 ]
             );
             financeiroRedirecionar($urlRetorno, 'Conta recorrente cadastrada com sucesso.');
@@ -461,14 +528,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $stmt = $pdo->prepare("
                 UPDATE financeiro_contas
-                SET descricao = ?, valor_previsto = ?, vencimento = ?
+                SET descricao = ?, valor_previsto = ?, vencimento = ?, categoria_id = ?
                 WHERE id = ? AND usuario_id = ?
             ");
-            $stmt->execute([$descricao, $valorPrevisto, $vencimento, $id, $usuarioId]);
+            $stmt->execute([$descricao, $valorPrevisto, $vencimento, $categoriaId, $id, $usuarioId]);
             $depois = array_merge($antes, [
                 'descricao' => $descricao,
                 'valor_previsto' => $valorPrevisto,
                 'vencimento' => $vencimento,
+                'categoria_id' => $categoriaId,
             ]);
             $mudancas = auditoriaMudancas($antes, $depois);
             registrarAuditoria($pdo, 'Financeiro', 'editar', 'conta', $id, 'Alterou a conta ' . $descricao, $mudancas['antes'], $mudancas['depois']);
@@ -493,11 +561,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     valor_previsto,
                     vencimento,
                     status,
+                    categoria_id,
                     grupo_parcelamento,
                     parcela_numero,
                     parcelas_total
                 )
-                VALUES (?, ?, ?, ?, 'pendente', ?, ?, ?)
+                VALUES (?, ?, ?, ?, 'pendente', ?, ?, ?, ?)
             ");
 
             $pdo->beginTransaction();
@@ -511,6 +580,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $descricao,
                         $valorPrevisto,
                         $vencimentoParcela,
+                        $categoriaId,
                         $grupoParcelamento,
                         $numero,
                         $parcelasTotal,
@@ -538,6 +608,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'primeiro_vencimento' => $vencimento,
                     'parcela_inicial' => $parcelaInicial,
                     'parcelas_total' => $parcelasTotal,
+                    'categoria_id' => $categoriaId,
                 ]
             );
             financeiroRedirecionar(
@@ -553,13 +624,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 valor_previsto,
                 vencimento,
                 status,
+                categoria_id,
                 grupo_parcelamento,
                 parcela_numero,
                 parcelas_total
             )
-            VALUES (?, ?, ?, ?, 'pendente', NULL, NULL, NULL)
+            VALUES (?, ?, ?, ?, 'pendente', ?, NULL, NULL, NULL)
         ");
-        $stmt->execute([$usuarioId, $descricao, $valorPrevisto, $vencimento]);
+        $stmt->execute([$usuarioId, $descricao, $valorPrevisto, $vencimento, $categoriaId]);
         $novaContaId = (int)$pdo->lastInsertId();
         registrarAuditoria(
             $pdo,
@@ -569,7 +641,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $novaContaId,
             'Cadastrou a conta ' . $descricao,
             null,
-            ['descricao' => $descricao, 'valor_previsto' => $valorPrevisto, 'vencimento' => $vencimento]
+            [
+                'descricao' => $descricao,
+                'valor_previsto' => $valorPrevisto,
+                'vencimento' => $vencimento,
+                'categoria_id' => $categoriaId,
+            ]
         );
         financeiroRedirecionar($urlRetorno, 'Conta cadastrada com sucesso.');
     }
@@ -905,6 +982,9 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 </div>
 
                 <div class="d-flex flex-wrap gap-2">
+                    <a href="financeiro_relatorio.php?mes=<?= htmlspecialchars($mes) ?>" class="btn btn-outline-success">
+                        <i class="bi bi-bar-chart"></i> Relatório
+                    </a>
                     <a href="financeiro_cartoes.php" class="btn btn-outline-primary">
                         <i class="bi bi-credit-card"></i> Cartões
                     </a>
@@ -917,6 +997,12 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
             <?php if ($mensagem): ?>
                 <div class="alert alert-<?= htmlspecialchars($mensagem['tipo']) ?> alert-auto-dismiss fade show">
                     <?= htmlspecialchars($mensagem['texto']) ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($tabelasDisponiveis && !$categoriasDisponiveis): ?>
+                <div class="alert alert-warning">
+                    Execute o SQL das categorias financeiras para classificar lançamentos e acessar os relatórios.
                 </div>
             <?php endif; ?>
 
@@ -1008,6 +1094,13 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             <option value="disponivel">Disponível</option>
                             <option value="agendado">Agendado</option>
                         </select>
+                        <select class="form-select" id="filtroCategoriaRecebimentos" aria-label="Filtrar recebimentos por categoria">
+                            <option value="">Todas as categorias</option>
+                            <option value="sem_categoria">Sem categoria</option>
+                            <?php foreach ($categoriasReceita as $categoria): ?>
+                                <option value="<?= (int)$categoria['id'] ?>"><?= htmlspecialchars($categoria['nome']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
 
                     <div class="table-responsive">
@@ -1035,17 +1128,24 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                         ? ($recorrenciasRecebimentosPorId[(int)$recebimento['recorrencia_id']] ?? null)
                                         : null;
                                     $recebimentoDisponivel = $recebimento['data_recebimento'] <= date('Y-m-d');
+                                    $categoriaRecebimento = $categoriasPorId[(int)($recebimento['categoria_id'] ?? 0)] ?? null;
                                 ?>
                                     <tr
                                         class="linha-filtro-recebimento"
-                                        data-filtro="<?= htmlspecialchars($recebimento['descricao'] . ' ' . ($recebimento['recebido_de'] ?? '')) ?>"
-                                        data-status="<?= $recebimentoDisponivel ? 'disponivel' : 'agendado' ?>">
+                                        data-filtro="<?= htmlspecialchars($recebimento['descricao'] . ' ' . ($recebimento['recebido_de'] ?? '') . ' ' . ($categoriaRecebimento['nome'] ?? 'Sem categoria')) ?>"
+                                        data-status="<?= $recebimentoDisponivel ? 'disponivel' : 'agendado' ?>"
+                                        data-categoria="<?= $categoriaRecebimento ? (int)$categoriaRecebimento['id'] : 'sem_categoria' ?>">
                                         <td><?= financeiroData($recebimento['data_recebimento']) ?></td>
                                         <td>
                                             <?= htmlspecialchars($recebimento['descricao']) ?>
                                             <?php if ($recebimentoRecorrente): ?>
                                                 <span class="badge bg-info text-dark ms-1">Recorrente</span>
                                             <?php endif; ?>
+                                            <span
+                                                class="badge ms-1 <?= $categoriaRecebimento ? 'text-white' : 'bg-secondary' ?>"
+                                                <?= $categoriaRecebimento ? 'style="background-color:' . htmlspecialchars($categoriaRecebimento['cor']) . '"' : '' ?>>
+                                                <?= htmlspecialchars($categoriaRecebimento['nome'] ?? 'Sem categoria') ?>
+                                            </span>
                                         </td>
                                         <td><?= htmlspecialchars($recebimento['recebido_de'] ?: '-') ?></td>
                                         <td>
@@ -1067,6 +1167,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                                         data-descricao="<?= htmlspecialchars($regraRecebimento['descricao']) ?>"
                                                         data-recebido-de="<?= htmlspecialchars($regraRecebimento['recebido_de']) ?>"
                                                         data-valor="<?= number_format((float)$regraRecebimento['valor'], 2, ',', '.') ?>"
+                                                        data-categoria="<?= (int)($regraRecebimento['categoria_id'] ?? 0) ?>"
                                                         data-fim="<?= $regraRecebimento['fim_mes'] ? htmlspecialchars(date('Y-m', strtotime($regraRecebimento['fim_mes']))) : '' ?>"
                                                         data-bs-toggle="modal"
                                                         data-bs-target="#modalRecebimento"
@@ -1093,6 +1194,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                                         data-descricao="<?= htmlspecialchars($recebimento['descricao']) ?>"
                                                         data-recebido-de="<?= htmlspecialchars($recebimento['recebido_de']) ?>"
                                                         data-valor="<?= number_format((float)$recebimento['valor'], 2, ',', '.') ?>"
+                                                        data-categoria="<?= (int)($recebimento['categoria_id'] ?? 0) ?>"
                                                         data-bs-toggle="modal"
                                                         data-bs-target="#modalRecebimento"
                                                         title="Editar recebimento">
@@ -1156,6 +1258,13 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             <option value="atrasado">Atrasado</option>
                             <option value="pago">Pago</option>
                         </select>
+                        <select class="form-select" id="filtroCategoriaContas" aria-label="Filtrar contas por categoria">
+                            <option value="">Todas as categorias</option>
+                            <option value="sem_categoria">Sem categoria</option>
+                            <?php foreach ($categoriasDespesa as $categoria): ?>
+                                <option value="<?= (int)$categoria['id'] ?>"><?= htmlspecialchars($categoria['nome']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
 
                     <div class="table-responsive">
@@ -1196,11 +1305,13 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                         $textoConta .= ' ' . (int)$conta['parcela_numero'] . '/' . (int)$conta['parcelas_total'];
                                     }
                                     $statusFiltroConta = $paga ? 'pago' : ($atrasada ? 'atrasado' : 'pendente');
+                                    $categoriaConta = $categoriasPorId[(int)($conta['categoria_id'] ?? 0)] ?? null;
                                 ?>
                                     <tr
                                         class="linha-filtro-conta"
-                                        data-filtro="<?= htmlspecialchars($textoConta) ?>"
-                                        data-status="<?= $statusFiltroConta ?>">
+                                        data-filtro="<?= htmlspecialchars($textoConta . ' ' . ($categoriaConta['nome'] ?? 'Sem categoria')) ?>"
+                                        data-status="<?= $statusFiltroConta ?>"
+                                        data-categoria="<?= $faturaCartao ? 'fatura' : ($categoriaConta ? (int)$categoriaConta['id'] : 'sem_categoria') ?>">
                                         <td>
                                             <?= htmlspecialchars($textoConta) ?>
                                             <?php if (!empty($conta['grupo_parcelamento'])): ?>
@@ -1211,6 +1322,13 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                             <?php endif; ?>
                                             <?php if ($contaRecorrente): ?>
                                                 <span class="badge bg-info text-dark ms-1">Recorrente</span>
+                                            <?php endif; ?>
+                                            <?php if (!$faturaCartao): ?>
+                                                <span
+                                                    class="badge ms-1 <?= $categoriaConta ? 'text-white' : 'bg-secondary' ?>"
+                                                    <?= $categoriaConta ? 'style="background-color:' . htmlspecialchars($categoriaConta['cor']) . '"' : '' ?>>
+                                                    <?= htmlspecialchars($categoriaConta['nome'] ?? 'Sem categoria') ?>
+                                                </span>
                                             <?php endif; ?>
                                         </td>
                                         <td><?= financeiroData($conta['vencimento']) ?></td>
@@ -1284,6 +1402,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                                         data-valor="<?= number_format((float)$recorrencia['valor'], 2, ',', '.') ?>"
                                                         data-vencimento="<?= htmlspecialchars($recorrencia['primeiro_vencimento']) ?>"
                                                         data-fim="<?= $recorrencia['fim_mes'] ? htmlspecialchars(date('Y-m', strtotime($recorrencia['fim_mes']))) : '' ?>"
+                                                        data-categoria="<?= (int)($recorrencia['categoria_id'] ?? 0) ?>"
                                                         data-bs-toggle="modal"
                                                         data-bs-target="#modalConta"
                                                         title="Editar recorrência">
@@ -1308,6 +1427,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                                         data-descricao="<?= htmlspecialchars($conta['descricao']) ?>"
                                                         data-valor="<?= number_format((float)$conta['valor_previsto'], 2, ',', '.') ?>"
                                                         data-vencimento="<?= htmlspecialchars($conta['vencimento']) ?>"
+                                                        data-categoria="<?= (int)($conta['categoria_id'] ?? 0) ?>"
                                                         data-bs-toggle="modal"
                                                         data-bs-target="#modalConta"
                                                         title="Editar conta">
@@ -1388,6 +1508,18 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                 <div class="invalid-feedback">Informe a descrição.</div>
                             </div>
                             <div class="mb-3">
+                                <label for="recebimentoCategoria" class="form-label">Categoria</label>
+                                <select class="form-select" name="categoria_id" id="recebimentoCategoria" required>
+                                    <option value="">Selecione</option>
+                                    <?php foreach ($categoriasReceita as $categoria): ?>
+                                        <option value="<?= (int)$categoria['id'] ?>">
+                                            <?= htmlspecialchars($categoria['nome']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div class="invalid-feedback">Selecione a categoria.</div>
+                            </div>
+                            <div class="mb-3">
                                 <label for="recebimentoOrigem" class="form-label">Recebido de</label>
                                 <input type="text" class="form-control" name="recebido_de" id="recebimentoOrigem">
                             </div>
@@ -1435,6 +1567,18 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                 <label for="contaDescricao" class="form-label">Despesa</label>
                                 <input type="text" class="form-control" name="descricao" id="contaDescricao" required>
                                 <div class="invalid-feedback">Informe a despesa.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="contaCategoria" class="form-label">Categoria</label>
+                                <select class="form-select" name="categoria_id" id="contaCategoria" required>
+                                    <option value="">Selecione</option>
+                                    <?php foreach ($categoriasDespesa as $categoria): ?>
+                                        <option value="<?= (int)$categoria['id'] ?>">
+                                            <?= htmlspecialchars($categoria['nome']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div class="invalid-feedback">Selecione a categoria.</div>
                             </div>
                             <div class="row">
                                 <div class="col-md-6 mb-3">
@@ -1563,22 +1707,25 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
             function configurarFiltroFinanceiro(configuracao) {
                 const campoBusca = document.getElementById(configuracao.busca);
                 const campoStatus = document.getElementById(configuracao.status);
+                const campoCategoria = document.getElementById(configuracao.categoria);
                 const linhas = Array.from(document.querySelectorAll(configuracao.linhas));
                 const semResultado = document.getElementById(configuracao.vazio);
 
-                if (!campoBusca || !campoStatus || linhas.length === 0 || !semResultado) {
+                if (!campoBusca || !campoStatus || !campoCategoria || linhas.length === 0 || !semResultado) {
                     return;
                 }
 
                 function filtrar() {
                     const busca = normalizarTextoFiltro(campoBusca.value);
                     const status = campoStatus.value;
+                    const categoria = campoCategoria.value;
                     let visiveis = 0;
 
                     linhas.forEach(function(linha) {
                         const correspondeBusca = normalizarTextoFiltro(linha.dataset.filtro).includes(busca);
                         const correspondeStatus = status === '' || linha.dataset.status === status;
-                        const mostrar = correspondeBusca && correspondeStatus;
+                        const correspondeCategoria = categoria === '' || linha.dataset.categoria === categoria;
+                        const mostrar = correspondeBusca && correspondeStatus && correspondeCategoria;
 
                         linha.classList.toggle('d-none', !mostrar);
                         visiveis += mostrar ? 1 : 0;
@@ -1589,11 +1736,13 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
 
                 campoBusca.addEventListener('input', filtrar);
                 campoStatus.addEventListener('change', filtrar);
+                campoCategoria.addEventListener('change', filtrar);
             }
 
             configurarFiltroFinanceiro({
                 busca: 'filtroBuscaRecebimentos',
                 status: 'filtroStatusRecebimentos',
+                categoria: 'filtroCategoriaRecebimentos',
                 linhas: '.linha-filtro-recebimento',
                 vazio: 'semResultadoRecebimentos'
             });
@@ -1601,6 +1750,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
             configurarFiltroFinanceiro({
                 busca: 'filtroBuscaContas',
                 status: 'filtroStatusContas',
+                categoria: 'filtroCategoriaContas',
                 linhas: '.linha-filtro-conta',
                 vazio: 'semResultadoContas'
             });
@@ -1619,6 +1769,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 document.getElementById('recebimentoDescricao').value = '';
                 document.getElementById('recebimentoOrigem').value = '';
                 document.getElementById('recebimentoValor').value = '';
+                document.getElementById('recebimentoCategoria').value = '';
                 document.getElementById('recebimentoFimRecorrencia').value = '';
                 atualizarCamposRecorrenciaRecebimento();
             });
@@ -1635,6 +1786,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     document.getElementById('recebimentoDescricao').value = this.dataset.descricao;
                     document.getElementById('recebimentoOrigem').value = this.dataset.recebidoDe;
                     document.getElementById('recebimentoValor').value = this.dataset.valor;
+                    document.getElementById('recebimentoCategoria').value = this.dataset.categoria || '';
                     document.getElementById('recebimentoFimRecorrencia').value = '';
                 });
             });
@@ -1650,6 +1802,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     document.getElementById('recebimentoDescricao').value = this.dataset.descricao;
                     document.getElementById('recebimentoOrigem').value = this.dataset.recebidoDe;
                     document.getElementById('recebimentoValor').value = this.dataset.valor;
+                    document.getElementById('recebimentoCategoria').value = this.dataset.categoria || '';
                     document.getElementById('recebimentoFimRecorrencia').value = this.dataset.fim;
                     atualizarCamposRecorrenciaRecebimento();
                 });
@@ -1670,6 +1823,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 document.getElementById('contaTipoLancamento').value = 'unica';
                 document.getElementById('contaDescricao').value = '';
                 document.getElementById('contaValor').value = '';
+                document.getElementById('contaCategoria').value = '';
                 document.getElementById('contaVencimento').value = mesSelecionado + '-01';
                 document.getElementById('contaParcelaInicial').value = '1';
                 document.getElementById('contaParcelasTotal').value = '';
@@ -1688,6 +1842,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     document.getElementById('camposRecorrenciaConta').classList.add('d-none');
                     document.getElementById('contaDescricao').value = this.dataset.descricao;
                     document.getElementById('contaValor').value = this.dataset.valor;
+                    document.getElementById('contaCategoria').value = this.dataset.categoria || '';
                     document.getElementById('contaVencimento').value = this.dataset.vencimento;
                     document.getElementById('contaFimRecorrencia').value = '';
                 });
@@ -1702,6 +1857,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     document.getElementById('contaTipoLancamento').value = 'recorrente';
                     document.getElementById('contaDescricao').value = this.dataset.descricao;
                     document.getElementById('contaValor').value = this.dataset.valor;
+                    document.getElementById('contaCategoria').value = this.dataset.categoria || '';
                     document.getElementById('contaVencimento').value = this.dataset.vencimento;
                     document.getElementById('contaFimRecorrencia').value = this.dataset.fim;
                     atualizarCamposParcelamentoConta();
@@ -1783,7 +1939,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 });
             });
 
-            document.querySelectorAll('.financeiro-form input').forEach(function(campo) {
+            document.querySelectorAll('.financeiro-form input, .financeiro-form select').forEach(function(campo) {
                 campo.addEventListener('input', function() {
                     this.classList.remove('is-invalid');
                 });

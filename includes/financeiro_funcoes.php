@@ -104,7 +104,9 @@ function financeiroColunaExiste(PDO $pdo, string $tabela, string $coluna): bool
     static $cache = [];
     $tabelasPermitidas = [
         'financeiro_recebimentos',
+        'financeiro_recebimentos_recorrentes',
         'financeiro_contas',
+        'financeiro_contas_recorrentes',
         'financeiro_cartoes',
         'financeiro_cartao_lancamentos',
     ];
@@ -128,6 +130,109 @@ function financeiroColunaExiste(PDO $pdo, string $tabela, string $coluna): bool
     }
 
     return $cache[$chave];
+}
+
+function financeiroCategoriasDisponiveis(PDO $pdo): bool
+{
+    return financeiroTabelasDisponiveis($pdo, ['financeiro_categorias'])
+        && financeiroColunaExiste($pdo, 'financeiro_recebimentos', 'categoria_id')
+        && financeiroColunaExiste($pdo, 'financeiro_recebimentos_recorrentes', 'categoria_id')
+        && financeiroColunaExiste($pdo, 'financeiro_contas', 'categoria_id')
+        && financeiroColunaExiste($pdo, 'financeiro_contas_recorrentes', 'categoria_id')
+        && financeiroColunaExiste($pdo, 'financeiro_cartao_lancamentos', 'categoria_id');
+}
+
+function financeiroGarantirCategoriasPadrao(PDO $pdo, int $usuarioId): void
+{
+    if ($usuarioId <= 0 || !financeiroTabelasDisponiveis($pdo, ['financeiro_categorias'])) {
+        return;
+    }
+
+    $categorias = [
+        ['Salário', 'receita', '#198754'],
+        ['Serviços', 'receita', '#0d6efd'],
+        ['Aluguel recebido', 'receita', '#14b8a6'],
+        ['Outras receitas', 'receita', '#64748b'],
+        ['Alimentação', 'despesa', '#ef4444'],
+        ['Moradia', 'despesa', '#f97316'],
+        ['Saúde', 'despesa', '#ec4899'],
+        ['Transporte', 'despesa', '#eab308'],
+        ['Educação', 'despesa', '#3b82f6'],
+        ['Lazer', 'despesa', '#8b5cf6'],
+        ['Assinaturas', 'despesa', '#6366f1'],
+        ['Dívidas', 'despesa', '#b91c1c'],
+        ['Impostos', 'despesa', '#475569'],
+        ['Compras', 'despesa', '#06b6d4'],
+        ['Outras despesas', 'despesa', '#94a3b8'],
+    ];
+
+    try {
+        $stmt = $pdo->prepare("
+            INSERT IGNORE INTO financeiro_categorias
+                (usuario_id, nome, tipo, cor, ativa)
+            VALUES (?, ?, ?, ?, 1)
+        ");
+
+        foreach ($categorias as [$nome, $tipo, $cor]) {
+            $stmt->execute([$usuarioId, $nome, $tipo, $cor]);
+        }
+    } catch (Throwable $e) {
+        // A ausência das categorias não deve impedir a abertura do financeiro.
+    }
+}
+
+function financeiroListarCategorias(PDO $pdo, int $usuarioId, string $tipo): array
+{
+    if (
+        $usuarioId <= 0
+        || !in_array($tipo, ['receita', 'despesa'], true)
+        || !financeiroTabelasDisponiveis($pdo, ['financeiro_categorias'])
+    ) {
+        return [];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, nome, tipo, cor
+            FROM financeiro_categorias
+            WHERE usuario_id = ?
+              AND tipo = ?
+              AND ativa = 1
+            ORDER BY nome
+        ");
+        $stmt->execute([$usuarioId, $tipo]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+function financeiroCategoriaValida(
+    PDO $pdo,
+    int $usuarioId,
+    int $categoriaId,
+    string $tipo
+): bool {
+    if ($categoriaId <= 0 || !in_array($tipo, ['receita', 'despesa'], true)) {
+        return false;
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM financeiro_categorias
+            WHERE id = ?
+              AND usuario_id = ?
+              AND tipo = ?
+              AND ativa = 1
+        ");
+        $stmt->execute([$categoriaId, $usuarioId, $tipo]);
+
+        return (int)$stmt->fetchColumn() === 1;
+    } catch (Throwable $e) {
+        return false;
+    }
 }
 
 function financeiroVencimentoFatura(string $competencia, int $dia): string
@@ -337,6 +442,18 @@ function financeiroSincronizarContasRecorrentes(PDO $pdo, int $usuarioId, string
 
     $inicioMes = $mes . '-01';
     $fimMes = date('Y-m-d', strtotime($inicioMes . ' +1 month'));
+    $temCategoria = financeiroColunaExiste($pdo, 'financeiro_contas', 'categoria_id')
+        && financeiroColunaExiste($pdo, 'financeiro_contas_recorrentes', 'categoria_id');
+    $colunaCategoria = $temCategoria ? 'categoria_id,' : '';
+    $valorCategoria = $temCategoria ? '?, ' : '';
+    $atualizarCategoria = $temCategoria
+        ? ",
+                categoria_id = IF(
+                    financeiro_contas.status = 'pendente',
+                    VALUES(categoria_id),
+                    financeiro_contas.categoria_id
+                )"
+        : '';
 
     try {
         $stmt = $pdo->prepare("
@@ -356,10 +473,11 @@ function financeiroSincronizarContasRecorrentes(PDO $pdo, int $usuarioId, string
                 valor_previsto,
                 vencimento,
                 status,
+                {$colunaCategoria}
                 recorrencia_id,
                 competencia_recorrencia
             )
-            VALUES (?, ?, ?, ?, 'pendente', ?, ?)
+            VALUES (?, ?, ?, ?, 'pendente', {$valorCategoria}?, ?)
             ON DUPLICATE KEY UPDATE
                 descricao = IF(
                     financeiro_contas.status = 'pendente',
@@ -376,18 +494,25 @@ function financeiroSincronizarContasRecorrentes(PDO $pdo, int $usuarioId, string
                     VALUES(vencimento),
                     financeiro_contas.vencimento
                 )
+                {$atualizarCategoria}
         ");
 
         foreach ($recorrencias as $recorrencia) {
             $dia = (int)date('d', strtotime($recorrencia['primeiro_vencimento']));
-            $stmtSalvar->execute([
+            $valores = [
                 $usuarioId,
                 $recorrencia['descricao'],
                 $recorrencia['valor'],
                 financeiroVencimentoFatura($mes, $dia),
-                $recorrencia['id'],
-                $mes,
-            ]);
+            ];
+
+            if ($temCategoria) {
+                $valores[] = $recorrencia['categoria_id'] ?? null;
+            }
+
+            $valores[] = $recorrencia['id'];
+            $valores[] = $mes;
+            $stmtSalvar->execute($valores);
         }
     } catch (Throwable $e) {
         // A recorrência nunca deve impedir a abertura do financeiro.
@@ -411,6 +536,13 @@ function financeiroSincronizarRecebimentosRecorrentes(PDO $pdo, int $usuarioId, 
 
     $inicioMes = $mes . '-01';
     $fimMes = date('Y-m-d', strtotime($inicioMes . ' +1 month'));
+    $temCategoria = financeiroColunaExiste($pdo, 'financeiro_recebimentos', 'categoria_id')
+        && financeiroColunaExiste($pdo, 'financeiro_recebimentos_recorrentes', 'categoria_id');
+    $colunaCategoria = $temCategoria ? 'categoria_id,' : '';
+    $valorCategoria = $temCategoria ? '?, ' : '';
+    $atualizarCategoria = $temCategoria
+        ? ', categoria_id = VALUES(categoria_id)'
+        : '';
 
     try {
         $stmt = $pdo->prepare("
@@ -430,28 +562,36 @@ function financeiroSincronizarRecebimentosRecorrentes(PDO $pdo, int $usuarioId, 
                 descricao,
                 recebido_de,
                 valor,
+                {$colunaCategoria}
                 recorrencia_id,
                 competencia_recorrencia
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, {$valorCategoria}?, ?)
             ON DUPLICATE KEY UPDATE
                 data_recebimento = VALUES(data_recebimento),
                 descricao = VALUES(descricao),
                 recebido_de = VALUES(recebido_de),
                 valor = VALUES(valor)
+                {$atualizarCategoria}
         ");
 
         foreach ($recorrencias as $recorrencia) {
             $dia = (int)date('d', strtotime($recorrencia['primeiro_recebimento']));
-            $stmtSalvar->execute([
+            $valores = [
                 $usuarioId,
                 financeiroVencimentoFatura($mes, $dia),
                 $recorrencia['descricao'],
                 $recorrencia['recebido_de'],
                 $recorrencia['valor'],
-                $recorrencia['id'],
-                $mes,
-            ]);
+            ];
+
+            if ($temCategoria) {
+                $valores[] = $recorrencia['categoria_id'] ?? null;
+            }
+
+            $valores[] = $recorrencia['id'];
+            $valores[] = $mes;
+            $stmtSalvar->execute($valores);
         }
     } catch (Throwable $e) {
         // A sincronização automática não deve impedir a abertura do financeiro.

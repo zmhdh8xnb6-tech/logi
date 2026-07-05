@@ -24,6 +24,18 @@ $expressaoCompetenciaFatura = $temCompetenciaFatura
 $expressaoCompetenciaFaturaL = $temCompetenciaFatura
     ? 'COALESCE(l.competencia_fatura, DATE_FORMAT(l.data_compra, \'%Y-%m-01\'))'
     : 'DATE_FORMAT(l.data_compra, \'%Y-%m-01\')';
+$categoriasDisponiveis = $tabelasDisponiveis && financeiroCategoriasDisponiveis($pdo);
+$categoriasDespesa = [];
+$categoriasPorId = [];
+
+if ($categoriasDisponiveis) {
+    financeiroGarantirCategoriasPadrao($pdo, $usuarioId);
+    $categoriasDespesa = financeiroListarCategorias($pdo, $usuarioId, 'despesa');
+
+    foreach ($categoriasDespesa as $categoria) {
+        $categoriasPorId[(int)$categoria['id']] = $categoria;
+    }
+}
 
 function urlCartoes(int $cartaoId = 0, ?string $mes = null): string
 {
@@ -156,6 +168,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($acao === 'salvar_lancamento') {
+        if (!$categoriasDisponiveis) {
+            financeiroRedirecionar(
+                $urlRetorno,
+                'Execute o SQL das categorias financeiras antes de salvar.',
+                'danger'
+            );
+        }
+
         $cartaoId = (int)($_POST['cartao_id'] ?? 0);
         $dataCompra = trim($_POST['data_compra'] ?? '');
         $mesFaturaCompra = trim($_POST['mes_fatura_compra'] ?? '');
@@ -164,6 +184,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $valor = financeiroValorEntrada($valorInformado);
         $tipoCompra = ($_POST['tipo_compra'] ?? '') === 'parcelada' ? 'parcelada' : 'unica';
         $parcelasTotal = (int)($_POST['parcelas_total'] ?? 1);
+        $categoriaId = (int)($_POST['categoria_id'] ?? 0);
         $dataMesFatura = DateTime::createFromFormat('!Y-m', $mesFaturaCompra);
         $mesFaturaValido = $dataMesFatura
             && $dataMesFatura->format('Y-m') === $mesFaturaCompra;
@@ -190,6 +211,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             || !$mesFaturaValido
             || $descricao === ''
             || !financeiroValorValido($valorInformado)
+            || !financeiroCategoriaValida($pdo, $usuarioId, $categoriaId, 'despesa')
         ) {
             financeiroRedirecionar($urlRetorno, 'Preencha os dados da compra corretamente.', 'danger');
         }
@@ -214,7 +236,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     data_compra = ?,
                     competencia_fatura = ?,
                     descricao = ?,
-                    valor = ?
+                    valor = ?,
+                    categoria_id = ?
                 WHERE id = ? AND usuario_id = ? AND status = 'aberto'
             ");
             $stmt->execute([
@@ -223,6 +246,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $competenciaFatura,
                 $descricao,
                 $valor,
+                $categoriaId,
                 $id,
                 $usuarioId,
             ]);
@@ -232,7 +256,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'competencia_fatura' => $competenciaFatura,
                 'descricao' => $descricao,
                 'valor' => $valor,
+                'categoria_id' => $categoriaId,
             ]);
+            if (!empty($lancamentoAntes['grupo_parcelamento'])) {
+                $stmtCategoriaGrupo = $pdo->prepare("
+                    UPDATE financeiro_cartao_lancamentos
+                    SET categoria_id = ?
+                    WHERE usuario_id = ? AND grupo_parcelamento = ?
+                ");
+                $stmtCategoriaGrupo->execute([
+                    $categoriaId,
+                    $usuarioId,
+                    $lancamentoAntes['grupo_parcelamento'],
+                ]);
+            }
             $mudancas = auditoriaMudancas($lancamentoAntes, $lancamentoDepois);
             registrarAuditoria($pdo, 'Financeiro - Cartões', 'editar', 'compra_cartao', $id, 'Alterou a compra ' . $descricao, $mudancas['antes'], $mudancas['depois']);
             financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
@@ -261,11 +298,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     descricao,
                     valor,
                     status,
+                    categoria_id,
                     grupo_parcelamento,
                     parcela_numero,
                     parcelas_total
                 )
-                VALUES (?, ?, ?, ?, ?, ?, 'aberto', ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, 'aberto', ?, ?, ?, ?)
             ");
 
             $pdo->beginTransaction();
@@ -282,6 +320,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $competenciaParcela,
                         $descricao,
                         $valorParcela,
+                        $categoriaId,
                         $grupoParcelamento,
                         $numero,
                         $parcelasTotal,
@@ -309,6 +348,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'descricao' => $descricao,
                     'valor_total' => $valor,
                     'parcelas_total' => $parcelasTotal,
+                    'categoria_id' => $categoriaId,
                 ]
             );
             financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
@@ -327,11 +367,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 descricao,
                 valor,
                 status,
+                categoria_id,
                 grupo_parcelamento,
                 parcela_numero,
                 parcelas_total
             )
-            VALUES (?, ?, ?, ?, ?, ?, 'aberto', NULL, NULL, NULL)
+            VALUES (?, ?, ?, ?, ?, ?, 'aberto', ?, NULL, NULL, NULL)
         ");
         $stmt->execute([
             $usuarioId,
@@ -340,6 +381,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $competenciaFatura,
             $descricao,
             $valor,
+            $categoriaId,
         ]);
         $novoLancamentoId = (int)$pdo->lastInsertId();
         registrarAuditoria(
@@ -356,10 +398,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'competencia_fatura' => $competenciaFatura,
                 'descricao' => $descricao,
                 'valor' => $valor,
+                'categoria_id' => $categoriaId,
             ]
         );
         financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
         financeiroRedirecionar(urlCartoes($cartaoId, $mes), 'Compra lançada e limite atualizado.');
+    }
+
+    if ($acao === 'categorizar_lancamento') {
+        if (!$categoriasDisponiveis) {
+            financeiroRedirecionar(
+                $urlRetorno,
+                'Execute o SQL das categorias financeiras antes de salvar.',
+                'danger'
+            );
+        }
+
+        $categoriaId = (int)($_POST['categoria_id'] ?? 0);
+        $stmtAntes = $pdo->prepare("
+            SELECT *
+            FROM financeiro_cartao_lancamentos
+            WHERE id = ? AND usuario_id = ?
+        ");
+        $stmtAntes->execute([$id, $usuarioId]);
+        $lancamentoAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+        if (
+            !$lancamentoAntes
+            || !financeiroCategoriaValida($pdo, $usuarioId, $categoriaId, 'despesa')
+        ) {
+            financeiroRedirecionar($urlRetorno, 'Selecione uma categoria válida.', 'danger');
+        }
+
+        if (!empty($lancamentoAntes['grupo_parcelamento'])) {
+            $stmt = $pdo->prepare("
+                UPDATE financeiro_cartao_lancamentos
+                SET categoria_id = ?
+                WHERE usuario_id = ? AND grupo_parcelamento = ?
+            ");
+            $stmt->execute([
+                $categoriaId,
+                $usuarioId,
+                $lancamentoAntes['grupo_parcelamento'],
+            ]);
+        } else {
+            $stmt = $pdo->prepare("
+                UPDATE financeiro_cartao_lancamentos
+                SET categoria_id = ?
+                WHERE id = ? AND usuario_id = ?
+            ");
+            $stmt->execute([$categoriaId, $id, $usuarioId]);
+        }
+
+        registrarAuditoria(
+            $pdo,
+            'Financeiro - Cartões',
+            'categorizar',
+            'compra_cartao',
+            $id,
+            'Alterou a categoria da compra ' . $lancamentoAntes['descricao'],
+            ['categoria_id' => $lancamentoAntes['categoria_id'] ?? null],
+            ['categoria_id' => $categoriaId]
+        );
+        financeiroRedirecionar($urlRetorno, 'Categoria atualizada com sucesso.');
     }
 
     if ($acao === 'excluir_lancamento') {
@@ -662,6 +763,9 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     <p class="text-muted mb-0">Compras lançadas reduzem o limite disponível automaticamente</p>
                 </div>
                 <div class="d-flex flex-wrap gap-2">
+                    <a href="financeiro_relatorio.php?mes=<?= htmlspecialchars($mes) ?>" class="btn btn-outline-success">
+                        <i class="bi bi-bar-chart"></i> Relatório
+                    </a>
                     <a href="financeiro.php" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left"></i> Voltar ao financeiro
                     </a>
@@ -671,6 +775,12 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
             <?php if ($mensagem): ?>
                 <div class="alert alert-<?= htmlspecialchars($mensagem['tipo']) ?> alert-auto-dismiss fade show">
                     <?= htmlspecialchars($mensagem['texto']) ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($tabelasDisponiveis && !$categoriasDisponiveis): ?>
+                <div class="alert alert-warning">
+                    Execute o SQL das categorias financeiras para classificar compras e acessar os relatórios.
                 </div>
             <?php endif; ?>
 
@@ -884,6 +994,13 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                     <option value="atrasado">Atrasado</option>
                                     <option value="pago">Pago</option>
                                 </select>
+                                <select class="form-select" id="filtroCategoriaCompras" aria-label="Filtrar compras por categoria">
+                                    <option value="">Todas as categorias</option>
+                                    <option value="sem_categoria">Sem categoria</option>
+                                    <?php foreach ($categoriasDespesa as $categoria): ?>
+                                        <option value="<?= (int)$categoria['id'] ?>"><?= htmlspecialchars($categoria['nome']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
                             </div>
 
                             <div class="table-responsive">
@@ -918,17 +1035,24 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                             $statusFiltroLancamento = $lancamento['status'] === 'pago'
                                                 ? 'pago'
                                                 : ($lancamentoAtrasado ? 'atrasado' : 'aberto');
+                                            $categoriaLancamento = $categoriasPorId[(int)($lancamento['categoria_id'] ?? 0)] ?? null;
                                         ?>
                                             <tr
                                                 class="linha-filtro-compra"
-                                                data-filtro="<?= htmlspecialchars($textoCompra) ?>"
-                                                data-status="<?= $statusFiltroLancamento ?>">
+                                                data-filtro="<?= htmlspecialchars($textoCompra . ' ' . ($categoriaLancamento['nome'] ?? 'Sem categoria')) ?>"
+                                                data-status="<?= $statusFiltroLancamento ?>"
+                                                data-categoria="<?= $categoriaLancamento ? (int)$categoriaLancamento['id'] : 'sem_categoria' ?>">
                                                 <td><?= financeiroData($lancamento['data_compra']) ?></td>
                                                 <td>
                                                     <?= htmlspecialchars($textoCompra) ?>
                                                     <?php if (!empty($lancamento['grupo_parcelamento'])): ?>
                                                         <span class="badge bg-light text-dark border ms-1">Parcelada</span>
                                                     <?php endif; ?>
+                                                    <span
+                                                        class="badge ms-1 <?= $categoriaLancamento ? 'text-white' : 'bg-secondary' ?>"
+                                                        <?= $categoriaLancamento ? 'style="background-color:' . htmlspecialchars($categoriaLancamento['cor']) . '"' : '' ?>>
+                                                        <?= htmlspecialchars($categoriaLancamento['nome'] ?? 'Sem categoria') ?>
+                                                    </span>
                                                 </td>
                                                 <td class="text-end fw-semibold"><?= financeiroMoeda((float)$lancamento['valor']) ?></td>
                                                 <td>
@@ -949,6 +1073,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                                                 data-fatura="<?= htmlspecialchars($mesFaturaLancamento) ?>"
                                                                 data-descricao="<?= htmlspecialchars($lancamento['descricao']) ?>"
                                                                 data-valor="<?= number_format((float)$lancamento['valor'], 2, ',', '.') ?>"
+                                                                data-categoria="<?= (int)($lancamento['categoria_id'] ?? 0) ?>"
                                                                 data-bs-toggle="modal"
                                                                 data-bs-target="#modalCompra"
                                                                 title="Editar compra">
@@ -966,6 +1091,18 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                                                 </button>
                                                             </form>
                                                         <?php endif; ?>
+                                                        <button
+                                                            type="button"
+                                                            class="btn btn-outline-secondary btn-sm btn-categorizar-compra"
+                                                            data-id="<?= (int)$lancamento['id'] ?>"
+                                                            data-descricao="<?= htmlspecialchars($textoCompra) ?>"
+                                                            data-categoria="<?= (int)($lancamento['categoria_id'] ?? 0) ?>"
+                                                            data-parcelada="<?= !empty($lancamento['grupo_parcelamento']) ? '1' : '0' ?>"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#modalCategoriaCompra"
+                                                            title="Alterar categoria">
+                                                            <i class="bi bi-tag"></i>
+                                                        </button>
                                                         <button
                                                             type="button"
                                                             class="btn btn-outline-danger btn-sm btn-excluir-lancamento"
@@ -1115,6 +1252,18 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 <input type="text" class="form-control" name="descricao" id="compraDescricao" required>
                                 <div class="invalid-feedback">Informe a descrição.</div>
                             </div>
+                            <div class="mb-3">
+                                <label for="compraCategoria" class="form-label">Categoria</label>
+                                <select class="form-select" name="categoria_id" id="compraCategoria" required>
+                                    <option value="">Selecione</option>
+                                    <?php foreach ($categoriasDespesa as $categoria): ?>
+                                        <option value="<?= (int)$categoria['id'] ?>">
+                                            <?= htmlspecialchars($categoria['nome']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div class="invalid-feedback">Selecione a categoria.</div>
+                            </div>
                             <div class="mb-3 d-none" id="campoParcelasCompra">
                                 <label for="compraParcelasTotal" class="form-label">Quantidade de parcelas</label>
                                 <input type="number" min="2" max="600" class="form-control" name="parcelas_total" id="compraParcelasTotal">
@@ -1127,6 +1276,48 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                         <div class="modal-footer">
                             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                             <button type="submit" class="btn btn-primary">Lançar compra</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="modalCategoriaCompra" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form method="post" class="financeiro-form" novalidate>
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
+                        <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                        <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
+                        <input type="hidden" name="acao" value="categorizar_lancamento">
+                        <input type="hidden" name="id" id="categoriaCompraId">
+                        <div class="modal-header">
+                            <div>
+                                <h5 class="modal-title">Alterar categoria</h5>
+                                <p class="text-muted small mb-0" id="categoriaCompraDescricao"></p>
+                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="categoriaCompraSelect" class="form-label">Categoria da despesa</label>
+                                <select class="form-select" name="categoria_id" id="categoriaCompraSelect" required>
+                                    <option value="">Selecione</option>
+                                    <?php foreach ($categoriasDespesa as $categoria): ?>
+                                        <option value="<?= (int)$categoria['id'] ?>">
+                                            <?= htmlspecialchars($categoria['nome']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div class="invalid-feedback">Selecione a categoria.</div>
+                            </div>
+                            <div class="alert alert-info mb-0 d-none" id="avisoCategoriaParcelada">
+                                A nova categoria será aplicada a todas as parcelas desta compra.
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Salvar categoria</button>
                         </div>
                     </form>
                 </div>
@@ -1243,22 +1434,25 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
 
             const filtroBuscaCompras = document.getElementById('filtroBuscaCompras');
             const filtroStatusCompras = document.getElementById('filtroStatusCompras');
+            const filtroCategoriaCompras = document.getElementById('filtroCategoriaCompras');
             const linhasCompras = Array.from(document.querySelectorAll('.linha-filtro-compra'));
             const semResultadoCompras = document.getElementById('semResultadoCompras');
 
             function filtrarCompras() {
-                if (!filtroBuscaCompras || !filtroStatusCompras || !semResultadoCompras) {
+                if (!filtroBuscaCompras || !filtroStatusCompras || !filtroCategoriaCompras || !semResultadoCompras) {
                     return;
                 }
 
                 const busca = normalizarTextoFiltro(filtroBuscaCompras.value);
                 const status = filtroStatusCompras.value;
+                const categoria = filtroCategoriaCompras.value;
                 let visiveis = 0;
 
                 linhasCompras.forEach(function(linha) {
                     const correspondeBusca = normalizarTextoFiltro(linha.dataset.filtro).includes(busca);
                     const correspondeStatus = status === '' || linha.dataset.status === status;
-                    const mostrar = correspondeBusca && correspondeStatus;
+                    const correspondeCategoria = categoria === '' || linha.dataset.categoria === categoria;
+                    const mostrar = correspondeBusca && correspondeStatus && correspondeCategoria;
 
                     linha.classList.toggle('d-none', !mostrar);
                     visiveis += mostrar ? 1 : 0;
@@ -1269,6 +1463,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
 
             filtroBuscaCompras?.addEventListener('input', filtrarCompras);
             filtroStatusCompras?.addEventListener('change', filtrarCompras);
+            filtroCategoriaCompras?.addEventListener('change', filtrarCompras);
 
             document.getElementById('mesCartao').addEventListener('change', function() {
                 document.getElementById('formMesCartao').submit();
@@ -1317,6 +1512,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     document.getElementById('compraMesFatura').value = mesFaturaSelecionado;
                     document.getElementById('compraDescricao').value = '';
                     document.getElementById('compraValor').value = '';
+                    document.getElementById('compraCategoria').value = '';
                     document.getElementById('compraParcelasTotal').value = '';
                     atualizarCamposParcelamentoCompra();
                 });
@@ -1334,6 +1530,19 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     document.getElementById('compraMesFatura').value = this.dataset.fatura;
                     document.getElementById('compraDescricao').value = this.dataset.descricao;
                     document.getElementById('compraValor').value = this.dataset.valor;
+                    document.getElementById('compraCategoria').value = this.dataset.categoria || '';
+                });
+            });
+
+            document.querySelectorAll('.btn-categorizar-compra').forEach(function(botao) {
+                botao.addEventListener('click', function() {
+                    document.getElementById('categoriaCompraId').value = this.dataset.id;
+                    document.getElementById('categoriaCompraDescricao').textContent = this.dataset.descricao;
+                    document.getElementById('categoriaCompraSelect').value = this.dataset.categoria || '';
+                    document.getElementById('avisoCategoriaParcelada').classList.toggle(
+                        'd-none',
+                        this.dataset.parcelada !== '1'
+                    );
                 });
             });
 
