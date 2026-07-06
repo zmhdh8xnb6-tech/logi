@@ -836,17 +836,12 @@ function atualizarVinculoServicos() {
     }
 
     const clienteContabil = campoClienteContabil.value === '1';
-    const criandoCliente = ($('#id').val() || '') === '';
     const campoServicoParcelamento = document.getElementById('servico_parcelamento');
     const campoServicoCertificado = document.getElementById('servico_certificado');
 
     document.querySelectorAll('.secao-servicos-avulsos').forEach(function (bloco) {
         bloco.classList.toggle('d-none', clienteContabil);
     });
-
-    if (clienteContabil && criandoCliente) {
-        campoServicoCertificado.checked = false;
-    }
 
     const servicoParcelamento = campoServicoParcelamento.checked;
     const servicoCertificado = campoServicoCertificado.checked;
@@ -867,12 +862,13 @@ function atualizarVinculoServicos() {
     }
 
     document.querySelectorAll('.campo-servico-certificado').forEach(function (bloco) {
-        bloco.classList.toggle('d-none', !servicoCertificado);
+        const exibirVencimentoCertificado = clienteContabil || servicoCertificado;
+        bloco.classList.toggle('d-none', !exibirVencimentoCertificado);
 
         bloco.querySelectorAll('input, select, textarea').forEach(function (campo) {
-            campo.disabled = !servicoCertificado;
+            campo.disabled = !exibirVencimentoCertificado;
 
-            if (!servicoCertificado) {
+            if (!exibirVencimentoCertificado) {
                 campo.value = '';
             }
         });

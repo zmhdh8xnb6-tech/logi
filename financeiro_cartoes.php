@@ -636,8 +636,18 @@ $resumo = [
     'loja_limite' => 0.0,
     'loja_disponivel' => 0.0,
 ];
+$alertasFinanceiros = [];
 
 if ($tabelasDisponiveis) {
+    financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
+    $mesAtualAlertas = date('Y-m');
+    $proximoMesAlertas = date('Y-m', strtotime(date('Y-m-01') . ' +1 month'));
+
+    foreach ([$mesAtualAlertas, $proximoMesAlertas] as $mesSincronizar) {
+        financeiroSincronizarContasRecorrentes($pdo, $usuarioId, $mesSincronizar);
+    }
+
+    $alertasFinanceiros = financeiroListarAlertasVencimento($pdo, $usuarioId, 10);
     $stmt = $pdo->prepare("
         SELECT
             c.*,
@@ -795,6 +805,8 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     Execute o SQL do financeiro no phpMyAdmin e atualize esta página.
                 </div>
             <?php else: ?>
+                <?php include 'includes/financeiro_alertas.php'; ?>
+
                 <section class="financeiro-resumo financeiro-resumo-cartoes mb-4" aria-label="Resumo dos cartões">
                     <div class="financeiro-metrica metrica-cartao">
                         <span>Limite cartões</span>
@@ -833,7 +845,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                             <label for="mesCartao" class="visually-hidden">Escolher mês da fatura</label>
                             <input
                                 type="month"
-                                class="form-control"
+                                class="form-control financeiro-calendario"
                                 name="mes"
                                 id="mesCartao"
                                 value="<?= htmlspecialchars($mes) ?>"
@@ -915,6 +927,12 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                     </p>
                                 </div>
                                 <div class="d-flex flex-wrap gap-2">
+                                    <a
+                                        href="financeiro_fatura_imprimir.php?<?= http_build_query(['cartao' => $cartaoSelecionadoId, 'mes' => $mes]) ?>"
+                                        class="btn btn-outline-secondary btn-sm"
+                                        title="Imprimir fatura">
+                                        <i class="bi bi-printer"></i> Imprimir
+                                    </a>
                                     <button
                                         type="button"
                                         class="btn btn-outline-secondary btn-sm btn-editar-cartao"
@@ -1234,14 +1252,14 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                             <div class="row">
                                 <div class="col-md-4 mb-3">
                                     <label for="compraData" class="form-label">Data da compra</label>
-                                    <input type="date" class="form-control" name="data_compra" id="compraData" value="<?= date('Y-m-d') ?>" required>
+                                    <input type="date" class="form-control financeiro-calendario" name="data_compra" id="compraData" value="<?= date('Y-m-d') ?>" required>
                                     <div class="invalid-feedback">Informe a data.</div>
                                 </div>
                                 <div class="col-md-4 mb-3">
                                     <label for="compraMesFatura" class="form-label" id="compraMesFaturaLabel">Primeira fatura</label>
                                     <input
                                         type="month"
-                                        class="form-control"
+                                        class="form-control financeiro-calendario"
                                         name="mes_fatura_compra"
                                         id="compraMesFatura"
                                         value="<?= htmlspecialchars($mes) ?>"
@@ -1354,7 +1372,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 <div class="row">
                                     <div class="col-12 mb-3">
                                         <label for="dataPagamentoFatura" class="form-label">Data do pagamento</label>
-                                        <input type="date" class="form-control" name="data_pagamento" id="dataPagamentoFatura" value="<?= date('Y-m-d') ?>" required>
+                                        <input type="date" class="form-control financeiro-calendario" name="data_pagamento" id="dataPagamentoFatura" value="<?= date('Y-m-d') ?>" required>
                                     </div>
                                 </div>
                             </div>

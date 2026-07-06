@@ -889,11 +889,19 @@ $totalPago = 0.0;
 $totalPendente = 0.0;
 $recorrenciasPorId = [];
 $recorrenciasRecebimentosPorId = [];
+$alertasFinanceiros = [];
 
 if ($tabelasDisponiveis) {
     financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
-    financeiroSincronizarContasRecorrentes($pdo, $usuarioId, $mes);
+    $mesAtualAlertas = date('Y-m');
+    $proximoMesAlertas = date('Y-m', strtotime(date('Y-m-01') . ' +1 month'));
+
+    foreach (array_unique([$mes, $mesAtualAlertas, $proximoMesAlertas]) as $mesSincronizar) {
+        financeiroSincronizarContasRecorrentes($pdo, $usuarioId, $mesSincronizar);
+    }
+
     financeiroSincronizarRecebimentosRecorrentes($pdo, $usuarioId, $mes);
+    $alertasFinanceiros = financeiroListarAlertasVencimento($pdo, $usuarioId, 10);
 
     if (financeiroTabelasDisponiveis($pdo, ['financeiro_contas_recorrentes'])) {
         $stmt = $pdo->prepare("
@@ -1035,6 +1043,8 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     Execute o SQL do financeiro no phpMyAdmin e atualize esta página.
                 </div>
             <?php else: ?>
+                <?php include 'includes/financeiro_alertas.php'; ?>
+
                 <div class="financeiro-filtros mb-4">
                     <span class="financeiro-mes-titulo"><?= htmlspecialchars($nomeMes) ?></span>
 
@@ -1051,7 +1061,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             <label for="mesFinanceiro" class="visually-hidden">Escolher mês</label>
                             <input
                                 type="month"
-                                class="form-control"
+                                class="form-control financeiro-calendario"
                                 name="mes"
                                 id="mesFinanceiro"
                                 value="<?= htmlspecialchars($mes) ?>"
@@ -1520,7 +1530,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             <div class="row">
                                 <div class="col-md-5 mb-3">
                                     <label for="recebimentoData" class="form-label">Data</label>
-                                    <input type="date" class="form-control" name="data_recebimento" id="recebimentoData" required>
+                                    <input type="date" class="form-control financeiro-calendario" name="data_recebimento" id="recebimentoData" required>
                                     <div class="invalid-feedback">Informe a data.</div>
                                 </div>
                                 <div class="col-md-7 mb-3">
@@ -1554,7 +1564,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                 <label for="recebimentoFimRecorrencia" class="form-label">Último mês (opcional)</label>
                                 <input
                                     type="month"
-                                    class="form-control"
+                                    class="form-control financeiro-calendario"
                                     name="fim_recorrencia_recebimento"
                                     id="recebimentoFimRecorrencia">
                             </div>
@@ -1615,7 +1625,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label for="contaVencimento" class="form-label">Vencimento</label>
-                                    <input type="date" class="form-control" name="vencimento" id="contaVencimento" required>
+                                    <input type="date" class="form-control financeiro-calendario" name="vencimento" id="contaVencimento" required>
                                     <div class="invalid-feedback">Informe o vencimento.</div>
                                 </div>
                             </div>
@@ -1638,7 +1648,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             </div>
                             <div class="d-none" id="camposRecorrenciaConta">
                                 <label for="contaFimRecorrencia" class="form-label">Último mês (opcional)</label>
-                                <input type="month" class="form-control" name="fim_recorrencia" id="contaFimRecorrencia">
+                                <input type="month" class="form-control financeiro-calendario" name="fim_recorrencia" id="contaFimRecorrencia">
                             </div>
                         </div>
                         <div class="modal-footer">
@@ -1672,7 +1682,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label for="pagarContaData" class="form-label">Data do pagamento</label>
-                                    <input type="date" class="form-control" name="data_pagamento" id="pagarContaData" value="<?= date('Y-m-d') ?>" required>
+                                    <input type="date" class="form-control financeiro-calendario" name="data_pagamento" id="pagarContaData" value="<?= date('Y-m-d') ?>" required>
                                     <div class="invalid-feedback">Informe a data.</div>
                                 </div>
                             </div>

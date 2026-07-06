@@ -6,6 +6,8 @@ exigirPermissao('financeiro');
 
 $usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
 $mes = financeiroMesValido($_GET['mes'] ?? null);
+$periodo = (int)($_GET['periodo'] ?? 6);
+$periodo = max(1, min(12, $periodo));
 $inicioMes = $mes . '-01';
 $fimMes = date('Y-m-d', strtotime($inicioMes . ' +1 month'));
 $mesAnterior = date('Y-m', strtotime($inicioMes . ' -1 month'));
@@ -30,7 +32,7 @@ $nomeMes = $nomesMeses[(int)date('n', strtotime($inicioMes))]
     . date('Y', strtotime($inicioMes));
 $competencias = [];
 
-for ($indice = 5; $indice >= 0; $indice--) {
+for ($indice = $periodo - 1; $indice >= 0; $indice--) {
     $competencia = date('Y-m', strtotime($inicioMes . " -{$indice} months"));
     $competencias[$competencia] = [
         'mes' => $nomesMeses[(int)date('n', strtotime($competencia . '-01'))]
@@ -42,6 +44,15 @@ for ($indice = 5; $indice >= 0; $indice--) {
     ];
 }
 
+$inicioPeriodo = array_key_first($competencias) . '-01';
+$fimPeriodo = $fimMes;
+$primeiraCompetencia = array_key_first($competencias);
+$nomePrimeiroMes = $nomesMeses[(int)date('n', strtotime($primeiraCompetencia . '-01'))]
+    . '/'
+    . date('Y', strtotime($primeiraCompetencia . '-01'));
+$nomePeriodo = $periodo === 1
+    ? $nomeMes
+    : $nomePrimeiroMes . ' a ' . $nomeMes;
 $categoriasDespesas = [];
 $lancamentosPorCategoria = [];
 $totalReceitasMes = 0.0;
@@ -57,8 +68,6 @@ if ($estruturaDisponivel) {
         financeiroSincronizarRecebimentosRecorrentes($pdo, $usuarioId, $competencia);
     }
 
-    $inicioPeriodo = array_key_first($competencias) . '-01';
-    $fimPeriodo = date('Y-m-d', strtotime($fimMes));
     $temCompetenciaFatura = financeiroColunaExiste(
         $pdo,
         'financeiro_cartao_lancamentos',
@@ -126,8 +135,8 @@ if ($estruturaDisponivel) {
     }
     unset($dadosCompetencia);
 
-    $totalReceitasMes = $competencias[$mes]['receitas'] ?? 0.0;
-    $totalDespesasMes = $competencias[$mes]['despesas'] ?? 0.0;
+    $totalReceitasMes = array_sum(array_column($competencias, 'receitas'));
+    $totalDespesasMes = array_sum(array_column($competencias, 'despesas'));
 
     $stmt = $pdo->prepare("
         SELECT
@@ -146,7 +155,7 @@ if ($estruturaDisponivel) {
           AND fc.cartao_id IS NULL
         GROUP BY c.id, c.nome, c.cor
     ");
-    $stmt->execute([$usuarioId, $inicioMes, $fimMes]);
+    $stmt->execute([$usuarioId, $inicioPeriodo, $fimPeriodo]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
         $chave = (int)$linha['categoria_id'];
         $categoriasDespesas[$chave] = [
@@ -174,7 +183,7 @@ if ($estruturaDisponivel) {
           AND {$expressaoDataCompetenciaCartaoComAlias} < ?
         GROUP BY c.id, c.nome, c.cor
     ");
-    $stmt->execute([$usuarioId, $inicioMes, $fimMes]);
+    $stmt->execute([$usuarioId, $inicioPeriodo, $fimPeriodo]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
         $chave = (int)$linha['categoria_id'];
 
@@ -211,7 +220,7 @@ if ($estruturaDisponivel) {
           AND fc.cartao_id IS NULL
         ORDER BY fc.vencimento, fc.descricao
     ");
-    $stmt->execute([$usuarioId, $inicioMes, $fimMes]);
+    $stmt->execute([$usuarioId, $inicioPeriodo, $fimPeriodo]);
 
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
         $chave = (int)$linha['categoria_id'];
@@ -236,6 +245,7 @@ if ($estruturaDisponivel) {
         $lancamentosPorCategoria[$chave][] = [
             'data' => financeiroData($linha['data_lancamento']),
             'data_ordem' => $linha['data_lancamento'],
+            'competencia' => date('m/Y', strtotime($linha['data_lancamento'])),
             'descricao' => $descricao,
             'origem' => 'Conta',
             'status' => $status,
@@ -254,7 +264,8 @@ if ($estruturaDisponivel) {
             l.parcela_numero,
             l.parcelas_total,
             cartao.nome AS cartao_nome,
-            cartao.dia_vencimento
+            cartao.dia_vencimento,
+            DATE_FORMAT({$expressaoDataCompetenciaCartaoComAlias}, '%Y-%m') AS competencia_lancamento
         FROM financeiro_cartao_lancamentos l
         INNER JOIN financeiro_cartoes cartao
             ON cartao.id = l.cartao_id
@@ -267,7 +278,7 @@ if ($estruturaDisponivel) {
           AND {$expressaoDataCompetenciaCartaoComAlias} < ?
         ORDER BY l.data_compra, l.descricao
     ");
-    $stmt->execute([$usuarioId, $inicioMes, $fimMes]);
+    $stmt->execute([$usuarioId, $inicioPeriodo, $fimPeriodo]);
 
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
         $chave = (int)$linha['categoria_id'];
@@ -279,7 +290,7 @@ if ($estruturaDisponivel) {
         }
 
         $vencimentoFatura = financeiroVencimentoFatura(
-            $mes,
+            $linha['competencia_lancamento'],
             (int)$linha['dia_vencimento']
         );
 
@@ -297,6 +308,10 @@ if ($estruturaDisponivel) {
         $lancamentosPorCategoria[$chave][] = [
             'data' => financeiroData($linha['data_lancamento']),
             'data_ordem' => $linha['data_lancamento'],
+            'competencia' => date(
+                'm/Y',
+                strtotime($linha['competencia_lancamento'] . '-01')
+            ),
             'descricao' => $descricao,
             'origem' => 'Cartão - ' . $linha['cartao_nome'],
             'status' => $status,
@@ -331,7 +346,7 @@ if ($estruturaDisponivel) {
           AND data_recebimento < ?
           AND categoria_id IS NULL
     ");
-    $stmt->execute([$usuarioId, $inicioMes, $fimMes]);
+    $stmt->execute([$usuarioId, $inicioPeriodo, $fimPeriodo]);
     $totalSemCategoria += (int)$stmt->fetchColumn();
 }
 
@@ -390,16 +405,35 @@ foreach ($categoriasDespesas as $categoria) {
                 </div>
             <?php else: ?>
                 <div class="financeiro-filtros mb-4">
-                    <span class="financeiro-mes-titulo"><?= htmlspecialchars($nomeMes) ?></span>
-                    <div class="financeiro-navegacao-mes">
-                        <a href="financeiro_relatorio.php?mes=<?= htmlspecialchars($mesAnterior) ?>" class="btn btn-outline-secondary" aria-label="Mês anterior">
+                    <span class="financeiro-mes-titulo"><?= htmlspecialchars($nomePeriodo) ?></span>
+                    <div class="financeiro-navegacao-mes financeiro-navegacao-relatorio">
+                        <a
+                            href="financeiro_relatorio.php?<?= http_build_query(['mes' => $mesAnterior, 'periodo' => $periodo]) ?>"
+                            class="btn btn-outline-secondary"
+                            aria-label="Período anterior">
                             <i class="bi bi-chevron-left"></i>
                         </a>
-                        <form method="get" id="formMesRelatorio">
+                        <form method="get" id="formMesRelatorio" class="financeiro-periodo-form">
                             <label for="mesRelatorio" class="visually-hidden">Escolher mês</label>
-                            <input type="month" class="form-control" name="mes" id="mesRelatorio" value="<?= htmlspecialchars($mes) ?>">
+                            <input
+                                type="month"
+                                class="form-control financeiro-calendario"
+                                name="mes"
+                                id="mesRelatorio"
+                                value="<?= htmlspecialchars($mes) ?>">
+                            <label for="periodoRelatorio" class="visually-hidden">Quantidade de meses</label>
+                            <select class="form-select" name="periodo" id="periodoRelatorio">
+                                <?php for ($quantidade = 1; $quantidade <= 12; $quantidade++): ?>
+                                    <option value="<?= $quantidade ?>" <?= $periodo === $quantidade ? 'selected' : '' ?>>
+                                        <?= $quantidade ?> <?= $quantidade === 1 ? 'mês' : 'meses' ?>
+                                    </option>
+                                <?php endfor; ?>
+                            </select>
                         </form>
-                        <a href="financeiro_relatorio.php?mes=<?= htmlspecialchars($proximoMes) ?>" class="btn btn-outline-secondary" aria-label="Próximo mês">
+                        <a
+                            href="financeiro_relatorio.php?<?= http_build_query(['mes' => $proximoMes, 'periodo' => $periodo]) ?>"
+                            class="btn btn-outline-secondary"
+                            aria-label="Próximo período">
                             <i class="bi bi-chevron-right"></i>
                         </a>
                     </div>
@@ -407,15 +441,15 @@ foreach ($categoriasDespesas as $categoria) {
 
                 <section class="financeiro-resumo financeiro-resumo-relatorio mb-4">
                     <div class="financeiro-metrica metrica-receita">
-                        <span>Receitas do mês</span>
+                        <span>Receitas do período</span>
                         <strong><?= financeiroMoeda($totalReceitasMes) ?></strong>
                     </div>
                     <div class="financeiro-metrica metrica-despesa">
-                        <span>Despesas do mês</span>
+                        <span>Despesas do período</span>
                         <strong><?= financeiroMoeda($totalDespesasMes) ?></strong>
                     </div>
                     <div class="financeiro-metrica <?= $resultadoMes < 0 ? 'metrica-negativa' : 'metrica-saldo' ?>">
-                        <span>Resultado mensal</span>
+                        <span>Resultado do período</span>
                         <strong><?= financeiroMoeda($resultadoMes) ?></strong>
                     </div>
                     <div class="financeiro-metrica <?= $totalSemCategoria > 0 ? 'metrica-pendente' : 'metrica-saldo' ?>">
@@ -429,7 +463,7 @@ foreach ($categoriasDespesas as $categoria) {
                         <div class="financeiro-painel-titulo">
                             <div>
                                 <h5 class="mb-1">Receitas x despesas</h5>
-                                <p class="text-muted small mb-0">Últimos seis meses</p>
+                                <p class="text-muted small mb-0"><?= htmlspecialchars($nomePeriodo) ?></p>
                             </div>
                         </div>
                         <div class="financeiro-grafico-corpo">
@@ -441,7 +475,7 @@ foreach ($categoriasDespesas as $categoria) {
                         <div class="financeiro-painel-titulo">
                             <div>
                                 <h5 class="mb-1">Despesas por categoria</h5>
-                                <p class="text-muted small mb-0"><?= htmlspecialchars($nomeMes) ?></p>
+                                <p class="text-muted small mb-0"><?= htmlspecialchars($nomePeriodo) ?></p>
                             </div>
                         </div>
                         <div class="financeiro-grafico-corpo">
@@ -503,7 +537,7 @@ foreach ($categoriasDespesas as $categoria) {
                             <tbody>
                                 <?php if ($categoriasDespesas === []): ?>
                                     <tr>
-                                        <td colspan="4" class="financeiro-vazio">Nenhuma despesa neste mês.</td>
+                                        <td colspan="4" class="financeiro-vazio">Nenhuma despesa neste período.</td>
                                     </tr>
                                 <?php endif; ?>
                                 <?php foreach ($categoriasDespesas as $categoria): ?>
@@ -538,7 +572,7 @@ foreach ($categoriasDespesas as $categoria) {
                     <div class="modal-header">
                         <div>
                             <h5 class="modal-title" id="tituloDetalhesCategoria">Lançamentos da categoria</h5>
-                            <p class="text-muted small mb-0"><?= htmlspecialchars($nomeMes) ?></p>
+                            <p class="text-muted small mb-0"><?= htmlspecialchars($nomePeriodo) ?></p>
                         </div>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                     </div>
@@ -548,6 +582,7 @@ foreach ($categoriasDespesas as $categoria) {
                                 <thead>
                                     <tr>
                                         <th>Data</th>
+                                        <th>Competência</th>
                                         <th>Descrição</th>
                                         <th>Origem</th>
                                         <th>Status</th>
@@ -557,7 +592,7 @@ foreach ($categoriasDespesas as $categoria) {
                                 <tbody id="corpoDetalhesCategoria"></tbody>
                                 <tfoot>
                                     <tr>
-                                        <th colspan="4" class="text-end">Total</th>
+                                        <th colspan="5" class="text-end">Total</th>
                                         <th class="text-end" id="totalDetalhesCategoria"></th>
                                     </tr>
                                 </tfoot>
@@ -575,6 +610,9 @@ foreach ($categoriasDespesas as $categoria) {
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
         <script>
             document.getElementById('mesRelatorio').addEventListener('change', function() {
+                document.getElementById('formMesRelatorio').submit();
+            });
+            document.getElementById('periodoRelatorio').addEventListener('change', function() {
                 document.getElementById('formMesRelatorio').submit();
             });
 
@@ -635,6 +673,7 @@ foreach ($categoriasDespesas as $categoria) {
                     status.textContent = lancamento.status;
                     celulaStatus.appendChild(status);
                     linha.appendChild(criarCelula(lancamento.data));
+                    linha.appendChild(criarCelula(lancamento.competencia));
                     linha.appendChild(criarCelula(lancamento.descricao));
                     linha.appendChild(criarCelula(lancamento.origem));
                     linha.appendChild(celulaStatus);
@@ -650,7 +689,7 @@ foreach ($categoriasDespesas as $categoria) {
                         'Nenhum lançamento encontrado nesta categoria.',
                         'financeiro-vazio'
                     );
-                    celulaVazia.colSpan = 5;
+                    celulaVazia.colSpan = 6;
                     linhaVazia.appendChild(celulaVazia);
                     corpo.appendChild(linhaVazia);
                 }

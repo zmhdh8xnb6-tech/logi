@@ -643,6 +643,85 @@ function financeiroSincronizarRecebimentosRecorrentes(PDO $pdo, int $usuarioId, 
     }
 }
 
+function financeiroListarAlertasVencimento(
+    PDO $pdo,
+    int $usuarioId,
+    int $diasAntecedencia = 10
+): array {
+    if (
+        $usuarioId <= 0
+        || !financeiroTabelasDisponiveis($pdo, ['financeiro_contas'])
+    ) {
+        return [];
+    }
+
+    $diasAntecedencia = max(0, min(90, $diasAntecedencia));
+    $hoje = new DateTimeImmutable('today');
+    $limite = $hoje->modify('+' . $diasAntecedencia . ' days')->format('Y-m-d');
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT
+                id,
+                descricao,
+                valor_previsto,
+                vencimento,
+                cartao_id,
+                competencia_cartao
+            FROM financeiro_contas
+            WHERE usuario_id = ?
+              AND status = 'pendente'
+              AND valor_previsto > 0
+              AND vencimento <= ?
+            ORDER BY vencimento, descricao
+        ");
+        $stmt->execute([$usuarioId, $limite]);
+        $alertas = [];
+
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $conta) {
+            $vencimento = new DateTimeImmutable($conta['vencimento']);
+            $dias = (int)$hoje->diff($vencimento)->format('%r%a');
+            $fatura = !empty($conta['cartao_id']);
+
+            if ($dias < 0) {
+                $prazo = 'Vencida há ' . abs($dias)
+                    . (abs($dias) === 1 ? ' dia' : ' dias');
+                $classe = 'danger';
+            } elseif ($dias === 0) {
+                $prazo = 'Vence hoje';
+                $classe = 'danger';
+            } else {
+                $prazo = 'Vence em ' . $dias . ($dias === 1 ? ' dia' : ' dias');
+                $classe = $dias <= 3 ? 'warning' : 'primary';
+            }
+
+            $mesConta = date('Y-m', strtotime($conta['vencimento']));
+            $url = $fatura
+                ? 'financeiro_cartoes.php?'
+                . http_build_query([
+                    'cartao' => (int)$conta['cartao_id'],
+                    'mes' => $conta['competencia_cartao'] ?: $mesConta,
+                ])
+                : 'financeiro.php?' . http_build_query(['mes' => $mesConta]);
+
+            $alertas[] = [
+                'id' => (int)$conta['id'],
+                'descricao' => $conta['descricao'],
+                'valor' => (float)$conta['valor_previsto'],
+                'vencimento' => $conta['vencimento'],
+                'prazo' => $prazo,
+                'classe' => $classe,
+                'tipo' => $fatura ? 'Fatura' : 'Conta',
+                'url' => $url,
+            ];
+        }
+
+        return $alertas;
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
 function financeiroToken(): string
 {
     if (empty($_SESSION['financeiro_csrf'])) {

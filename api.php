@@ -330,9 +330,9 @@ if ($action === 'create' || $action === 'update') {
         exit;
     }
 
-    if ($action === 'create' && $cliente_contabil === 1) {
+    if ($cliente_contabil === 1) {
         $servico_parcelamento = 0;
-        $servico_certificado = 0;
+        $servico_certificado = 1;
     }
 
     if ($cliente_contabil === 0) {
@@ -348,7 +348,7 @@ if ($action === 'create' || $action === 'update') {
         ? 'completo'
         : ($servico_parcelamento && !$servico_certificado ? 'somente_parcelamento' : 'servico_avulso');
 
-    if (!$servico_certificado) {
+    if ($cliente_contabil === 0 && !$servico_certificado) {
         $vencimento_certificado = null;
     }
 

@@ -4,6 +4,19 @@ body {
     overflow-x: hidden;
 }
 
+.form-control[type="date"],
+.form-control[type="month"] {
+    cursor: pointer;
+}
+
+.form-control[type="date"]::-webkit-calendar-picker-indicator,
+.form-control[type="month"]::-webkit-calendar-picker-indicator {
+    padding: 5px;
+    border-radius: 4px;
+    background-color: #eaf2fb;
+    cursor: pointer;
+}
+
 .senha-wrapper {
     position: relative;
 }
