@@ -140,6 +140,18 @@ if ($lancamentos === []) {
     <?php include 'includes/head.php'; ?>
     <title>Fatura <?= htmlspecialchars($cartao['nome'] ?? '') ?> - <?= htmlspecialchars($nomePeriodo) ?></title>
     <link rel="stylesheet" href="<?= assetUrl('assets/financeiro.css') ?>">
+    <style>
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 10mm;
+            }
+
+            .financeiro-impressao-tabela {
+                font-size: 8.5pt;
+            }
+        }
+    </style>
 </head>
 
 <body class="financeiro-impressao">

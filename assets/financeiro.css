@@ -375,8 +375,11 @@
 }
 
 .financeiro-alertas-cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     padding: 14px 18px;
-    border-bottom: 1px solid #f6ddb0;
     background: #fff8e8;
 }
 
@@ -387,6 +390,14 @@
 .financeiro-alertas-cabecalho p {
     color: #805b22;
     font-size: .86rem;
+}
+
+.financeiro-alertas-toggle {
+    flex: 0 0 auto;
+}
+
+.financeiro-alertas .collapse.show {
+    border-top: 1px solid #f6ddb0;
 }
 
 .financeiro-alertas-lista {
@@ -637,6 +648,15 @@
     .financeiro-alerta-seta {
         grid-column: 3;
         grid-row: 1 / span 2;
+    }
+
+    .financeiro-alertas-cabecalho {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .financeiro-alertas-toggle {
+        width: 100%;
     }
 
     .financeiro-impressao-pagina {

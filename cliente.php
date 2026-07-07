@@ -1,5 +1,6 @@
 <?php
 require 'config.php';
+require_once 'includes/parcelamentos_funcoes.php';
 
 exigirPermissao('clientes');
 
@@ -27,6 +28,15 @@ $stmtAlvaras = $pdo->prepare("
 ");
 $stmtAlvaras->execute([$id]);
 $alvarasCliente = $stmtAlvaras->fetchAll(PDO::FETCH_ASSOC);
+
+$stmtParcelamentos = $pdo->prepare("
+    SELECT *
+    FROM parcelamentos
+    WHERE cliente_id = ?
+    ORDER BY orgao, data_primeira_parcela, id
+");
+$stmtParcelamentos->execute([$id]);
+$parcelamentosCliente = $stmtParcelamentos->fetchAll(PDO::FETCH_ASSOC);
 
 $rotulosControle = [
     'possui' => 'Possui',
@@ -536,6 +546,47 @@ if ($clienteContabil) {
                                                 ? htmlspecialchars($formatarData($alvaraCliente['vencimento']))
                                                 : '-' ?>
                                         </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </section>
+                <?php endif; ?>
+
+                <?php if (!empty($parcelamentosCliente)): ?>
+                    <section class="ficha-impressao-secao">
+                        <h2>Parcelamentos</h2>
+                        <table class="ficha-impressao-tabela">
+                            <thead>
+                                <tr>
+                                    <th>Órgão</th>
+                                    <th>Número</th>
+                                    <th>Forma envio</th>
+                                    <th>Primeira parcela</th>
+                                    <th>Parcelas</th>
+                                    <th>Atrasadas</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($parcelamentosCliente as $parcelamentoCliente): ?>
+                                    <?php
+                                    $parcelasEmitidasImpressao = parcelasEmitidasAtual($parcelamentoCliente);
+                                    $parcelasTotalImpressao = (int)($parcelamentoCliente['parcelas_total'] ?? 0);
+                                    $parcelasAtrasadasImpressao = max(0, (int)($parcelamentoCliente['parcelas_atrasadas'] ?? 0));
+                                    ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($parcelamentoCliente['orgao'] ?? '') ?></td>
+                                        <td><?= htmlspecialchars($valorOuNaoInformado($parcelamentoCliente['numero_parcelamento'] ?? '')) ?></td>
+                                        <td><?= htmlspecialchars($valorOuNaoInformado($parcelamentoCliente['forma_envio'] ?? '')) ?></td>
+                                        <td><?= htmlspecialchars($formatarData($parcelamentoCliente['data_primeira_parcela'] ?? null)) ?></td>
+                                        <td>
+                                            <?= $parcelasEmitidasImpressao ?>
+                                            /
+                                            <?= $parcelasTotalImpressao ?>
+                                        </td>
+                                        <td><?= $parcelasAtrasadasImpressao ?></td>
+                                        <td><?= htmlspecialchars(statusParcelamento($parcelamentoCliente)) ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
