@@ -64,8 +64,6 @@ function atualizarCategoriaCompraParcelada(PDO $pdo, int $usuarioId, array $lanc
             $usuarioId,
             $lancamento['grupo_parcelamento'],
         ]);
-
-        return;
     }
 
     if ((int)($lancamento['parcelas_total'] ?? 0) > 1) {
@@ -74,7 +72,6 @@ function atualizarCategoriaCompraParcelada(PDO $pdo, int $usuarioId, array $lanc
             SET categoria_id = ?
             WHERE usuario_id = ?
               AND cartao_id = ?
-              AND data_compra = ?
               AND descricao = ?
               AND parcelas_total = ?
         ");
@@ -82,7 +79,6 @@ function atualizarCategoriaCompraParcelada(PDO $pdo, int $usuarioId, array $lanc
             $categoriaId,
             $usuarioId,
             (int)$lancamento['cartao_id'],
-            $lancamento['data_compra'],
             $lancamento['descricao'],
             (int)$lancamento['parcelas_total'],
         ]);
@@ -117,6 +113,33 @@ function completarCategoriasParceladas(PDO $pdo, int $usuarioId): void
            AND base.grupo_parcelamento = l.grupo_parcelamento
         SET l.categoria_id = base.categoria_id
         WHERE l.usuario_id = ?
+          AND (l.categoria_id IS NULL OR l.categoria_id = 0)
+    ");
+    $stmt->execute([$usuarioId, $usuarioId]);
+
+    $stmt = $pdo->prepare("
+        UPDATE financeiro_cartao_lancamentos l
+        INNER JOIN (
+            SELECT
+                usuario_id,
+                cartao_id,
+                descricao,
+                parcelas_total,
+                MAX(categoria_id) AS categoria_id
+            FROM financeiro_cartao_lancamentos
+            WHERE usuario_id = ?
+              AND parcelas_total > 1
+              AND categoria_id IS NOT NULL
+              AND categoria_id > 0
+            GROUP BY usuario_id, cartao_id, descricao, parcelas_total
+        ) base
+            ON base.usuario_id = l.usuario_id
+           AND base.cartao_id = l.cartao_id
+           AND base.descricao = l.descricao
+           AND base.parcelas_total = l.parcelas_total
+        SET l.categoria_id = base.categoria_id
+        WHERE l.usuario_id = ?
+          AND l.parcelas_total > 1
           AND (l.categoria_id IS NULL OR l.categoria_id = 0)
     ");
     $stmt->execute([$usuarioId, $usuarioId]);
