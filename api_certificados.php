@@ -19,7 +19,8 @@ $clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
 
 $stmt = $pdo->prepare("
     UPDATE clientes
-    SET vencimento_certificado = ?
+    SET vencimento_certificado = ?,
+        servico_certificado = 1
     WHERE id = ?
 ");
 

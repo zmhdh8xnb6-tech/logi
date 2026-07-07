@@ -7,6 +7,7 @@ $stmt = $pdo->query("
     SELECT *
     FROM clientes
     WHERE servico_certificado = 1
+       OR cliente_contabil = 1
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 
