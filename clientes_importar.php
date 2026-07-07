@@ -468,6 +468,7 @@ if (($_GET['modelo'] ?? '') === '1') {
 }
 
 $mensagem = null;
+$erroArquivo = false;
 $linhasPreview = $_SESSION[IMPORTACAO_CLIENTES_CHAVE] ?? [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -481,6 +482,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($acao === 'previsualizar') {
         if (empty($_FILES['arquivo']['tmp_name']) || !is_uploaded_file($_FILES['arquivo']['tmp_name'])) {
+            $erroArquivo = true;
             $mensagem = ['tipo' => 'danger', 'texto' => 'Selecione um arquivo CSV para importar.'];
         } else {
             [$linhasCsv, $errosArquivo] = importarClienteCsv($_FILES['arquivo']['tmp_name']);
@@ -617,24 +619,34 @@ $totalErros = count($linhasPreview) - $totalValidas;
             <?php endif; ?>
 
             <section class="clientes-box mb-4">
-                <form method="post" enctype="multipart/form-data" class="row g-3 align-items-end">
+                <form method="post" enctype="multipart/form-data" class="row g-3 align-items-end" id="formImportarClientes" novalidate>
                     <input type="hidden" name="acao" value="previsualizar">
-                    <div class="col-md-8">
+                    <div class="col-lg-7">
                         <label for="arquivoImportacao" class="form-label">Arquivo CSV</label>
-                        <input type="file" class="form-control" name="arquivo" id="arquivoImportacao" accept=".csv,text/csv" required>
+                        <input
+                            type="file"
+                            class="form-control <?= $erroArquivo ? 'is-invalid' : '' ?>"
+                            name="arquivo"
+                            id="arquivoImportacao"
+                            accept=".csv,text/csv">
+                        <div class="invalid-feedback" id="arquivoImportacaoFeedback">
+                            Selecione um arquivo CSV para pré-visualizar.
+                        </div>
                         <div class="form-text">
-                            No Excel, use “Salvar como” e escolha CSV UTF-8. Os campos mínimos são código, nome e documento.
+                            No Excel, salve como CSV UTF-8. Campos mínimos: código, nome e documento.
                         </div>
                     </div>
-                    <div class="col-md-4 d-flex gap-2">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-eye"></i> Pré-visualizar
-                        </button>
-                        <?php if ($linhasPreview !== []): ?>
-                            <button type="submit" name="acao" value="limpar" class="btn btn-outline-secondary" formnovalidate>
-                                Limpar
+                    <div class="col-lg-5">
+                        <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-eye"></i> Pré-visualizar
                             </button>
-                        <?php endif; ?>
+                            <?php if ($linhasPreview !== []): ?>
+                                <button type="submit" name="acao" value="limpar" class="btn btn-outline-secondary" formnovalidate>
+                                    Limpar
+                                </button>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 </form>
             </section>
@@ -708,6 +720,30 @@ $totalErros = count($linhasPreview) - $totalValidas;
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="<?= assetUrl('assets/script.js') ?>"></script>
+    <script>
+        (function() {
+            const form = document.getElementById('formImportarClientes');
+            const arquivo = document.getElementById('arquivoImportacao');
+
+            form.addEventListener('submit', function(event) {
+                const acaoClicada = event.submitter?.value || 'previsualizar';
+
+                if (acaoClicada === 'limpar') {
+                    return;
+                }
+
+                if (!arquivo.files || arquivo.files.length === 0) {
+                    event.preventDefault();
+                    arquivo.classList.add('is-invalid');
+                    arquivo.focus();
+                }
+            });
+
+            arquivo.addEventListener('change', function() {
+                arquivo.classList.toggle('is-invalid', !arquivo.files || arquivo.files.length === 0);
+            });
+        })();
+    </script>
 </body>
 
 </html>
