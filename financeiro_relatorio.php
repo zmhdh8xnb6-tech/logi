@@ -6,7 +6,7 @@ exigirPermissao('financeiro');
 
 $usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
 $mes = financeiroMesValido($_GET['mes'] ?? null);
-$periodo = (int)($_GET['periodo'] ?? 6);
+$periodo = (int)($_GET['periodo'] ?? 1);
 $periodo = max(1, min(12, $periodo));
 $inicioMes = $mes . '-01';
 $fimMes = date('Y-m-d', strtotime($inicioMes . ' +1 month'));
