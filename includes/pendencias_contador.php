@@ -20,7 +20,7 @@ function contarPendenciasSistema(PDO $pdo): int
 
     foreach ($clientes as $cliente) {
         $clienteContabil = (int)($cliente['cliente_contabil'] ?? 1) === 1;
-        $controlaCertificado = (int)($cliente['servico_certificado'] ?? 1) === 1;
+        $controlaCertificado = $clienteContabil || (int)($cliente['servico_certificado'] ?? 1) === 1;
 
         if ($controlaCertificado && !empty($cliente['pendencia_certificado_digital'])) {
             $total++;
