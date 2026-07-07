@@ -50,6 +50,82 @@ function urlCartoes(int $cartaoId = 0, ?string $mes = null): string
     return 'financeiro_cartoes.php?' . http_build_query($parametros);
 }
 
+function atualizarCategoriaCompraParcelada(PDO $pdo, int $usuarioId, array $lancamento, int $categoriaId): void
+{
+    if (!empty($lancamento['grupo_parcelamento'])) {
+        $stmt = $pdo->prepare("
+            UPDATE financeiro_cartao_lancamentos
+            SET categoria_id = ?
+            WHERE usuario_id = ?
+              AND grupo_parcelamento = ?
+        ");
+        $stmt->execute([
+            $categoriaId,
+            $usuarioId,
+            $lancamento['grupo_parcelamento'],
+        ]);
+
+        return;
+    }
+
+    if ((int)($lancamento['parcelas_total'] ?? 0) > 1) {
+        $stmt = $pdo->prepare("
+            UPDATE financeiro_cartao_lancamentos
+            SET categoria_id = ?
+            WHERE usuario_id = ?
+              AND cartao_id = ?
+              AND data_compra = ?
+              AND descricao = ?
+              AND parcelas_total = ?
+        ");
+        $stmt->execute([
+            $categoriaId,
+            $usuarioId,
+            (int)$lancamento['cartao_id'],
+            $lancamento['data_compra'],
+            $lancamento['descricao'],
+            (int)$lancamento['parcelas_total'],
+        ]);
+    }
+}
+
+function completarCategoriasParceladas(PDO $pdo, int $usuarioId): void
+{
+    if (
+        !financeiroColunaExiste($pdo, 'financeiro_cartao_lancamentos', 'categoria_id')
+        || !financeiroColunaExiste($pdo, 'financeiro_cartao_lancamentos', 'grupo_parcelamento')
+    ) {
+        return;
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE financeiro_cartao_lancamentos l
+        INNER JOIN (
+            SELECT
+                usuario_id,
+                grupo_parcelamento,
+                MAX(categoria_id) AS categoria_id
+            FROM financeiro_cartao_lancamentos
+            WHERE usuario_id = ?
+              AND grupo_parcelamento IS NOT NULL
+              AND grupo_parcelamento <> ''
+              AND categoria_id IS NOT NULL
+              AND categoria_id > 0
+            GROUP BY usuario_id, grupo_parcelamento
+        ) base
+            ON base.usuario_id = l.usuario_id
+           AND base.grupo_parcelamento = l.grupo_parcelamento
+        SET l.categoria_id = base.categoria_id
+        WHERE l.usuario_id = ?
+          AND (l.categoria_id IS NULL OR l.categoria_id = 0)
+    ");
+    $stmt->execute([$usuarioId, $usuarioId]);
+}
+
+if ($categoriasDisponiveis) {
+    completarCategoriasParceladas($pdo, $usuarioId);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $urlRetorno = urlCartoes($cartaoSelecionadoId, $mes);
 
@@ -260,18 +336,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'valor' => $valor,
                 'categoria_id' => $categoriaId,
             ]);
-            if (!empty($lancamentoAntes['grupo_parcelamento'])) {
-                $stmtCategoriaGrupo = $pdo->prepare("
-                    UPDATE financeiro_cartao_lancamentos
-                    SET categoria_id = ?
-                    WHERE usuario_id = ? AND grupo_parcelamento = ?
-                ");
-                $stmtCategoriaGrupo->execute([
-                    $categoriaId,
-                    $usuarioId,
-                    $lancamentoAntes['grupo_parcelamento'],
-                ]);
-            }
+            atualizarCategoriaCompraParcelada($pdo, $usuarioId, $lancamentoAntes, $categoriaId);
             $mudancas = auditoriaMudancas($lancamentoAntes, $lancamentoDepois);
             registrarAuditoria($pdo, 'Financeiro - Cartões', 'editar', 'compra_cartao', $id, 'Alterou a compra ' . $descricao, $mudancas['antes'], $mudancas['depois']);
             financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
@@ -432,24 +497,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             financeiroRedirecionar($urlRetorno, 'Selecione uma categoria válida.', 'danger');
         }
 
-        if (!empty($lancamentoAntes['grupo_parcelamento'])) {
-            $stmt = $pdo->prepare("
-                UPDATE financeiro_cartao_lancamentos
-                SET categoria_id = ?
-                WHERE usuario_id = ? AND grupo_parcelamento = ?
-            ");
-            $stmt->execute([
-                $categoriaId,
-                $usuarioId,
-                $lancamentoAntes['grupo_parcelamento'],
-            ]);
-        } else {
+        if (
+            empty($lancamentoAntes['grupo_parcelamento'])
+            && (int)($lancamentoAntes['parcelas_total'] ?? 0) <= 1
+        ) {
             $stmt = $pdo->prepare("
                 UPDATE financeiro_cartao_lancamentos
                 SET categoria_id = ?
                 WHERE id = ? AND usuario_id = ?
             ");
             $stmt->execute([$categoriaId, $id, $usuarioId]);
+        } else {
+            atualizarCategoriaCompraParcelada($pdo, $usuarioId, $lancamentoAntes, $categoriaId);
         }
 
         registrarAuditoria(
