@@ -29,6 +29,9 @@ exigirPermissao('clientes');
                     <a href="servicos_avulsos.php" class="btn btn-outline-secondary">
                         <i class="bi bi-briefcase"></i> Serviços Avulsos
                     </a>
+                    <a href="clientes_importar.php" class="btn btn-outline-success">
+                        <i class="bi bi-file-earmark-spreadsheet"></i> Importar
+                    </a>
                     <a href="cliente_novo.php" class="btn btn-primary">
                         <i class="bi bi-plus-circle"></i> Novo Cliente
                     </a>
