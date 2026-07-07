@@ -52,6 +52,9 @@ function urlCartoes(int $cartaoId = 0, ?string $mes = null): string
 
 function atualizarCategoriaCompraParcelada(PDO $pdo, int $usuarioId, array $lancamento, int $categoriaId): void
 {
+    $totalParcelas = (int)($lancamento['parcelas_total'] ?? 0);
+    $quantidadeGrupo = 0;
+
     if (!empty($lancamento['grupo_parcelamento'])) {
         $stmt = $pdo->prepare("
             UPDATE financeiro_cartao_lancamentos
@@ -64,9 +67,21 @@ function atualizarCategoriaCompraParcelada(PDO $pdo, int $usuarioId, array $lanc
             $usuarioId,
             $lancamento['grupo_parcelamento'],
         ]);
+
+        $stmtQuantidade = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM financeiro_cartao_lancamentos
+            WHERE usuario_id = ?
+              AND grupo_parcelamento = ?
+        ");
+        $stmtQuantidade->execute([$usuarioId, $lancamento['grupo_parcelamento']]);
+        $quantidadeGrupo = (int)$stmtQuantidade->fetchColumn();
     }
 
-    if ((int)($lancamento['parcelas_total'] ?? 0) > 1) {
+    if (
+        $totalParcelas > 1
+        && (empty($lancamento['grupo_parcelamento']) || $quantidadeGrupo < $totalParcelas)
+    ) {
         $stmt = $pdo->prepare("
             UPDATE financeiro_cartao_lancamentos
             SET categoria_id = ?
@@ -80,9 +95,52 @@ function atualizarCategoriaCompraParcelada(PDO $pdo, int $usuarioId, array $lanc
             $usuarioId,
             (int)$lancamento['cartao_id'],
             $lancamento['descricao'],
-            (int)$lancamento['parcelas_total'],
+            $totalParcelas,
         ]);
     }
+}
+
+function condicaoCompraParceladaIncompleta(PDO $pdo, int $usuarioId, array $lancamento): array
+{
+    $totalParcelas = (int)($lancamento['parcelas_total'] ?? 0);
+
+    if ($totalParcelas <= 1) {
+        return [
+            'where' => 'id = ? AND usuario_id = ?',
+            'params' => [(int)$lancamento['id'], $usuarioId],
+            'parcelada' => false,
+        ];
+    }
+
+    if (!empty($lancamento['grupo_parcelamento'])) {
+        $stmtQuantidade = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM financeiro_cartao_lancamentos
+            WHERE usuario_id = ?
+              AND grupo_parcelamento = ?
+        ");
+        $stmtQuantidade->execute([$usuarioId, $lancamento['grupo_parcelamento']]);
+        $quantidadeGrupo = (int)$stmtQuantidade->fetchColumn();
+
+        if ($quantidadeGrupo >= $totalParcelas) {
+            return [
+                'where' => 'usuario_id = ? AND grupo_parcelamento = ?',
+                'params' => [$usuarioId, $lancamento['grupo_parcelamento']],
+                'parcelada' => true,
+            ];
+        }
+    }
+
+    return [
+        'where' => 'usuario_id = ? AND cartao_id = ? AND descricao = ? AND parcelas_total = ?',
+        'params' => [
+            $usuarioId,
+            (int)$lancamento['cartao_id'],
+            $lancamento['descricao'],
+            $totalParcelas,
+        ],
+        'parcelada' => true,
+    ];
 }
 
 function completarCategoriasParceladas(PDO $pdo, int $usuarioId): void
@@ -556,28 +614,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             financeiroRedirecionar($urlRetorno, 'Compra não encontrada.', 'danger');
         }
 
-        if (!empty($lancamentoAntes['grupo_parcelamento'])) {
+        $condicaoExclusao = condicaoCompraParceladaIncompleta($pdo, $usuarioId, $lancamentoAntes);
+
+        if ($condicaoExclusao['parcelada']) {
             $stmtResumo = $pdo->prepare("
                 SELECT COUNT(*) AS quantidade, COALESCE(SUM(valor), 0) AS valor_total
                 FROM financeiro_cartao_lancamentos
-                WHERE usuario_id = ? AND grupo_parcelamento = ?
+                WHERE {$condicaoExclusao['where']}
             ");
-            $stmtResumo->execute([$usuarioId, $lancamentoAntes['grupo_parcelamento']]);
+            $stmtResumo->execute($condicaoExclusao['params']);
             $resumoExclusao = $stmtResumo->fetch(PDO::FETCH_ASSOC) ?: [
                 'quantidade' => 0,
                 'valor_total' => 0,
             ];
             $stmt = $pdo->prepare("
                 DELETE FROM financeiro_cartao_lancamentos
-                WHERE usuario_id = ? AND grupo_parcelamento = ?
+                WHERE {$condicaoExclusao['where']}
             ");
-            $stmt->execute([$usuarioId, $lancamentoAntes['grupo_parcelamento']]);
+            $stmt->execute($condicaoExclusao['params']);
             registrarAuditoria(
                 $pdo,
                 'Financeiro - Cartões',
                 'excluir_parcelamento',
                 'compra_cartao',
-                $lancamentoAntes['grupo_parcelamento'],
+                $lancamentoAntes['grupo_parcelamento'] ?: $id,
                 'Excluiu todas as parcelas da compra ' . $lancamentoAntes['descricao'],
                 [
                     'compra' => $lancamentoAntes,

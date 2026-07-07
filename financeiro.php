@@ -790,6 +790,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmtAntes->execute([$id, $usuarioId]);
         $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
 
+        if (!$antes) {
+            financeiroRedirecionar($urlRetorno, 'Conta não encontrada.', 'danger');
+        }
+
         if (!empty($antes['cartao_id'])) {
             financeiroRedirecionar(
                 $urlRetorno,
@@ -806,11 +810,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
         }
 
+        if (!empty($antes['grupo_parcelamento'])) {
+            $stmtResumo = $pdo->prepare("
+                SELECT COUNT(*) AS quantidade, COALESCE(SUM(valor_previsto), 0) AS valor_total
+                FROM financeiro_contas
+                WHERE usuario_id = ? AND grupo_parcelamento = ?
+            ");
+            $stmtResumo->execute([$usuarioId, $antes['grupo_parcelamento']]);
+            $resumoExclusao = $stmtResumo->fetch(PDO::FETCH_ASSOC) ?: [
+                'quantidade' => 0,
+                'valor_total' => 0,
+            ];
+
+            $stmt = $pdo->prepare("
+                DELETE FROM financeiro_contas
+                WHERE usuario_id = ? AND grupo_parcelamento = ?
+            ");
+            $stmt->execute([$usuarioId, $antes['grupo_parcelamento']]);
+
+            registrarAuditoria(
+                $pdo,
+                'Financeiro',
+                'excluir_parcelamento',
+                'conta',
+                $antes['grupo_parcelamento'],
+                'Excluiu todas as parcelas da conta ' . $antes['descricao'],
+                [
+                    'conta' => $antes,
+                    'quantidade_parcelas' => (int)$resumoExclusao['quantidade'],
+                    'valor_total' => (float)$resumoExclusao['valor_total'],
+                ],
+                null
+            );
+            financeiroRedirecionar(
+                $urlRetorno,
+                (int)$resumoExclusao['quantidade'] . ' parcelas excluídas com sucesso.'
+            );
+        }
+
         $stmt = $pdo->prepare("DELETE FROM financeiro_contas WHERE id = ? AND usuario_id = ?");
         $stmt->execute([$id, $usuarioId]);
-        if ($antes) {
-            registrarAuditoria($pdo, 'Financeiro', 'excluir', 'conta', $id, 'Excluiu a conta ' . $antes['descricao'], $antes, null);
-        }
+        registrarAuditoria($pdo, 'Financeiro', 'excluir', 'conta', $id, 'Excluiu a conta ' . $antes['descricao'], $antes, null);
         financeiroRedirecionar($urlRetorno, 'Conta excluída com sucesso.');
     }
 
