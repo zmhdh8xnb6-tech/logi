@@ -999,7 +999,16 @@ if ($tabelasDisponiveis) {
         }
     }
 
-    $totalPrevisto = array_sum(array_map('floatval', array_column($contas, 'valor_previsto')));
+    foreach ($contas as $conta) {
+        $pagaNoMesSelecionado = $conta['status'] === 'pago'
+            && !empty($conta['data_pagamento'])
+            && $conta['data_pagamento'] >= $inicioMes
+            && $conta['data_pagamento'] < $fimMes;
+
+        if ($conta['status'] !== 'pago' || $pagaNoMesSelecionado) {
+            $totalPrevisto += (float)$conta['valor_previsto'];
+        }
+    }
 
     $stmt = $pdo->prepare("
         SELECT COALESCE(SUM(valor_pago), 0)
@@ -1120,6 +1129,15 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                 value="<?= htmlspecialchars($mes) ?>"
                                 title="Escolher outro mês">
                         </form>
+
+                        <a
+                            href="financeiro.php?mes=<?= htmlspecialchars(date('Y-m')) ?>"
+                            class="btn btn-outline-primary"
+                            title="Voltar para o mês atual"
+                            aria-label="Voltar para o mês atual">
+                            <i class="bi bi-calendar-check"></i>
+                            <span class="d-none d-lg-inline">Hoje</span>
+                        </a>
 
                         <a
                             href="financeiro.php?mes=<?= htmlspecialchars($proximoMes) ?>"

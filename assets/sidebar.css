@@ -77,6 +77,11 @@
 
 .app-sidebar {
     transition: width 0.4s ease;
+    scrollbar-width: none;
+}
+
+.app-sidebar::-webkit-scrollbar {
+    display: none;
 }
 
 .app-main {
@@ -244,6 +249,7 @@
 
 .app-sidebar {
     width: 260px;
+    height: 100vh;
     min-height: 100vh;
     background: linear-gradient(180deg,
             #0f172a 0%,
@@ -256,6 +262,11 @@
     left: 0;
     top: 0;
     z-index: 1030;
+}
+
+.app-sidebar:not(.collapsed) {
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .sidebar-logo {
