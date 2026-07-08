@@ -933,6 +933,7 @@ $recorrenciasRecebimentosPorId = [];
 $alertasFinanceiros = [];
 
 if ($tabelasDisponiveis) {
+    financeiroSincronizarCartaoRecorrenciasAteMesAtual($pdo, $usuarioId);
     financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
     $mesAtualAlertas = date('Y-m');
     $proximoMesAlertas = date('Y-m', strtotime(date('Y-m-01') . ' +1 month'));
@@ -941,6 +942,7 @@ if ($tabelasDisponiveis) {
         financeiroSincronizarContasRecorrentes($pdo, $usuarioId, $mesSincronizar);
     }
 
+    financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
     financeiroSincronizarRecebimentosRecorrentes($pdo, $usuarioId, $mes);
     $alertasFinanceiros = financeiroListarAlertasVencimento($pdo, $usuarioId, 10);
 

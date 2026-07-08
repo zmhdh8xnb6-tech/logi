@@ -109,6 +109,7 @@ function financeiroColunaExiste(PDO $pdo, string $tabela, string $coluna): bool
         'financeiro_contas_recorrentes',
         'financeiro_cartoes',
         'financeiro_cartao_lancamentos',
+        'financeiro_cartao_recorrencias',
     ];
 
     if (!in_array($tabela, $tabelasPermitidas, true)) {
@@ -262,6 +263,147 @@ function financeiroVencimentoFatura(string $competencia, int $dia): string
     );
 
     return $inicioMes->format('Y-m-d');
+}
+
+function financeiroSincronizarCartaoRecorrencias(PDO $pdo, int $usuarioId, string $mes): void
+{
+    $mes = financeiroMesValido($mes);
+
+    if (
+        !financeiroTabelasDisponiveis(
+            $pdo,
+            ['financeiro_cartoes', 'financeiro_cartao_lancamentos', 'financeiro_cartao_recorrencias']
+        )
+        || !financeiroColunaExiste($pdo, 'financeiro_cartao_lancamentos', 'competencia_fatura')
+        || !financeiroColunaExiste($pdo, 'financeiro_cartao_lancamentos', 'recorrencia_id')
+    ) {
+        return;
+    }
+
+    $inicioMes = $mes . '-01';
+    $fimMes = date('Y-m-d', strtotime($inicioMes . ' +1 month'));
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT r.*
+            FROM financeiro_cartao_recorrencias r
+            INNER JOIN financeiro_cartoes c
+                ON c.id = r.cartao_id
+               AND c.usuario_id = r.usuario_id
+            WHERE r.usuario_id = ?
+              AND r.ativa = 1
+              AND c.ativo = 1
+              AND r.primeira_fatura < ?
+              AND (r.fim_mes IS NULL OR r.fim_mes >= ?)
+        ");
+        $stmt->execute([$usuarioId, $fimMes, $inicioMes]);
+        $recorrencias = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmtExiste = $pdo->prepare("
+            SELECT id
+            FROM financeiro_cartao_lancamentos
+            WHERE usuario_id = ?
+              AND recorrencia_id = ?
+              AND competencia_fatura = ?
+            LIMIT 1
+        ");
+        $stmtInserir = $pdo->prepare("
+            INSERT INTO financeiro_cartao_lancamentos (
+                usuario_id,
+                cartao_id,
+                data_compra,
+                competencia_fatura,
+                descricao,
+                valor,
+                status,
+                categoria_id,
+                recorrencia_id,
+                grupo_parcelamento,
+                parcela_numero,
+                parcelas_total
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 'aberto', ?, ?, NULL, NULL, NULL)
+        ");
+
+        foreach ($recorrencias as $recorrencia) {
+            $competenciaFatura = $mes . '-01';
+            $stmtExiste->execute([$usuarioId, $recorrencia['id'], $competenciaFatura]);
+
+            if ($stmtExiste->fetchColumn()) {
+                continue;
+            }
+
+            $diaCompra = (int)date('d', strtotime($recorrencia['data_compra']));
+            $dataCompra = financeiroVencimentoFatura($mes, $diaCompra);
+            $stmtInserir->execute([
+                $usuarioId,
+                $recorrencia['cartao_id'],
+                $dataCompra,
+                $competenciaFatura,
+                $recorrencia['descricao'],
+                $recorrencia['valor'],
+                $recorrencia['categoria_id'] ?? null,
+                $recorrencia['id'],
+            ]);
+        }
+    } catch (Throwable $e) {
+        // A recorrência do cartão não deve impedir a abertura do financeiro.
+    }
+}
+
+function financeiroSincronizarCartaoRecorrenciasAteMesAtual(PDO $pdo, int $usuarioId): void
+{
+    if (
+        !financeiroTabelasDisponiveis(
+            $pdo,
+            ['financeiro_cartoes', 'financeiro_cartao_lancamentos', 'financeiro_cartao_recorrencias']
+        )
+        || !financeiroColunaExiste($pdo, 'financeiro_cartao_lancamentos', 'competencia_fatura')
+        || !financeiroColunaExiste($pdo, 'financeiro_cartao_lancamentos', 'recorrencia_id')
+    ) {
+        return;
+    }
+
+    $mesAtual = date('Y-m');
+    $inicioMesAtual = $mesAtual . '-01';
+    $proximoMes = date('Y-m-d', strtotime($inicioMesAtual . ' +1 month'));
+
+    try {
+        $stmtLimparFuturas = $pdo->prepare("
+            DELETE FROM financeiro_cartao_lancamentos
+            WHERE usuario_id = ?
+              AND recorrencia_id IS NOT NULL
+              AND status = 'aberto'
+              AND competencia_fatura >= ?
+        ");
+        $stmtLimparFuturas->execute([$usuarioId, $proximoMes]);
+
+        $stmtPrimeira = $pdo->prepare("
+            SELECT MIN(primeira_fatura)
+            FROM financeiro_cartao_recorrencias
+            WHERE usuario_id = ?
+              AND ativa = 1
+              AND primeira_fatura <= ?
+        ");
+        $stmtPrimeira->execute([$usuarioId, $inicioMesAtual]);
+        $primeiraFatura = $stmtPrimeira->fetchColumn();
+
+        if (!$primeiraFatura) {
+            return;
+        }
+
+        $cursor = new DateTimeImmutable(date('Y-m-01', strtotime($primeiraFatura)));
+        $limite = new DateTimeImmutable($inicioMesAtual);
+        $contador = 0;
+
+        while ($cursor <= $limite && $contador < 240) {
+            financeiroSincronizarCartaoRecorrencias($pdo, $usuarioId, $cursor->format('Y-m'));
+            $cursor = $cursor->modify('+1 month');
+            $contador++;
+        }
+    } catch (Throwable $e) {
+        // A recorrência do cartão não deve impedir a abertura do financeiro.
+    }
 }
 
 function financeiroSincronizarFaturasCartoes(PDO $pdo, int $usuarioId): void

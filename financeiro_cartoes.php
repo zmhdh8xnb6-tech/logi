@@ -341,7 +341,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $descricao = trim($_POST['descricao'] ?? '');
         $valorInformado = $_POST['valor'] ?? '';
         $valor = financeiroValorEntrada($valorInformado);
-        $tipoCompra = ($_POST['tipo_compra'] ?? '') === 'parcelada' ? 'parcelada' : 'unica';
+        $tipoCompraInformado = $_POST['tipo_compra'] ?? '';
+        $tipoCompra = in_array($tipoCompraInformado, ['parcelada', 'recorrente'], true)
+            ? $tipoCompraInformado
+            : 'unica';
         $parcelasTotal = (int)($_POST['parcelas_total'] ?? 1);
         $categoriaId = (int)($_POST['categoria_id'] ?? 0);
         $dataMesFatura = DateTime::createFromFormat('!Y-m', $mesFaturaCompra);
@@ -379,6 +382,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             financeiroRedirecionar(
                 $urlRetorno,
                 'Execute o SQL da competência da fatura antes de lançar a compra.',
+                'danger'
+            );
+        }
+
+        if (
+            $tipoCompra === 'recorrente'
+            && (
+                !financeiroTabelasDisponiveis($pdo, ['financeiro_cartao_recorrencias'])
+                || !financeiroColunaExiste($pdo, 'financeiro_cartao_lancamentos', 'recorrencia_id')
+            )
+        ) {
+            financeiroRedirecionar(
+                $urlRetorno,
+                'Execute o SQL das compras recorrentes de cartão antes de lançar recorrências.',
                 'danger'
             );
         }
@@ -506,6 +523,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
         }
 
+        if ($tipoCompra === 'recorrente') {
+            $stmt = $pdo->prepare("
+                INSERT INTO financeiro_cartao_recorrencias (
+                    usuario_id,
+                    cartao_id,
+                    descricao,
+                    valor,
+                    categoria_id,
+                    data_compra,
+                    primeira_fatura,
+                    ativa
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+            ");
+            $stmt->execute([
+                $usuarioId,
+                $cartaoId,
+                $descricao,
+                $valor,
+                $categoriaId,
+                $dataCompra,
+                $competenciaFatura,
+            ]);
+            $recorrenciaId = (int)$pdo->lastInsertId();
+            financeiroSincronizarCartaoRecorrenciasAteMesAtual($pdo, $usuarioId);
+            registrarAuditoria(
+                $pdo,
+                'Financeiro - Cartões',
+                'criar_recorrencia',
+                'compra_cartao_recorrente',
+                $recorrenciaId,
+                'Criou a compra recorrente do cartão ' . $descricao,
+                null,
+                [
+                    'cartao_id' => $cartaoId,
+                    'data_compra' => $dataCompra,
+                    'primeira_fatura' => $mesFaturaCompra,
+                    'descricao' => $descricao,
+                    'valor' => $valor,
+                    'categoria_id' => $categoriaId,
+                ]
+            );
+            financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
+            financeiroRedirecionar(
+                urlCartoes($cartaoId, $mes),
+                'Compra recorrente cadastrada e lançada na primeira fatura.'
+            );
+        }
+
         $stmt = $pdo->prepare("
             INSERT INTO financeiro_cartao_lancamentos (
                 usuario_id,
@@ -538,7 +604,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'criar',
             'compra_cartao',
             $novoLancamentoId,
-            'Lançou a compra ' . $descricao,
+            $tipoCompra === 'recorrente'
+                ? 'Lançou a compra recorrente ' . $descricao
+                : 'Lançou a compra ' . $descricao,
             null,
             [
                 'cartao_id' => $cartaoId,
@@ -546,11 +614,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'competencia_fatura' => $competenciaFatura,
                 'descricao' => $descricao,
                 'valor' => $valor,
+                'tipo_compra' => $tipoCompra,
                 'categoria_id' => $categoriaId,
             ]
         );
         financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
-        financeiroRedirecionar(urlCartoes($cartaoId, $mes), 'Compra lançada e limite atualizado.');
+        financeiroRedirecionar(
+            urlCartoes($cartaoId, $mes),
+            $tipoCompra === 'recorrente'
+                ? 'Compra recorrente lançada nesta fatura.'
+                : 'Compra lançada e limite atualizado.'
+        );
     }
 
     if ($acao === 'categorizar_lancamento') {
@@ -781,6 +855,7 @@ $resumo = [
 $alertasFinanceiros = [];
 
 if ($tabelasDisponiveis) {
+    financeiroSincronizarCartaoRecorrenciasAteMesAtual($pdo, $usuarioId);
     financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
     $mesAtualAlertas = date('Y-m');
     $proximoMesAlertas = date('Y-m', strtotime(date('Y-m-01') . ' +1 month'));
@@ -789,6 +864,7 @@ if ($tabelasDisponiveis) {
         financeiroSincronizarContasRecorrentes($pdo, $usuarioId, $mesSincronizar);
     }
 
+    financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
     $alertasFinanceiros = financeiroListarAlertasVencimento($pdo, $usuarioId, 10);
     $stmt = $pdo->prepare("
         SELECT
@@ -993,6 +1069,14 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 value="<?= htmlspecialchars($mes) ?>"
                                 title="Escolher outro mês">
                         </form>
+
+                        <a
+                            href="<?= htmlspecialchars(urlCartoes($cartaoSelecionadoId, date('Y-m'))) ?>"
+                            class="btn btn-outline-primary"
+                            title="Voltar para a fatura atual"
+                            aria-label="Voltar para a fatura atual">
+                            <i class="bi bi-calendar-check"></i>
+                        </a>
 
                         <a
                             href="<?= htmlspecialchars(urlCartoes($cartaoSelecionadoId, $proximoMes)) ?>"
@@ -1376,6 +1460,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 <select class="form-select" name="tipo_compra" id="compraTipo">
                                     <option value="unica">À vista</option>
                                     <option value="parcelada">Parcelada</option>
+                                    <option value="recorrente">Recorrente</option>
                                 </select>
                             </div>
                             <div class="mb-3">
@@ -1438,6 +1523,9 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 <small class="text-muted">
                                     O valor total será dividido e o limite será comprometido pela compra inteira.
                                 </small>
+                            </div>
+                            <div class="alert alert-info d-none" id="avisoCompraRecorrente">
+                                Assinaturas e anuidades entram somente na fatura escolhida. Não comprometem meses futuros automaticamente.
                             </div>
                         </div>
                         <div class="modal-footer">
@@ -1691,6 +1779,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     document.getElementById('compraId').value = this.dataset.id;
                     document.getElementById('grupoTipoCompra').classList.add('d-none');
                     document.getElementById('campoParcelasCompra').classList.add('d-none');
+                    document.getElementById('avisoCompraRecorrente').classList.add('d-none');
                     document.getElementById('compraCartao').value = this.dataset.cartao;
                     document.getElementById('compraData').value = this.dataset.data;
                     document.getElementById('compraMesFaturaLabel').textContent = 'Fatura';
@@ -1714,15 +1803,22 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
             });
 
             function atualizarCamposParcelamentoCompra() {
-                const parcelada = document.getElementById('compraTipo').value === 'parcelada';
+                const tipoCompra = document.getElementById('compraTipo').value;
+                const parcelada = tipoCompra === 'parcelada';
+                const recorrente = tipoCompra === 'recorrente';
                 const campoParcelas = document.getElementById('campoParcelasCompra');
                 const parcelasTotal = document.getElementById('compraParcelasTotal');
+                const avisoRecorrente = document.getElementById('avisoCompraRecorrente');
 
                 campoParcelas.classList.toggle('d-none', !parcelada);
+                avisoRecorrente.classList.toggle('d-none', !recorrente);
                 parcelasTotal.required = parcelada;
                 document.getElementById('compraValorLabel').textContent = parcelada ?
                     'Valor total da compra' :
-                    'Valor da compra';
+                    (recorrente ? 'Valor da cobrança' : 'Valor da compra');
+                document.getElementById('compraMesFaturaLabel').textContent = recorrente ?
+                    'Fatura da cobrança' :
+                    'Primeira fatura';
 
                 if (parcelada) {
                     parcelasTotal.focus();
