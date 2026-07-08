@@ -926,6 +926,7 @@ $totalReceitas = 0.0;
 $totalRecebidoAtual = 0.0;
 $totalPrevisto = 0.0;
 $totalPago = 0.0;
+$totalPagoAtual = 0.0;
 $totalPendente = 0.0;
 $recorrenciasPorId = [];
 $recorrenciasRecebimentosPorId = [];
@@ -1000,6 +1001,18 @@ if ($tabelasDisponiveis) {
 
     $totalPrevisto = array_sum(array_map('floatval', array_column($contas, 'valor_previsto')));
 
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(valor_pago), 0)
+        FROM financeiro_contas
+        WHERE usuario_id = ?
+          AND status = 'pago'
+          AND data_pagamento >= ?
+          AND data_pagamento < ?
+          AND data_pagamento <= ?
+    ");
+    $stmt->execute([$usuarioId, $inicioMes, $fimMes, $hoje]);
+    $totalPagoAtual = (float)$stmt->fetchColumn();
+
     foreach ($contas as $conta) {
         if ($conta['status'] === 'pago') {
             $totalPago += (float)($conta['valor_pago'] ?? 0);
@@ -1009,7 +1022,7 @@ if ($tabelasDisponiveis) {
     }
 }
 
-$saldoAtual = $totalRecebidoAtual - $totalPago;
+$saldoAtual = $totalRecebidoAtual - $totalPagoAtual;
 $saldoPrevisto = $totalReceitas - $totalPrevisto;
 $nomesMeses = [
     1 => 'Janeiro',
