@@ -47,6 +47,28 @@ if (!function_exists('permissoesUsuario')) {
     }
 }
 
+if (!function_exists('definirTenantSessaoUsuario')) {
+    function definirTenantSessaoUsuario(array $usuario): void
+    {
+        $tenantDb = trim((string)($usuario['tenant_db'] ?? ''));
+
+        if ($tenantDb === '') {
+            unset(
+                $_SESSION['tenant_db'],
+                $_SESSION['tenant_host'],
+                $_SESSION['tenant_user'],
+                $_SESSION['tenant_pass']
+            );
+            return;
+        }
+
+        $_SESSION['tenant_db'] = $tenantDb;
+        $_SESSION['tenant_host'] = trim((string)($usuario['tenant_host'] ?? ''));
+        $_SESSION['tenant_user'] = trim((string)($usuario['tenant_user'] ?? ''));
+        $_SESSION['tenant_pass'] = (string)($usuario['tenant_pass'] ?? '');
+    }
+}
+
 if (!function_exists('atualizarSessaoUsuario')) {
     function atualizarSessaoUsuario(PDO $pdo): void
     {
@@ -79,6 +101,7 @@ if (!function_exists('atualizarSessaoUsuario')) {
             $_SESSION['usuario_email'] = $usuario['email'] ?? $_SESSION['usuario_email'] ?? '';
             $_SESSION['usuario_tipo'] = $usuario['tipo'] ?? 'usuario';
             $_SESSION['usuario_permissoes'] = json_decode($usuario['permissoes'] ?? '[]', true) ?: [];
+            definirTenantSessaoUsuario($usuario);
         } catch (Throwable $e) {
             return;
         }

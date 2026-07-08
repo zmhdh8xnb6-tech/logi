@@ -70,6 +70,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $_SESSION["usuario_email"] = $usuario["email"];
         $_SESSION["usuario_tipo"] = $usuario["tipo"] ?? "usuario";
         $_SESSION["usuario_permissoes"] = json_decode($usuario["permissoes"] ?? "[]", true) ?: [];
+        definirTenantSessaoUsuario($usuario);
 
         registrarAuditoria(
             $pdo,

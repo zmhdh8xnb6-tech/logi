@@ -6,6 +6,27 @@ exigirPermissao('usuarios');
 $mensagem = '';
 $tipoMensagem = 'success';
 $modulos = modulosSistema();
+$pdoUsuarios = $authPdo ?? $pdo;
+
+function usuariosTenantColunasDisponiveis(PDO $pdo): bool
+{
+    static $disponivel = null;
+
+    if ($disponivel !== null) {
+        return $disponivel;
+    }
+
+    try {
+        $stmt = $pdo->query("SHOW COLUMNS FROM usuarios LIKE 'tenant_db'");
+        $disponivel = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        $disponivel = false;
+    }
+
+    return $disponivel;
+}
+
+$tenantDisponivel = usuariosTenantColunasDisponiveis($pdoUsuarios);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
@@ -13,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $usuarioAntesAuditoria = null;
 
     if ($id > 0) {
-        $stmtAuditoria = $pdo->prepare("SELECT * FROM usuarios WHERE id = ?");
+        $stmtAuditoria = $pdoUsuarios->prepare("SELECT * FROM usuarios WHERE id = ?");
         $stmtAuditoria->execute([$id]);
         $usuarioAntesAuditoria = $stmtAuditoria->fetch(PDO::FETCH_ASSOC) ?: null;
     }
@@ -27,6 +48,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $senha = $_POST['senha'] ?? '';
     $permissoes = $_POST['permissoes'] ?? [];
     $permissoes = array_values(array_intersect($permissoes, array_keys($modulos)));
+    $tenantDb = $tenantDisponivel ? trim($_POST['tenant_db'] ?? '') : '';
+    $tenantHost = $tenantDisponivel ? trim($_POST['tenant_host'] ?? '') : '';
+    $tenantUser = $tenantDisponivel ? trim($_POST['tenant_user'] ?? '') : '';
+    $tenantPass = $tenantDisponivel ? (string)($_POST['tenant_pass'] ?? '') : '';
 
     if ($tipo === 'admin') {
         $permissoes = array_keys($modulos);
@@ -42,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $mensagem = 'Você não pode excluir a própria conta enquanto está conectado.';
             $tipoMensagem = 'danger';
         } else {
-            $stmtUsuario = $pdo->prepare("SELECT * FROM usuarios WHERE id = ?");
+            $stmtUsuario = $pdoUsuarios->prepare("SELECT * FROM usuarios WHERE id = ?");
             $stmtUsuario->execute([$id]);
             $usuarioExcluir = $stmtUsuario->fetch(PDO::FETCH_ASSOC);
 
@@ -53,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $podeExcluir = true;
 
                 if ($usuarioExcluir['tipo'] === 'admin') {
-                    $totalAdministradores = (int)$pdo
+                    $totalAdministradores = (int)$pdoUsuarios
                         ->query("SELECT COUNT(*) FROM usuarios WHERE tipo = 'admin'")
                         ->fetchColumn();
 
@@ -66,10 +91,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($podeExcluir) {
                     try {
-                        $stmtExcluir = $pdo->prepare("DELETE FROM usuarios WHERE id = ?");
+                        $stmtExcluir = $pdoUsuarios->prepare("DELETE FROM usuarios WHERE id = ?");
                         $stmtExcluir->execute([$id]);
                         registrarAuditoria(
-                            $pdo,
+                            $pdoUsuarios,
                             'Usuários',
                             'excluir',
                             'usuario',
@@ -96,16 +121,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $senhaHash = password_hash($senha, PASSWORD_DEFAULT);
 
-            $stmt = $pdo->prepare("
-                INSERT INTO usuarios (
-                    nome, email, telefone, departamento, senha,
-                    email_verificado, token_verificacao, tipo, ativo, permissoes
-                )
-                VALUES (?, ?, ?, ?, ?, 1, NULL, ?, ?, ?)
-            ");
-
-            try {
-                $stmt->execute([
+            if ($tenantDisponivel) {
+                $stmt = $pdoUsuarios->prepare("
+                    INSERT INTO usuarios (
+                        nome, email, telefone, departamento, senha,
+                        email_verificado, token_verificacao, tipo, ativo, permissoes,
+                        tenant_db, tenant_host, tenant_user, tenant_pass
+                    )
+                    VALUES (?, ?, ?, ?, ?, 1, NULL, ?, ?, ?, ?, ?, ?, ?)
+                ");
+                $parametrosCriar = [
                     $nome,
                     $email,
                     $telefone,
@@ -114,13 +139,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $tipo,
                     $ativo,
                     $permissoesJson,
-                ]);
+                    $tenantDb,
+                    $tenantHost,
+                    $tenantUser,
+                    $tenantPass,
+                ];
+            } else {
+                $stmt = $pdoUsuarios->prepare("
+                    INSERT INTO usuarios (
+                        nome, email, telefone, departamento, senha,
+                        email_verificado, token_verificacao, tipo, ativo, permissoes
+                    )
+                    VALUES (?, ?, ?, ?, ?, 1, NULL, ?, ?, ?)
+                ");
+                $parametrosCriar = [
+                    $nome,
+                    $email,
+                    $telefone,
+                    $departamento,
+                    $senhaHash,
+                    $tipo,
+                    $ativo,
+                    $permissoesJson,
+                ];
+            }
 
-                $novoUsuarioId = (int)$pdo->lastInsertId();
-                $stmtNovoUsuario = $pdo->prepare("SELECT * FROM usuarios WHERE id = ?");
+            try {
+                $stmt->execute($parametrosCriar);
+
+                $novoUsuarioId = (int)$pdoUsuarios->lastInsertId();
+                $stmtNovoUsuario = $pdoUsuarios->prepare("SELECT * FROM usuarios WHERE id = ?");
                 $stmtNovoUsuario->execute([$novoUsuarioId]);
                 registrarAuditoria(
-                    $pdo,
+                    $pdoUsuarios,
                     'Usuários',
                     'criar',
                     'usuario',
@@ -142,13 +193,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tipoMensagem = 'danger';
             } else {
                 $senhaHash = password_hash($senha, PASSWORD_DEFAULT);
-                $stmt = $pdo->prepare("
+                $setTenant = $tenantDisponivel
+                    ? ', tenant_db = ?, tenant_host = ?, tenant_user = ?, tenant_pass = ?'
+                    : '';
+                $stmt = $pdoUsuarios->prepare("
                     UPDATE usuarios
                     SET nome = ?, email = ?, telefone = ?, departamento = ?,
-                        tipo = ?, ativo = ?, permissoes = ?, senha = ?
+                        tipo = ?, ativo = ?, permissoes = ?, senha = ? {$setTenant}
                     WHERE id = ?
                 ");
-                $stmt->execute([
+                $parametrosEditar = [
                     $nome,
                     $email,
                     $telefone,
@@ -157,18 +211,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $ativo,
                     $permissoesJson,
                     $senhaHash,
-                    $id,
-                ]);
+                ];
+                if ($tenantDisponivel) {
+                    array_push($parametrosEditar, $tenantDb, $tenantHost, $tenantUser, $tenantPass);
+                }
+                $parametrosEditar[] = $id;
+                $stmt->execute($parametrosEditar);
                 $mensagem = 'Usuário atualizado com sucesso.';
             }
         } else {
-            $stmt = $pdo->prepare("
+            $setTenant = $tenantDisponivel
+                ? ', tenant_db = ?, tenant_host = ?, tenant_user = ?, tenant_pass = ?'
+                : '';
+            $stmt = $pdoUsuarios->prepare("
                 UPDATE usuarios
                 SET nome = ?, email = ?, telefone = ?, departamento = ?,
-                    tipo = ?, ativo = ?, permissoes = ?
+                    tipo = ?, ativo = ?, permissoes = ? {$setTenant}
                 WHERE id = ?
             ");
-            $stmt->execute([
+            $parametrosEditar = [
                 $nome,
                 $email,
                 $telefone,
@@ -176,18 +237,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tipo,
                 $ativo,
                 $permissoesJson,
-                $id,
-            ]);
+            ];
+            if ($tenantDisponivel) {
+                array_push($parametrosEditar, $tenantDb, $tenantHost, $tenantUser, $tenantPass);
+            }
+            $parametrosEditar[] = $id;
+            $stmt->execute($parametrosEditar);
             $mensagem = 'Usuário atualizado com sucesso.';
         }
 
         if ($mensagem === 'Usuário atualizado com sucesso.' && $usuarioAntesAuditoria) {
-            $stmtDepoisAuditoria = $pdo->prepare("SELECT * FROM usuarios WHERE id = ?");
+            $stmtDepoisAuditoria = $pdoUsuarios->prepare("SELECT * FROM usuarios WHERE id = ?");
             $stmtDepoisAuditoria->execute([$id]);
             $usuarioDepoisAuditoria = $stmtDepoisAuditoria->fetch(PDO::FETCH_ASSOC) ?: [];
             $mudancasAuditoria = auditoriaMudancas($usuarioAntesAuditoria, $usuarioDepoisAuditoria);
             registrarAuditoria(
-                $pdo,
+                $pdoUsuarios,
                 'Usuários',
                 'editar',
                 'usuario',
@@ -200,8 +265,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$stmt = $pdo->query("
+$stmt = $pdoUsuarios->query("
     SELECT id, nome, email, telefone, departamento, tipo, ativo, permissoes
+        " . ($tenantDisponivel ? ', tenant_db, tenant_host, tenant_user, tenant_pass' : '') . "
     FROM usuarios
     ORDER BY nome ASC
 ");
@@ -295,6 +361,37 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         </div>
                     </div>
 
+                    <?php if ($tenantDisponivel): ?>
+                        <div class="border rounded p-3 mb-3">
+                            <h6 class="mb-2">Banco separado</h6>
+                            <p class="text-muted small mb-3">
+                                Deixe em branco para usar o banco principal. Preencha para esse usuário acessar outra base.
+                            </p>
+                            <div class="row">
+                                <div class="col-md-3 mb-3">
+                                    <label class="form-label">Nome do banco</label>
+                                    <input type="text" name="tenant_db" class="form-control" autocomplete="off" placeholder="ex: u285798939_cliente1">
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="form-label">Host</label>
+                                    <input type="text" name="tenant_host" class="form-control" autocomplete="off" placeholder="localhost">
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="form-label">Usuário do banco</label>
+                                    <input type="text" name="tenant_user" class="form-control" autocomplete="off">
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="form-label">Senha do banco</label>
+                                    <input type="password" name="tenant_pass" class="form-control" autocomplete="new-password">
+                                </div>
+                            </div>
+                        </div>
+                    <?php else: ?>
+                        <div class="alert alert-warning py-2">
+                            Para usar banco separado por usuário, execute o SQL das colunas <code>tenant_*</code> na tabela <code>usuarios</code>.
+                        </div>
+                    <?php endif; ?>
+
                     <div class="d-flex gap-2 mb-3">
                         <button type="button" class="btn btn-sm btn-outline-primary btn-marcar-todas" data-target="#permissoesNovo">
                             Marcar todas
@@ -333,6 +430,7 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <th>Nome</th>
                                 <th>E-mail</th>
                                 <th>Tipo</th>
+                                <th>Base</th>
                                 <th>Status</th>
                                 <th class="text-end">Ações</th>
                             </tr>
@@ -346,6 +444,15 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <td><?= htmlspecialchars($usuario['nome']) ?></td>
                                     <td><?= htmlspecialchars($usuario['email']) ?></td>
                                     <td><?= $usuario['tipo'] === 'admin' ? 'Administrador' : 'Usuário' ?></td>
+                                    <td>
+                                        <?php if ($tenantDisponivel && !empty($usuario['tenant_db'])): ?>
+                                            <span class="badge bg-primary">
+                                                <?= htmlspecialchars($usuario['tenant_db']) ?>
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="badge bg-secondary">Principal</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td>
                                         <span class="badge <?= (int)$usuario['ativo'] === 1 ? 'bg-success' : 'bg-danger' ?>">
                                             <?= (int)$usuario['ativo'] === 1 ? 'Ativo' : 'Bloqueado' ?>
@@ -442,6 +549,33 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                             </div>
                                                         </div>
                                                     </div>
+
+                                                    <?php if ($tenantDisponivel): ?>
+                                                        <div class="border rounded p-3 mb-3">
+                                                            <h6 class="mb-2">Banco separado</h6>
+                                                            <p class="text-muted small mb-3">
+                                                                Deixe em branco para usar o banco principal. Preencha para esse usuário acessar outra base.
+                                                            </p>
+                                                            <div class="row">
+                                                                <div class="col-md-6 mb-3">
+                                                                    <label class="form-label">Nome do banco</label>
+                                                                    <input type="text" name="tenant_db" class="form-control" value="<?= htmlspecialchars($usuario['tenant_db'] ?? '') ?>" autocomplete="off">
+                                                                </div>
+                                                                <div class="col-md-6 mb-3">
+                                                                    <label class="form-label">Host</label>
+                                                                    <input type="text" name="tenant_host" class="form-control" value="<?= htmlspecialchars($usuario['tenant_host'] ?? '') ?>" autocomplete="off" placeholder="localhost">
+                                                                </div>
+                                                                <div class="col-md-6 mb-3">
+                                                                    <label class="form-label">Usuário do banco</label>
+                                                                    <input type="text" name="tenant_user" class="form-control" value="<?= htmlspecialchars($usuario['tenant_user'] ?? '') ?>" autocomplete="off">
+                                                                </div>
+                                                                <div class="col-md-6 mb-3">
+                                                                    <label class="form-label">Senha do banco</label>
+                                                                    <input type="password" name="tenant_pass" class="form-control" value="<?= htmlspecialchars($usuario['tenant_pass'] ?? '') ?>" autocomplete="new-password">
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    <?php endif; ?>
 
                                                     <hr>
 
