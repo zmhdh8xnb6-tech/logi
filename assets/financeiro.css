@@ -21,7 +21,7 @@
 
 .financeiro-navegacao-mes {
     display: grid;
-    grid-template-columns: 42px minmax(170px, 210px) 42px;
+    grid-template-columns: 42px minmax(170px, 240px) 42px 42px;
     align-items: center;
     gap: 8px;
 }
@@ -601,7 +601,7 @@
 
     .financeiro-navegacao-mes {
         width: 100%;
-        grid-template-columns: 42px minmax(0, 1fr) 42px;
+        grid-template-columns: 42px minmax(0, 1fr) 42px 42px;
     }
 
     .financeiro-periodo-form,

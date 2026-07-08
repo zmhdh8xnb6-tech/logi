@@ -1136,7 +1136,6 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             title="Voltar para o mês atual"
                             aria-label="Voltar para o mês atual">
                             <i class="bi bi-calendar-check"></i>
-                            <span class="d-none d-lg-inline">Hoje</span>
                         </a>
 
                         <a
