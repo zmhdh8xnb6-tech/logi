@@ -1299,6 +1299,18 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 </div>
 
                 <div class="d-flex flex-wrap gap-2">
+                    <div class="financeiro-busca-geral">
+                        <i class="bi bi-search"></i>
+                        <input
+                            type="search"
+                            class="form-control"
+                            id="buscaGeralFinanceiro"
+                            placeholder="Buscar no financeiro..."
+                            autocomplete="off"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalBuscaFinanceiro"
+                            aria-label="Buscar em todo o financeiro">
+                    </div>
                     <a href="financeiro_categorias.php" class="btn btn-outline-primary">
                         <i class="bi bi-tags"></i> Categorias
                     </a>
@@ -1968,6 +1980,39 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
             </div>
         </div>
 
+        <div class="modal fade" id="modalBuscaFinanceiro" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <div>
+                            <h5 class="modal-title">Busca geral</h5>
+                            <p class="text-muted small mb-0">Localize contas, recebimentos, metas e compras dos cartões</p>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="financeiro-campo-busca financeiro-busca-modal">
+                            <i class="bi bi-search"></i>
+                            <input
+                                type="search"
+                                class="form-control"
+                                id="buscaGeralFinanceiroModal"
+                                placeholder="Digite pelo menos 2 letras..."
+                                autocomplete="off"
+                                aria-label="Buscar em todo o financeiro">
+                        </div>
+                        <div class="financeiro-busca-status text-muted small mt-3" id="statusBuscaFinanceiro">
+                            Digite para buscar em todo o financeiro.
+                        </div>
+                        <div class="financeiro-busca-resultados mt-3" id="resultadosBuscaFinanceiro"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="modal fade" id="modalMovimentoMeta" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
@@ -2236,6 +2281,20 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
             const mesSelecionado = <?= json_encode($mes) ?>;
             const dataHoje = <?= json_encode(date('Y-m-d')) ?>;
 
+            function escaparHtml(valor) {
+                const mapa = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                };
+
+                return String(valor || '').replace(/[&<>"']/g, function(caractere) {
+                    return mapa[caractere];
+                });
+            }
+
             function normalizarTextoFiltro(texto) {
                 return String(texto || '')
                     .normalize('NFD')
@@ -2293,6 +2352,119 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 categoria: 'filtroCategoriaContas',
                 linhas: '.linha-filtro-conta',
                 vazio: 'semResultadoContas'
+            });
+
+            const campoBuscaGeral = document.getElementById('buscaGeralFinanceiro');
+            const campoBuscaGeralModal = document.getElementById('buscaGeralFinanceiroModal');
+            const modalBuscaFinanceiro = document.getElementById('modalBuscaFinanceiro');
+            const statusBuscaFinanceiro = document.getElementById('statusBuscaFinanceiro');
+            const resultadosBuscaFinanceiro = document.getElementById('resultadosBuscaFinanceiro');
+            let timerBuscaFinanceiro = null;
+            let controleBuscaFinanceiro = null;
+
+            function renderizarResultadosBuscaFinanceiro(grupos) {
+                if (!resultadosBuscaFinanceiro || !statusBuscaFinanceiro) {
+                    return;
+                }
+
+                if (!grupos || grupos.length === 0) {
+                    resultadosBuscaFinanceiro.innerHTML = '';
+                    statusBuscaFinanceiro.textContent = 'Nenhum resultado encontrado.';
+                    return;
+                }
+
+                statusBuscaFinanceiro.textContent = '';
+                resultadosBuscaFinanceiro.innerHTML = grupos.map(function(grupo) {
+                    const itens = (grupo.itens || []).map(function(item) {
+                        return `
+                            <a class="financeiro-busca-item" href="${escaparHtml(item.url)}">
+                                <span>
+                                    <strong>${escaparHtml(item.titulo)}</strong>
+                                    <small>${escaparHtml(item.detalhe)}</small>
+                                </span>
+                                <em>${escaparHtml(item.valor)}</em>
+                            </a>
+                        `;
+                    }).join('');
+
+                    return `
+                        <section class="financeiro-busca-grupo">
+                            <h6>${escaparHtml(grupo.titulo)}</h6>
+                            ${itens}
+                        </section>
+                    `;
+                }).join('');
+            }
+
+            function buscarFinanceiroGeral(termo) {
+                if (!statusBuscaFinanceiro || !resultadosBuscaFinanceiro) {
+                    return;
+                }
+
+                const busca = termo.trim();
+
+                if (busca.length < 2) {
+                    resultadosBuscaFinanceiro.innerHTML = '';
+                    statusBuscaFinanceiro.textContent = 'Digite pelo menos 2 letras para buscar.';
+                    return;
+                }
+
+                if (controleBuscaFinanceiro) {
+                    controleBuscaFinanceiro.abort();
+                }
+
+                controleBuscaFinanceiro = new AbortController();
+                statusBuscaFinanceiro.textContent = 'Buscando...';
+
+                fetch('financeiro_busca.php?q=' + encodeURIComponent(busca), {
+                        signal: controleBuscaFinanceiro.signal,
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    })
+                    .then(function(resposta) {
+                        if (!resposta.ok) {
+                            throw new Error('Erro na busca');
+                        }
+
+                        return resposta.json();
+                    })
+                    .then(function(dados) {
+                        renderizarResultadosBuscaFinanceiro(dados.grupos || []);
+                    })
+                    .catch(function(erro) {
+                        if (erro.name === 'AbortError') {
+                            return;
+                        }
+
+                        resultadosBuscaFinanceiro.innerHTML = '';
+                        statusBuscaFinanceiro.textContent = 'Não foi possível buscar agora.';
+                    });
+            }
+
+            function agendarBuscaFinanceiro() {
+                clearTimeout(timerBuscaFinanceiro);
+                timerBuscaFinanceiro = setTimeout(function() {
+                    buscarFinanceiroGeral(campoBuscaGeralModal?.value || '');
+                }, 250);
+            }
+
+            campoBuscaGeral?.addEventListener('focus', function() {
+                campoBuscaGeralModal.value = campoBuscaGeral.value;
+            });
+
+            modalBuscaFinanceiro?.addEventListener('shown.bs.modal', function() {
+                campoBuscaGeralModal.focus();
+                campoBuscaGeralModal.select();
+                buscarFinanceiroGeral(campoBuscaGeralModal.value || campoBuscaGeral?.value || '');
+            });
+
+            campoBuscaGeralModal?.addEventListener('input', function() {
+                if (campoBuscaGeral) {
+                    campoBuscaGeral.value = this.value;
+                }
+
+                agendarBuscaFinanceiro();
             });
 
             document.getElementById('mesFinanceiro').addEventListener('change', function() {

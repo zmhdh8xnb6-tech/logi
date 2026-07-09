@@ -71,6 +71,91 @@
     font-weight: 600;
 }
 
+.financeiro-busca-geral {
+    position: relative;
+    min-width: 250px;
+}
+
+.financeiro-busca-geral i,
+.financeiro-busca-modal i {
+    position: absolute;
+    top: 50%;
+    left: 13px;
+    z-index: 1;
+    color: #64748b;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.financeiro-busca-geral .form-control,
+.financeiro-busca-modal .form-control {
+    padding-left: 38px;
+}
+
+.financeiro-busca-modal {
+    position: relative;
+}
+
+.financeiro-busca-resultados {
+    display: grid;
+    gap: 14px;
+}
+
+.financeiro-busca-grupo {
+    overflow: hidden;
+    border: 1px solid #dbe2ea;
+    border-radius: 7px;
+}
+
+.financeiro-busca-grupo h6 {
+    margin: 0;
+    padding: 10px 14px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: .78rem;
+    font-weight: 700;
+}
+
+.financeiro-busca-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 12px 14px;
+    border-bottom: 1px solid #edf0f3;
+    color: #212529;
+    text-decoration: none;
+    transition: background-color .18s ease;
+}
+
+.financeiro-busca-item:last-child {
+    border-bottom: 0;
+}
+
+.financeiro-busca-item:hover {
+    background: #f3f7fb;
+    color: #212529;
+}
+
+.financeiro-busca-item strong,
+.financeiro-busca-item small {
+    display: block;
+}
+
+.financeiro-busca-item small {
+    margin-top: 2px;
+    color: #64748b;
+}
+
+.financeiro-busca-item em {
+    flex: 0 0 auto;
+    color: #172033;
+    font-style: normal;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
 .financeiro-resumo {
     display: grid;
     grid-template-columns: repeat(6, minmax(140px, 1fr));
@@ -682,6 +767,10 @@
     .financeiro-navegacao-mes {
         width: 100%;
         grid-template-columns: 42px minmax(0, 1fr) 42px 42px;
+    }
+
+    .financeiro-busca-geral {
+        width: 100%;
     }
 
     .financeiro-periodo-form,
