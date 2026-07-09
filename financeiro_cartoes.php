@@ -16,6 +16,19 @@ $tabelasDisponiveis = financeiroTabelasDisponiveis(
     $pdo,
     ['financeiro_cartoes', 'financeiro_cartao_lancamentos']
 );
+$preferenciasDisponiveis = financeiroTabelasDisponiveis($pdo, ['financeiro_preferencias']);
+$mostrarCartoesLoja = true;
+
+if ($preferenciasDisponiveis) {
+    $stmtPreferencias = $pdo->prepare("
+        SELECT mostrar_cartoes_loja
+        FROM financeiro_preferencias
+        WHERE usuario_id = ?
+    ");
+    $stmtPreferencias->execute([$usuarioId]);
+    $preferencias = $stmtPreferencias->fetch(PDO::FETCH_ASSOC);
+    $mostrarCartoesLoja = !$preferencias || (int)$preferencias['mostrar_cartoes_loja'] === 1;
+}
 $temCompetenciaFatura = $tabelasDisponiveis
     && financeiroColunaExiste($pdo, 'financeiro_cartao_lancamentos', 'competencia_fatura');
 $expressaoCompetenciaFatura = $temCompetenciaFatura
@@ -221,11 +234,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
     $id = (int)($_POST['id'] ?? 0);
 
+    if ($acao === 'salvar_preferencias') {
+        if (!$preferenciasDisponiveis) {
+            financeiroRedirecionar(
+                $urlRetorno,
+                'Execute o SQL das preferências financeiras antes de salvar.',
+                'danger'
+            );
+        }
+
+        $mostrarLojas = isset($_POST['mostrar_cartoes_loja']) ? 1 : 0;
+        $stmt = $pdo->prepare("
+            INSERT INTO financeiro_preferencias (
+                usuario_id,
+                mostrar_cartoes_loja,
+                atualizado_em
+            )
+            VALUES (?, ?, NOW())
+            ON DUPLICATE KEY UPDATE
+                mostrar_cartoes_loja = VALUES(mostrar_cartoes_loja),
+                atualizado_em = NOW()
+        ");
+        $stmt->execute([$usuarioId, $mostrarLojas]);
+        registrarAuditoria(
+            $pdo,
+            'Financeiro - Cartões',
+            'editar',
+            'preferencias_financeiro',
+            $usuarioId,
+            'Alterou as preferências dos cartões',
+            ['mostrar_cartoes_loja' => $mostrarCartoesLoja ? 1 : 0],
+            ['mostrar_cartoes_loja' => $mostrarLojas]
+        );
+        financeiroRedirecionar($urlRetorno, 'Preferências atualizadas com sucesso.');
+    }
+
     if ($acao === 'salvar_cartao') {
         $nome = trim($_POST['nome'] ?? '');
         $limiteInformado = $_POST['limite_total'] ?? '';
         $limite = financeiroValorEntrada($limiteInformado);
-        $tipo = ($_POST['tipo'] ?? '') === 'loja' ? 'loja' : 'credito';
+        $tipo = $mostrarCartoesLoja && ($_POST['tipo'] ?? '') === 'loja' ? 'loja' : 'credito';
         $diaVencimento = (int)($_POST['dia_vencimento'] ?? 0);
         $ativo = ($_POST['ativo'] ?? '1') === '0' ? 0 : 1;
 
@@ -844,6 +892,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $mensagem = financeiroObterMensagem();
 $cartoes = [];
+$cartoesVisiveis = [];
 $lancamentos = [];
 $cartaoSelecionado = null;
 $resumo = [
@@ -905,8 +954,18 @@ if ($tabelasDisponiveis) {
     }
     unset($cartao);
 
-    if (!$cartaoSelecionado && $cartoes !== []) {
-        $cartaoSelecionado = $cartoes[0];
+    $cartoesVisiveis = array_values(array_filter(
+        $cartoes,
+        static fn(array $cartao): bool => $mostrarCartoesLoja || $cartao['tipo'] !== 'loja'
+    ));
+
+    if (!$mostrarCartoesLoja && $cartaoSelecionado && $cartaoSelecionado['tipo'] === 'loja') {
+        $cartaoSelecionado = null;
+        $cartaoSelecionadoId = 0;
+    }
+
+    if (!$cartaoSelecionado && $cartoesVisiveis !== []) {
+        $cartaoSelecionado = $cartoesVisiveis[0];
         $cartaoSelecionadoId = (int)$cartaoSelecionado['id'];
     }
 
@@ -993,6 +1052,9 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     <p class="text-muted mb-0">Compras lançadas reduzem o limite disponível automaticamente</p>
                 </div>
                 <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalPreferenciasCartoes">
+                        <i class="bi bi-sliders"></i> Preferências
+                    </button>
                     <a href="financeiro_categorias.php" class="btn btn-outline-primary">
                         <i class="bi bi-tags"></i> Categorias
                     </a>
@@ -1017,6 +1079,12 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                 </div>
             <?php endif; ?>
 
+            <?php if ($tabelasDisponiveis && !$preferenciasDisponiveis): ?>
+                <div class="alert alert-warning">
+                    Execute o SQL das preferências financeiras para personalizar a exibição dos cartões.
+                </div>
+            <?php endif; ?>
+
             <?php if (!$tabelasDisponiveis): ?>
                 <div class="alert alert-warning">
                     <strong>Banco ainda não preparado.</strong>
@@ -1025,7 +1093,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
             <?php else: ?>
                 <?php include 'includes/financeiro_alertas.php'; ?>
 
-                <section class="financeiro-resumo financeiro-resumo-cartoes mb-4" aria-label="Resumo dos cartões">
+                <section class="financeiro-resumo financeiro-resumo-cartoes <?= $mostrarCartoesLoja ? '' : 'financeiro-resumo-cartoes-compacto' ?> mb-4" aria-label="Resumo dos cartões">
                     <div class="financeiro-metrica metrica-cartao">
                         <span>Limite cartões</span>
                         <strong><?= financeiroMoeda($resumo['credito_limite']) ?></strong>
@@ -1034,14 +1102,16 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                         <span>Disponível cartões</span>
                         <strong><?= financeiroMoeda($resumo['credito_disponivel']) ?></strong>
                     </div>
-                    <div class="financeiro-metrica metrica-loja">
-                        <span>Limite lojas</span>
-                        <strong><?= financeiroMoeda($resumo['loja_limite']) ?></strong>
-                    </div>
-                    <div class="financeiro-metrica <?= $resumo['loja_disponivel'] < 0 ? 'metrica-negativa' : 'metrica-pendente' ?>">
-                        <span>Disponível lojas</span>
-                        <strong><?= financeiroMoeda($resumo['loja_disponivel']) ?></strong>
-                    </div>
+                    <?php if ($mostrarCartoesLoja): ?>
+                        <div class="financeiro-metrica metrica-loja">
+                            <span>Limite lojas</span>
+                            <strong><?= financeiroMoeda($resumo['loja_limite']) ?></strong>
+                        </div>
+                        <div class="financeiro-metrica <?= $resumo['loja_disponivel'] < 0 ? 'metrica-negativa' : 'metrica-pendente' ?>">
+                            <span>Disponível lojas</span>
+                            <strong><?= financeiroMoeda($resumo['loja_disponivel']) ?></strong>
+                        </div>
+                    <?php endif; ?>
                 </section>
 
                 <div class="financeiro-filtros mb-4">
@@ -1093,7 +1163,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                         <div class="financeiro-painel-titulo">
                             <div>
                                 <h5 class="mb-1">Meus cartões</h5>
-                                <p class="text-muted small mb-0"><?= count($cartoes) ?> cadastrados</p>
+                                <p class="text-muted small mb-0"><?= count($cartoesVisiveis) ?> cadastrados</p>
                             </div>
                             <button type="button" class="btn btn-primary btn-sm" id="btnNovoCartao" data-bs-toggle="modal" data-bs-target="#modalCartao">
                                 <i class="bi bi-plus-lg"></i> Novo
@@ -1101,11 +1171,11 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                         </div>
 
                         <div class="financeiro-cartoes">
-                            <?php if ($cartoes === []): ?>
+                            <?php if ($cartoesVisiveis === []): ?>
                                 <div class="financeiro-vazio">Cadastre seu primeiro cartão.</div>
                             <?php endif; ?>
 
-                            <?php foreach ($cartoes as $cartao): ?>
+                            <?php foreach ($cartoesVisiveis as $cartao): ?>
                                 <a
                                     href="<?= htmlspecialchars(urlCartoes((int)$cartao['id'], $mes)) ?>"
                                     class="financeiro-cartao-item<?= (int)$cartao['id'] === $cartaoSelecionadoId ? ' ativo' : '' ?><?= (int)$cartao['ativo'] !== 1 ? ' cancelado' : '' ?>">
@@ -1155,6 +1225,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 <div class="d-flex flex-wrap gap-2">
                                     <a
                                         href="financeiro_fatura_imprimir.php?<?= http_build_query(['cartao' => $cartaoSelecionadoId, 'mes' => $mes]) ?>"
+                                        id="btnImprimirFatura"
                                         class="btn btn-outline-secondary btn-sm"
                                         title="Imprimir fatura">
                                         <i class="bi bi-printer"></i> Imprimir
@@ -1384,6 +1455,50 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
     </main>
 
     <?php if ($tabelasDisponiveis): ?>
+        <div class="modal fade" id="modalPreferenciasCartoes" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form method="post">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
+                        <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                        <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
+                        <input type="hidden" name="acao" value="salvar_preferencias">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Preferências dos cartões</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-check form-switch">
+                                <input
+                                    class="form-check-input"
+                                    type="checkbox"
+                                    role="switch"
+                                    name="mostrar_cartoes_loja"
+                                    id="mostrarCartoesLoja"
+                                    <?= $mostrarCartoesLoja ? 'checked' : '' ?>
+                                    <?= $preferenciasDisponiveis ? '' : 'disabled' ?>>
+                                <label class="form-check-label" for="mostrarCartoesLoja">
+                                    Mostrar cartões de lojas específicas
+                                </label>
+                            </div>
+                            <p class="text-muted small mb-0 mt-2">
+                                Desligando esta opção, os cartões de loja ficam ocultos do resumo, da lista e do cadastro.
+                            </p>
+                            <?php if (!$preferenciasDisponiveis): ?>
+                                <div class="alert alert-warning mt-3 mb-0">
+                                    Execute o SQL das preferências financeiras antes de salvar.
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary" <?= $preferenciasDisponiveis ? '' : 'disabled' ?>>Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <div class="modal fade" id="modalCartao" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
@@ -1413,7 +1528,9 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                     <label for="cartaoTipo" class="form-label">Tipo</label>
                                     <select class="form-select" name="tipo" id="cartaoTipo">
                                         <option value="credito">Cartão de crédito</option>
-                                        <option value="loja">Loja específica</option>
+                                        <?php if ($mostrarCartoesLoja): ?>
+                                            <option value="loja">Loja específica</option>
+                                        <?php endif; ?>
                                     </select>
                                 </div>
                             </div>
@@ -1690,8 +1807,40 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
             const filtroBuscaCompras = document.getElementById('filtroBuscaCompras');
             const filtroStatusCompras = document.getElementById('filtroStatusCompras');
             const filtroCategoriaCompras = document.getElementById('filtroCategoriaCompras');
+            const btnImprimirFatura = document.getElementById('btnImprimirFatura');
             const linhasCompras = Array.from(document.querySelectorAll('.linha-filtro-compra'));
             const semResultadoCompras = document.getElementById('semResultadoCompras');
+
+            function atualizarLinkImpressaoFatura() {
+                if (!btnImprimirFatura) {
+                    return;
+                }
+
+                const url = new URL(btnImprimirFatura.href, window.location.href);
+                const busca = filtroBuscaCompras?.value.trim() || '';
+                const status = filtroStatusCompras?.value || '';
+                const categoria = filtroCategoriaCompras?.value || '';
+
+                if (busca) {
+                    url.searchParams.set('busca', busca);
+                } else {
+                    url.searchParams.delete('busca');
+                }
+
+                if (status) {
+                    url.searchParams.set('status', status);
+                } else {
+                    url.searchParams.delete('status');
+                }
+
+                if (categoria) {
+                    url.searchParams.set('categoria', categoria);
+                } else {
+                    url.searchParams.delete('categoria');
+                }
+
+                btnImprimirFatura.href = url.toString();
+            }
 
             function filtrarCompras() {
                 if (!filtroBuscaCompras || !filtroStatusCompras || !filtroCategoriaCompras || !semResultadoCompras) {
@@ -1714,11 +1863,13 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                 });
 
                 semResultadoCompras.classList.toggle('d-none', visiveis > 0);
+                atualizarLinkImpressaoFatura();
             }
 
             filtroBuscaCompras?.addEventListener('input', filtrarCompras);
             filtroStatusCompras?.addEventListener('change', filtrarCompras);
             filtroCategoriaCompras?.addEventListener('change', filtrarCompras);
+            atualizarLinkImpressaoFatura();
 
             document.getElementById('mesCartao').addEventListener('change', function() {
                 document.getElementById('formMesCartao').submit();

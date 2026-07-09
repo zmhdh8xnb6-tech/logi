@@ -8,6 +8,9 @@ $usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
 $cartaoId = (int)($_GET['cartao'] ?? 0);
 $mes = financeiroMesValido($_GET['mes'] ?? null);
 $periodo = max(1, min(12, (int)($_GET['periodo'] ?? 1)));
+$filtroBusca = trim((string)($_GET['busca'] ?? ''));
+$filtroStatus = (string)($_GET['status'] ?? '');
+$filtroCategoria = (string)($_GET['categoria'] ?? '');
 $inicioMes = $mes . '-01';
 $inicioPeriodo = date(
     'Y-m-d',
@@ -41,6 +44,14 @@ $expressaoCompetencia = $temCompetenciaFatura
     ? "COALESCE(l.competencia_fatura, DATE_FORMAT(l.data_compra, '%Y-%m-01'))"
     : "DATE_FORMAT(l.data_compra, '%Y-%m-01')";
 $categoriasDisponiveis = $tabelasDisponiveis && financeiroCategoriasDisponiveis($pdo);
+$categoriasPorId = [];
+
+if ($categoriasDisponiveis) {
+    foreach (financeiroListarCategorias($pdo, $usuarioId, 'despesa', false) as $categoria) {
+        $categoriasPorId[(int)$categoria['id']] = $categoria;
+    }
+}
+
 $selectCategoria = $categoriasDisponiveis
     ? "COALESCE(c.nome, 'Sem categoria')"
     : "'Sem categoria'";
@@ -49,8 +60,43 @@ $joinCategoria = $categoriasDisponiveis
            ON c.id = l.categoria_id
           AND c.usuario_id = l.usuario_id'
     : '';
+$filtrosAplicados = [];
 
 if ($cartao) {
+    $whereFiltros = '';
+    $paramsLancamentos = [$cartaoId, $usuarioId, $inicioPeriodo, $fimMes];
+
+    if ($filtroBusca !== '') {
+        $whereFiltros .= "
+          AND (
+              l.descricao LIKE ?
+              OR DATE_FORMAT(l.data_compra, '%d/%m/%Y') LIKE ?
+              OR {$selectCategoria} LIKE ?
+          )
+        ";
+        $buscaLike = '%' . $filtroBusca . '%';
+        $paramsLancamentos[] = $buscaLike;
+        $paramsLancamentos[] = $buscaLike;
+        $paramsLancamentos[] = $buscaLike;
+        $filtrosAplicados[] = 'Busca: ' . $filtroBusca;
+    }
+
+    if ($categoriasDisponiveis && $filtroCategoria !== '') {
+        if ($filtroCategoria === 'sem_categoria') {
+            $whereFiltros .= "
+              AND (l.categoria_id IS NULL OR l.categoria_id = 0)
+            ";
+            $filtrosAplicados[] = 'Categoria: Sem categoria';
+        } elseif (ctype_digit($filtroCategoria)) {
+            $whereFiltros .= "
+              AND l.categoria_id = ?
+            ";
+            $categoriaIdFiltro = (int)$filtroCategoria;
+            $paramsLancamentos[] = $categoriaIdFiltro;
+            $filtrosAplicados[] = 'Categoria: ' . ($categoriasPorId[$categoriaIdFiltro]['nome'] ?? 'Selecionada');
+        }
+    }
+
     $stmt = $pdo->prepare("
         SELECT
             l.*,
@@ -62,9 +108,10 @@ if ($cartao) {
           AND l.usuario_id = ?
           AND {$expressaoCompetencia} >= ?
           AND {$expressaoCompetencia} < ?
+          {$whereFiltros}
         ORDER BY l.data_compra, l.id
     ");
-    $stmt->execute([$cartaoId, $usuarioId, $inicioPeriodo, $fimMes]);
+    $stmt->execute($paramsLancamentos);
     $lancamentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -94,6 +141,32 @@ $nomePeriodo = $periodo === 1
 $vencimento = $cartao && !empty($cartao['dia_vencimento'])
     ? financeiroVencimentoFatura($mes, (int)$cartao['dia_vencimento'])
     : null;
+
+if (in_array($filtroStatus, ['aberto', 'atrasado', 'pago'], true)) {
+    $lancamentos = array_values(array_filter(
+        $lancamentos,
+        static function (array $lancamento) use ($cartao, $filtroStatus): bool {
+            if ($lancamento['status'] === 'pago') {
+                return $filtroStatus === 'pago';
+            }
+
+            $atrasado = !empty($cartao['dia_vencimento'])
+                && financeiroVencimentoFatura(
+                    $lancamento['competencia_relatorio'],
+                    (int)$cartao['dia_vencimento']
+                ) < date('Y-m-d');
+
+            return $filtroStatus === ($atrasado ? 'atrasado' : 'aberto');
+        }
+    ));
+
+    $filtrosAplicados[] = 'Situação: ' . [
+        'aberto' => 'Em aberto',
+        'atrasado' => 'Atrasado',
+        'pago' => 'Pago',
+    ][$filtroStatus];
+}
+
 $totalFatura = array_sum(array_map('floatval', array_column($lancamentos, 'valor')));
 $totalAberto = array_sum(array_map(
     static fn(array $lancamento): float => $lancamento['status'] === 'aberto'
@@ -164,6 +237,15 @@ if ($lancamentos === []) {
             </a>
             <form method="get" class="financeiro-impressao-filtros" id="formPeriodoFatura">
                 <input type="hidden" name="cartao" value="<?= $cartaoId ?>">
+                <?php if ($filtroBusca !== ''): ?>
+                    <input type="hidden" name="busca" value="<?= htmlspecialchars($filtroBusca) ?>">
+                <?php endif; ?>
+                <?php if ($filtroStatus !== ''): ?>
+                    <input type="hidden" name="status" value="<?= htmlspecialchars($filtroStatus) ?>">
+                <?php endif; ?>
+                <?php if ($filtroCategoria !== ''): ?>
+                    <input type="hidden" name="categoria" value="<?= htmlspecialchars($filtroCategoria) ?>">
+                <?php endif; ?>
                 <label for="mesFaturaRelatorio" class="visually-hidden">Mês final</label>
                 <input
                     type="month"
@@ -193,6 +275,11 @@ if ($lancamentos === []) {
                     <span class="financeiro-impressao-marca">LOGI | CONTROLE FINANCEIRO</span>
                     <h1><?= $periodo === 1 ? 'Fatura do cartão' : 'Relatório de faturas' ?></h1>
                     <p><?= htmlspecialchars($cartao['nome']) ?></p>
+                    <?php if ($filtrosAplicados !== []): ?>
+                        <p class="small mb-0">
+                            Filtros: <?= htmlspecialchars(implode(' | ', $filtrosAplicados)) ?>
+                        </p>
+                    <?php endif; ?>
                 </div>
                 <span class="badge bg-<?= htmlspecialchars($classeStatus) ?>">
                     <?= htmlspecialchars($statusFatura) ?>

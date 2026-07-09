@@ -14,6 +14,7 @@ $tabelasDisponiveis = financeiroTabelasDisponiveis(
     $pdo,
     ['financeiro_recebimentos', 'financeiro_contas']
 );
+$metasDisponiveis = financeiroTabelasDisponiveis($pdo, ['financeiro_metas', 'financeiro_meta_movimentos']);
 $categoriasDisponiveis = $tabelasDisponiveis && financeiroCategoriasDisponiveis($pdo);
 $categoriasReceita = [];
 $categoriasDespesa = [];
@@ -46,6 +47,195 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $acao = $_POST['acao'] ?? '';
     $id = (int)($_POST['id'] ?? 0);
+
+    if ($acao === 'salvar_meta') {
+        if (!$metasDisponiveis) {
+            financeiroRedirecionar($urlRetorno, 'Execute o SQL das metas financeiras antes de salvar.', 'danger');
+        }
+
+        $descricao = trim($_POST['descricao'] ?? '');
+        $valorAlvoInformado = $_POST['valor_alvo'] ?? '';
+        $valorAlvo = financeiroValorEntrada($valorAlvoInformado);
+        $prazo = trim($_POST['prazo'] ?? '');
+        $valorMensalInformado = $_POST['valor_mensal_planejado'] ?? '';
+        $valorMensal = trim($valorMensalInformado) === ''
+            ? null
+            : financeiroValorEntrada($valorMensalInformado);
+
+        if (
+            $descricao === ''
+            || !financeiroValorValido($valorAlvoInformado)
+            || $valorAlvo <= 0
+            || ($prazo !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $prazo))
+            || ($valorMensalInformado !== '' && !financeiroValorValido($valorMensalInformado))
+        ) {
+            financeiroRedirecionar($urlRetorno, 'Preencha os dados da meta corretamente.', 'danger');
+        }
+
+        $prazo = $prazo === '' ? null : $prazo;
+
+        if ($id > 0) {
+            $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_metas WHERE id = ? AND usuario_id = ?");
+            $stmtAntes->execute([$id, $usuarioId]);
+            $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+            if (!$antes) {
+                financeiroRedirecionar($urlRetorno, 'Meta financeira não encontrada.', 'danger');
+            }
+
+            $stmt = $pdo->prepare("
+                UPDATE financeiro_metas
+                SET descricao = ?, valor_alvo = ?, prazo = ?, valor_mensal_planejado = ?
+                WHERE id = ? AND usuario_id = ?
+            ");
+            $stmt->execute([$descricao, $valorAlvo, $prazo, $valorMensal, $id, $usuarioId]);
+            registrarAuditoria(
+                $pdo,
+                'Financeiro',
+                'editar',
+                'meta_financeira',
+                $id,
+                'Alterou a meta financeira ' . $descricao,
+                $antes,
+                [
+                    'descricao' => $descricao,
+                    'valor_alvo' => $valorAlvo,
+                    'prazo' => $prazo,
+                    'valor_mensal_planejado' => $valorMensal,
+                ]
+            );
+            financeiroRedirecionar($urlRetorno, 'Meta financeira atualizada com sucesso.');
+        }
+
+        $stmt = $pdo->prepare("
+            INSERT INTO financeiro_metas (
+                usuario_id,
+                descricao,
+                valor_alvo,
+                prazo,
+                valor_mensal_planejado,
+                status
+            )
+            VALUES (?, ?, ?, ?, ?, 'andamento')
+        ");
+        $stmt->execute([$usuarioId, $descricao, $valorAlvo, $prazo, $valorMensal]);
+        $novaMetaId = (int)$pdo->lastInsertId();
+        registrarAuditoria(
+            $pdo,
+            'Financeiro',
+            'criar',
+            'meta_financeira',
+            $novaMetaId,
+            'Cadastrou a meta financeira ' . $descricao,
+            null,
+            [
+                'descricao' => $descricao,
+                'valor_alvo' => $valorAlvo,
+                'prazo' => $prazo,
+                'valor_mensal_planejado' => $valorMensal,
+            ]
+        );
+        financeiroRedirecionar($urlRetorno, 'Meta financeira cadastrada com sucesso.');
+    }
+
+    if ($acao === 'movimentar_meta') {
+        if (!$metasDisponiveis) {
+            financeiroRedirecionar($urlRetorno, 'Execute o SQL das metas financeiras antes de movimentar.', 'danger');
+        }
+
+        $tipo = ($_POST['tipo_movimento'] ?? '') === 'retirada' ? 'retirada' : 'deposito';
+        $valorInformado = $_POST['valor'] ?? '';
+        $valor = financeiroValorEntrada($valorInformado);
+        $dataMovimento = trim($_POST['data_movimento'] ?? '');
+        $observacao = trim($_POST['observacao'] ?? '');
+
+        if ($id <= 0 || !financeiroValorValido($valorInformado) || $valor <= 0 || $dataMovimento === '') {
+            financeiroRedirecionar($urlRetorno, 'Informe corretamente a movimentação da meta.', 'danger');
+        }
+
+        $stmtMeta = $pdo->prepare("
+            SELECT m.*,
+                   COALESCE(SUM(CASE WHEN mm.tipo = 'deposito' THEN mm.valor ELSE -mm.valor END), 0) AS saldo_atual
+            FROM financeiro_metas m
+            LEFT JOIN financeiro_meta_movimentos mm
+                ON mm.meta_id = m.id
+               AND mm.usuario_id = m.usuario_id
+            WHERE m.id = ?
+              AND m.usuario_id = ?
+            GROUP BY m.id
+        ");
+        $stmtMeta->execute([$id, $usuarioId]);
+        $meta = $stmtMeta->fetch(PDO::FETCH_ASSOC);
+
+        if (!$meta) {
+            financeiroRedirecionar($urlRetorno, 'Meta financeira não encontrada.', 'danger');
+        }
+
+        if ($tipo === 'retirada' && $valor > (float)$meta['saldo_atual']) {
+            financeiroRedirecionar($urlRetorno, 'A retirada não pode ser maior que o valor guardado.', 'danger');
+        }
+
+        $stmt = $pdo->prepare("
+            INSERT INTO financeiro_meta_movimentos (
+                usuario_id,
+                meta_id,
+                tipo,
+                valor,
+                data_movimento,
+                observacao
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([$usuarioId, $id, $tipo, $valor, $dataMovimento, $observacao]);
+
+        $novoSaldo = (float)$meta['saldo_atual'] + ($tipo === 'deposito' ? $valor : -$valor);
+        if ($novoSaldo >= (float)$meta['valor_alvo']) {
+            $pdo->prepare("UPDATE financeiro_metas SET status = 'concluida' WHERE id = ? AND usuario_id = ?")
+                ->execute([$id, $usuarioId]);
+        } elseif ($meta['status'] === 'concluida') {
+            $pdo->prepare("UPDATE financeiro_metas SET status = 'andamento' WHERE id = ? AND usuario_id = ?")
+                ->execute([$id, $usuarioId]);
+        }
+
+        registrarAuditoria(
+            $pdo,
+            'Financeiro',
+            $tipo === 'deposito' ? 'depositar' : 'retirar',
+            'meta_financeira',
+            $id,
+            ($tipo === 'deposito' ? 'Depositou em ' : 'Retirou de ') . $meta['descricao'],
+            ['saldo_anterior' => (float)$meta['saldo_atual']],
+            ['valor' => $valor, 'saldo_atual' => $novoSaldo]
+        );
+        financeiroRedirecionar($urlRetorno, $tipo === 'deposito' ? 'Depósito registrado.' : 'Retirada registrada.');
+    }
+
+    if ($acao === 'excluir_meta') {
+        if (!$metasDisponiveis) {
+            financeiroRedirecionar($urlRetorno, 'A tabela de metas financeiras não foi encontrada.', 'danger');
+        }
+
+        $stmtAntes = $pdo->prepare("SELECT * FROM financeiro_metas WHERE id = ? AND usuario_id = ?");
+        $stmtAntes->execute([$id, $usuarioId]);
+        $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("DELETE FROM financeiro_meta_movimentos WHERE meta_id = ? AND usuario_id = ?")
+                ->execute([$id, $usuarioId]);
+            $pdo->prepare("DELETE FROM financeiro_metas WHERE id = ? AND usuario_id = ?")
+                ->execute([$id, $usuarioId]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            financeiroRedirecionar($urlRetorno, 'Não foi possível excluir a meta financeira.', 'danger');
+        }
+
+        if ($antes) {
+            registrarAuditoria($pdo, 'Financeiro', 'excluir', 'meta_financeira', $id, 'Excluiu a meta financeira ' . $antes['descricao'], $antes, null);
+        }
+        financeiroRedirecionar($urlRetorno, 'Meta financeira excluída com sucesso.');
+    }
 
     if ($acao === 'salvar_recebimento') {
         if (!$categoriasDisponiveis) {
@@ -922,17 +1112,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $mensagem = financeiroObterMensagem();
 $recebimentos = [];
 $contas = [];
+$metas = [];
 $totalReceitas = 0.0;
 $totalRecebidoAtual = 0.0;
 $totalPrevisto = 0.0;
 $totalPago = 0.0;
 $totalPagoAtual = 0.0;
 $totalPendente = 0.0;
+$totalReservado = 0.0;
+$totalMovimentoMetasAtual = 0.0;
 $recorrenciasPorId = [];
 $recorrenciasRecebimentosPorId = [];
 $alertasFinanceiros = [];
 
 if ($tabelasDisponiveis) {
+    $hoje = date('Y-m-d');
     financeiroSincronizarCartaoRecorrenciasAteMesAtual($pdo, $usuarioId);
     financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
     $mesAtualAlertas = date('Y-m');
@@ -992,8 +1186,39 @@ if ($tabelasDisponiveis) {
     $stmt->execute([$usuarioId, $inicioMes, $fimMes]);
     $contas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    if ($metasDisponiveis) {
+        $stmt = $pdo->prepare("
+            SELECT m.*,
+                   COALESCE(SUM(CASE WHEN mm.tipo = 'deposito' THEN mm.valor ELSE -mm.valor END), 0) AS saldo_atual,
+                   MAX(mm.data_movimento) AS ultima_movimentacao
+            FROM financeiro_metas m
+            LEFT JOIN financeiro_meta_movimentos mm
+                ON mm.meta_id = m.id
+               AND mm.usuario_id = m.usuario_id
+            WHERE m.usuario_id = ?
+            GROUP BY m.id
+            ORDER BY FIELD(m.status, 'andamento', 'pausada', 'concluida'), m.prazo IS NULL, m.prazo, m.descricao
+        ");
+        $stmt->execute([$usuarioId]);
+        $metas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($metas as $meta) {
+            $totalReservado += max(0, (float)$meta['saldo_atual']);
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT COALESCE(SUM(CASE WHEN tipo = 'deposito' THEN valor ELSE -valor END), 0)
+            FROM financeiro_meta_movimentos
+            WHERE usuario_id = ?
+              AND data_movimento >= ?
+              AND data_movimento < ?
+              AND data_movimento <= ?
+        ");
+        $stmt->execute([$usuarioId, $inicioMes, $fimMes, $hoje]);
+        $totalMovimentoMetasAtual = (float)$stmt->fetchColumn();
+    }
+
     $totalReceitas = array_sum(array_map('floatval', array_column($recebimentos, 'valor')));
-    $hoje = date('Y-m-d');
 
     foreach ($recebimentos as $recebimento) {
         if ($recebimento['data_recebimento'] <= $hoje) {
@@ -1033,7 +1258,7 @@ if ($tabelasDisponiveis) {
     }
 }
 
-$saldoAtual = $totalRecebidoAtual - $totalPagoAtual;
+$saldoAtual = $totalRecebidoAtual - $totalPagoAtual - $totalMovimentoMetasAtual;
 $saldoPrevisto = $totalReceitas - $totalPrevisto;
 $nomesMeses = [
     1 => 'Janeiro',
@@ -1171,6 +1396,127 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                         <span>Saldo previsto</span>
                         <strong><?= financeiroMoeda($saldoPrevisto) ?></strong>
                     </div>
+                    <div class="financeiro-metrica metrica-meta">
+                        <span>Reservado em metas</span>
+                        <strong><?= financeiroMoeda($totalReservado) ?></strong>
+                    </div>
+                </section>
+
+                <section class="financeiro-painel mb-4">
+                    <div class="financeiro-painel-titulo">
+                        <div>
+                            <h5 class="mb-1">Metas financeiras</h5>
+                            <p class="text-muted small mb-0">Cofrinhos para reservar dinheiro com objetivo definido</p>
+                        </div>
+                        <button
+                            type="button"
+                            class="btn btn-primary"
+                            id="btnNovaMeta"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalMeta"
+                            <?= $metasDisponiveis ? '' : 'disabled title="Execute o SQL das metas financeiras"' ?>>
+                            <i class="bi bi-plus-lg"></i> Nova meta
+                        </button>
+                    </div>
+
+                    <?php if (!$metasDisponiveis): ?>
+                        <div class="alert alert-warning mb-0">
+                            Execute o SQL das metas financeiras para usar os cofrinhos.
+                        </div>
+                    <?php elseif ($metas === []): ?>
+                        <div class="financeiro-vazio">Nenhuma meta financeira cadastrada.</div>
+                    <?php else: ?>
+                        <div class="financeiro-metas-grid">
+                            <?php foreach ($metas as $meta):
+                                $saldoMeta = max(0, (float)$meta['saldo_atual']);
+                                $valorAlvo = max(0.01, (float)$meta['valor_alvo']);
+                                $percentual = min(100, round(($saldoMeta / $valorAlvo) * 100, 1));
+                                $faltante = max(0, $valorAlvo - $saldoMeta);
+                                $mesesRestantes = null;
+                                $sugestaoMensal = (float)($meta['valor_mensal_planejado'] ?? 0);
+
+                                if ($sugestaoMensal <= 0 && !empty($meta['prazo'])) {
+                                    $hojeMeta = new DateTimeImmutable('today');
+                                    $prazoMeta = new DateTimeImmutable($meta['prazo']);
+                                    $mesesRestantes = max(
+                                        1,
+                                        ((int)$hojeMeta->diff($prazoMeta)->format('%r%y') * 12)
+                                            + (int)$hojeMeta->diff($prazoMeta)->format('%r%m')
+                                            + 1
+                                    );
+                                    $sugestaoMensal = $faltante / $mesesRestantes;
+                                }
+                            ?>
+                                <article class="financeiro-meta-card">
+                                    <div class="financeiro-meta-topo">
+                                        <div>
+                                            <h6><?= htmlspecialchars($meta['descricao']) ?></h6>
+                                            <span class="badge <?= $meta['status'] === 'concluida' ? 'bg-success' : ($meta['status'] === 'pausada' ? 'bg-secondary' : 'bg-primary') ?>">
+                                                <?= $meta['status'] === 'concluida' ? 'Concluída' : ($meta['status'] === 'pausada' ? 'Pausada' : 'Em andamento') ?>
+                                            </span>
+                                        </div>
+                                        <strong><?= number_format($percentual, 1, ',', '.') ?>%</strong>
+                                    </div>
+                                    <div class="progress financeiro-meta-progresso" role="progressbar" aria-valuenow="<?= $percentual ?>" aria-valuemin="0" aria-valuemax="100">
+                                        <div class="progress-bar" style="width: <?= $percentual ?>%"></div>
+                                    </div>
+                                    <div class="financeiro-meta-valores">
+                                        <span>Guardado <strong><?= financeiroMoeda($saldoMeta) ?></strong></span>
+                                        <span>Meta <strong><?= financeiroMoeda((float)$meta['valor_alvo']) ?></strong></span>
+                                        <span>Falta <strong><?= financeiroMoeda($faltante) ?></strong></span>
+                                    </div>
+                                    <div class="financeiro-meta-info">
+                                        <span>Prazo: <?= financeiroData($meta['prazo']) ?></span>
+                                        <span>Sugestão mensal: <?= $sugestaoMensal > 0 ? financeiroMoeda($sugestaoMensal) : '-' ?></span>
+                                    </div>
+                                    <div class="financeiro-meta-acoes">
+                                        <button
+                                            type="button"
+                                            class="btn btn-outline-success btn-sm btn-movimentar-meta"
+                                            data-id="<?= (int)$meta['id'] ?>"
+                                            data-descricao="<?= htmlspecialchars($meta['descricao']) ?>"
+                                            data-tipo="deposito"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#modalMovimentoMeta">
+                                            <i class="bi bi-plus-lg"></i> Depósito
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="btn btn-outline-warning btn-sm btn-movimentar-meta"
+                                            data-id="<?= (int)$meta['id'] ?>"
+                                            data-descricao="<?= htmlspecialchars($meta['descricao']) ?>"
+                                            data-tipo="retirada"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#modalMovimentoMeta">
+                                            <i class="bi bi-dash-lg"></i> Retirada
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="btn btn-outline-primary btn-sm btn-editar-meta"
+                                            data-id="<?= (int)$meta['id'] ?>"
+                                            data-descricao="<?= htmlspecialchars($meta['descricao']) ?>"
+                                            data-valor-alvo="<?= number_format((float)$meta['valor_alvo'], 2, ',', '.') ?>"
+                                            data-prazo="<?= htmlspecialchars($meta['prazo'] ?? '') ?>"
+                                            data-valor-mensal="<?= $meta['valor_mensal_planejado'] !== null ? number_format((float)$meta['valor_mensal_planejado'], 2, ',', '.') : '' ?>"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#modalMeta">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="btn btn-outline-danger btn-sm btn-excluir-financeiro"
+                                            data-acao="excluir_meta"
+                                            data-id="<?= (int)$meta['id'] ?>"
+                                            data-descricao="<?= htmlspecialchars($meta['descricao']) ?>"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#modalExcluirFinanceiro">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </article>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
                 </section>
 
                 <section class="financeiro-painel mb-4">
@@ -1578,6 +1924,91 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
     </main>
 
     <?php if ($tabelasDisponiveis): ?>
+        <div class="modal fade" id="modalMeta" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form method="post" class="financeiro-form" novalidate>
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
+                        <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
+                        <input type="hidden" name="acao" value="salvar_meta">
+                        <input type="hidden" name="id" id="metaId">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="tituloModalMeta">Nova meta financeira</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="metaDescricao" class="form-label">Meta</label>
+                                <input type="text" class="form-control" name="descricao" id="metaDescricao" required>
+                                <div class="invalid-feedback">Informe a meta.</div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="metaValorAlvo" class="form-label">Valor alvo</label>
+                                    <input type="text" inputmode="decimal" class="form-control campo-moeda" name="valor_alvo" id="metaValorAlvo" placeholder="0,00" required>
+                                    <div class="invalid-feedback">Informe o valor alvo.</div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="metaPrazo" class="form-label">Prazo</label>
+                                    <input type="date" class="form-control financeiro-calendario" name="prazo" id="metaPrazo">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="metaValorMensal" class="form-label">Valor mensal planejado</label>
+                                <input type="text" inputmode="decimal" class="form-control campo-moeda" name="valor_mensal_planejado" id="metaValorMensal" placeholder="Opcional">
+                                <small class="text-muted">Se deixar em branco, o sistema calcula uma sugestão pelo prazo.</small>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Salvar meta</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="modalMovimentoMeta" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form method="post" class="financeiro-form" novalidate>
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
+                        <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
+                        <input type="hidden" name="acao" value="movimentar_meta">
+                        <input type="hidden" name="id" id="movimentoMetaId">
+                        <input type="hidden" name="tipo_movimento" id="movimentoMetaTipo">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="tituloModalMovimentoMeta">Movimentar meta</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="mb-3">Meta: <strong id="movimentoMetaDescricao"></strong></p>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="movimentoMetaValor" class="form-label">Valor</label>
+                                    <input type="text" inputmode="decimal" class="form-control campo-moeda" name="valor" id="movimentoMetaValor" placeholder="0,00" required>
+                                    <div class="invalid-feedback">Informe o valor.</div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="movimentoMetaData" class="form-label">Data</label>
+                                    <input type="date" class="form-control financeiro-calendario" name="data_movimento" id="movimentoMetaData" value="<?= date('Y-m-d') ?>" required>
+                                    <div class="invalid-feedback">Informe a data.</div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="movimentoMetaObservacao" class="form-label">Observação</label>
+                                <input type="text" class="form-control" name="observacao" id="movimentoMetaObservacao">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-success" id="btnSalvarMovimentoMeta">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <div class="modal fade" id="modalRecebimento" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
@@ -1868,6 +2299,47 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 document.getElementById('formMesFinanceiro').submit();
             });
 
+            document.getElementById('btnNovaMeta')?.addEventListener('click', function() {
+                document.getElementById('tituloModalMeta').textContent = 'Nova meta financeira';
+                document.getElementById('metaId').value = '';
+                document.getElementById('metaDescricao').value = '';
+                document.getElementById('metaValorAlvo').value = '';
+                document.getElementById('metaPrazo').value = '';
+                document.getElementById('metaValorMensal').value = '';
+            });
+
+            document.querySelectorAll('.btn-editar-meta').forEach(function(botao) {
+                botao.addEventListener('click', function() {
+                    document.getElementById('tituloModalMeta').textContent = 'Editar meta financeira';
+                    document.getElementById('metaId').value = this.dataset.id;
+                    document.getElementById('metaDescricao').value = this.dataset.descricao;
+                    document.getElementById('metaValorAlvo').value = this.dataset.valorAlvo;
+                    document.getElementById('metaPrazo').value = this.dataset.prazo;
+                    document.getElementById('metaValorMensal').value = this.dataset.valorMensal;
+                });
+            });
+
+            document.querySelectorAll('.btn-movimentar-meta').forEach(function(botao) {
+                botao.addEventListener('click', function() {
+                    const deposito = this.dataset.tipo === 'deposito';
+                    document.getElementById('tituloModalMovimentoMeta').textContent = deposito ?
+                        'Adicionar depósito' :
+                        'Registrar retirada';
+                    document.getElementById('movimentoMetaId').value = this.dataset.id;
+                    document.getElementById('movimentoMetaTipo').value = this.dataset.tipo;
+                    document.getElementById('movimentoMetaDescricao').textContent = this.dataset.descricao;
+                    document.getElementById('movimentoMetaValor').value = '';
+                    document.getElementById('movimentoMetaData').value = dataHoje;
+                    document.getElementById('movimentoMetaObservacao').value = '';
+                    document.getElementById('btnSalvarMovimentoMeta').className = deposito ?
+                        'btn btn-success' :
+                        'btn btn-warning';
+                    document.getElementById('btnSalvarMovimentoMeta').textContent = deposito ?
+                        'Salvar depósito' :
+                        'Salvar retirada';
+                });
+            });
+
             document.getElementById('btnNovoRecebimento').addEventListener('click', function() {
                 document.getElementById('tituloModalRecebimento').textContent = 'Novo recebimento';
                 document.getElementById('recebimentoId').value = '';
@@ -2010,18 +2482,21 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 botao.addEventListener('click', function() {
                     const recorrenciaConta = this.dataset.acao === 'excluir_recorrencia';
                     const recorrenciaRecebimento = this.dataset.acao === 'excluir_recorrencia_recebimento';
+                    const metaFinanceira = this.dataset.acao === 'excluir_meta';
                     const recorrencia = recorrenciaConta || recorrenciaRecebimento;
                     document.getElementById('acaoExcluirFinanceiro').value = this.dataset.acao;
                     document.getElementById('idExcluirFinanceiro').value = this.dataset.id;
                     document.getElementById('descricaoExcluirFinanceiro').textContent = this.dataset.descricao;
                     document.getElementById('tituloExcluirFinanceiro').textContent = recorrencia ?
                         (recorrenciaRecebimento ? 'Encerrar recebimento recorrente' : 'Encerrar conta recorrente') :
-                        'Excluir lançamento';
+                        (metaFinanceira ? 'Excluir meta financeira' : 'Excluir lançamento');
                     document.getElementById('avisoExcluirFinanceiro').textContent = recorrencia ?
                         (recorrenciaRecebimento ?
                             'Os recebimentos dos meses anteriores e do mês atual serão mantidos no histórico.' :
                             'As contas pendentes dessa recorrência serão removidas. As já pagas serão mantidas no histórico.') :
-                        'Essa ação não poderá ser desfeita.';
+                        (metaFinanceira ?
+                            'Todos os depósitos e retiradas dessa meta também serão apagados.' :
+                            'Essa ação não poderá ser desfeita.');
                     document.querySelector('#btnConfirmarExcluirFinanceiro span').textContent = recorrencia ?
                         'Sim, encerrar' :
                         'Sim, excluir';
