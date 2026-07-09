@@ -161,6 +161,10 @@
     color: #64748b;
 }
 
+.legalizacao-status-andamento {
+    color: #000 !important;
+}
+
 .legalizacao-detalhes {
     display: grid;
 }
@@ -239,6 +243,11 @@
 .legalizacao-etapa-atual {
     border-color: #93c5fd;
     background: #eff6ff;
+}
+
+.legalizacao-etapa-atual:focus {
+    outline: 3px solid rgba(13, 110, 253, .22);
+    outline-offset: 3px;
 }
 
 .legalizacao-grid {

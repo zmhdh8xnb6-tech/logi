@@ -367,6 +367,11 @@ if ($tabelasDisponiveis) {
 
                                 <?php foreach ($processos as $processo):
                                     $prazoInfo = legalizacaoPrazoTexto($processo['prazo'], $processo['status']);
+                                    $processoVencido = $processo['prazo']
+                                        && !in_array($processo['status'], ['concluido', 'cancelado'], true)
+                                        && $processo['prazo'] < date('Y-m-d');
+                                    $statusClasse = $processoVencido ? 'bg-danger' : legalizacaoClasseStatus($processo['status']);
+                                    $statusTexto = $processoVencido ? $prazoInfo['texto'] : legalizacaoTextoStatus($processo['status']);
                                     $checklistPendente = (int)($processo['checklist_pendente'] ?? 0);
                                     $checklistTotal = (int)($processo['checklist_total'] ?? 0);
                                 ?>
@@ -379,10 +384,12 @@ if ($tabelasDisponiveis) {
                                         <td><?= htmlspecialchars($processo['etapa_atual_nome']) ?></td>
                                         <td><?= htmlspecialchars($processo['responsavel_nome']) ?></td>
                                         <td>
-                                            <span class="legalizacao-prazo <?= htmlspecialchars($prazoInfo['classe']) ?>">
-                                                <?= htmlspecialchars($prazoInfo['texto']) ?>
+                                            <span class="legalizacao-prazo legalizacao-prazo-neutro">
+                                                <?= legalizacaoFormatarData($processo['prazo']) ?>
                                             </span>
-                                            <small><?= legalizacaoFormatarData($processo['prazo']) ?></small>
+                                            <?php if ($processo['prazo'] && !$processoVencido): ?>
+                                                <small><?= htmlspecialchars($prazoInfo['texto']) ?></small>
+                                            <?php endif; ?>
                                         </td>
                                         <td>
                                             <span class="badge <?= $checklistPendente > 0 ? 'bg-warning text-dark' : 'bg-success' ?>">
@@ -391,8 +398,8 @@ if ($tabelasDisponiveis) {
                                             <small><?= $checklistTotal ?> itens</small>
                                         </td>
                                         <td>
-                                            <span class="badge <?= htmlspecialchars(legalizacaoClasseStatus($processo['status'])) ?>">
-                                                <?= htmlspecialchars(legalizacaoTextoStatus($processo['status'])) ?>
+                                            <span class="badge <?= htmlspecialchars($statusClasse) ?>">
+                                                <?= htmlspecialchars($statusTexto) ?>
                                             </span>
                                         </td>
                                         <td class="text-end">

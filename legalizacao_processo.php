@@ -37,6 +37,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Confira os dados informados.', 'danger');
         }
 
+        if ($status === 'concluido') {
+            $stmtEtapaFinal = $pdo->prepare("
+                SELECT MAX(ordem)
+                FROM legalizacao_etapas
+                WHERE processo_id = ?
+            ");
+            $stmtEtapaFinal->execute([$processoId]);
+            $ultimaOrdemProcesso = (int)$stmtEtapaFinal->fetchColumn();
+
+            if ((int)$processo['etapa_atual_ordem'] < $ultimaOrdemProcesso) {
+                legalizacaoRedirect(
+                    'legalizacao_processo.php?id=' . $processoId,
+                    'Avance todas as etapas antes de concluir o processo.',
+                    'danger'
+                );
+            }
+        }
+
         $responsavelNome = $processo['responsavel_nome'];
 
         if ($responsavelId > 0) {
@@ -78,6 +96,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $depois = legalizacaoBuscarProcesso($pdo, $processoId);
         registrarAuditoria($pdo, 'Legalização', 'editar', 'processo', $processoId, 'Atualizou dados do processo', $antes, $depois);
         legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Processo atualizado com sucesso.');
+    }
+
+    if ($acao === 'excluir_processo') {
+        $antes = $processo;
+
+        $pdo->beginTransaction();
+
+        try {
+            foreach (['legalizacao_historico', 'legalizacao_checklist', 'legalizacao_etapas'] as $tabela) {
+                $stmt = $pdo->prepare("DELETE FROM {$tabela} WHERE processo_id = ?");
+                $stmt->execute([$processoId]);
+            }
+
+            $stmt = $pdo->prepare("DELETE FROM legalizacao_processos WHERE id = ?");
+            $stmt->execute([$processoId]);
+
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Não foi possível excluir o processo.', 'danger');
+        }
+
+        registrarAuditoria(
+            $pdo,
+            'Legalização',
+            'excluir',
+            'processo',
+            $processoId,
+            'Excluiu processo de ' . legalizacaoTextoTipo($antes['tipo']) . ' de ' . ($antes['cliente_codigo'] ?? '') . ' - ' . ($antes['cliente_nome'] ?? ''),
+            $antes,
+            null
+        );
+
+        legalizacaoRedirect('legalizacao.php', 'Processo excluído com sucesso.');
     }
 
     if ($acao === 'avancar_etapa' || $acao === 'voltar_etapa') {
@@ -298,6 +350,19 @@ $historico = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $prazoInfo = legalizacaoPrazoTexto($processo['prazo'], $processo['status']);
 $pendentesChecklist = array_values(array_filter($checklist, static fn(array $item): bool => $item['status'] === 'pendente'));
+$ultimaOrdem = 0;
+
+foreach ($etapas as $etapa) {
+    $ultimaOrdem = max($ultimaOrdem, (int)$etapa['ordem']);
+}
+
+$processoNaUltimaEtapa = (int)$processo['etapa_atual_ordem'] >= $ultimaOrdem;
+$proximaEtapaConclui = ((int)$processo['etapa_atual_ordem'] + 1) >= $ultimaOrdem;
+$processoVencido = $processo['prazo']
+    && !in_array($processo['status'], ['concluido', 'cancelado'], true)
+    && $processo['prazo'] < date('Y-m-d');
+$statusClasseProcesso = $processoVencido ? 'bg-danger' : legalizacaoClasseStatus($processo['status']);
+$statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTextoStatus($processo['status']);
 ?>
 
 <!DOCTYPE html>
@@ -326,6 +391,9 @@ $pendentesChecklist = array_values(array_filter($checklist, static fn(array $ite
                     <a href="legalizacao.php" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left"></i> Voltar
                     </a>
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalExcluirProcesso">
+                        <i class="bi bi-trash"></i> Excluir
+                    </button>
                     <form method="post">
                         <input type="hidden" name="id" value="<?= $processoId ?>">
                         <input type="hidden" name="acao" value="voltar_etapa">
@@ -337,7 +405,7 @@ $pendentesChecklist = array_values(array_filter($checklist, static fn(array $ite
                         <input type="hidden" name="id" value="<?= $processoId ?>">
                         <input type="hidden" name="acao" value="avancar_etapa">
                         <button type="submit" class="btn btn-primary" <?= $processo['status'] === 'concluido' ? 'disabled' : '' ?>>
-                            Avançar etapa <i class="bi bi-chevron-right"></i>
+                            <?= $proximaEtapaConclui ? 'Concluir processo' : 'Avançar etapa' ?> <i class="bi bi-chevron-right"></i>
                         </button>
                     </form>
                 </div>
@@ -358,17 +426,19 @@ $pendentesChecklist = array_values(array_filter($checklist, static fn(array $ite
                     <div>
                         <span>Status</span>
                         <strong>
-                            <span class="badge <?= htmlspecialchars(legalizacaoClasseStatus($processo['status'])) ?>">
-                                <?= htmlspecialchars(legalizacaoTextoStatus($processo['status'])) ?>
+                            <span class="badge <?= htmlspecialchars($statusClasseProcesso) ?>">
+                                <?= htmlspecialchars($statusTextoProcesso) ?>
                             </span>
                         </strong>
                     </div>
                     <div>
                         <span>Prazo</span>
-                        <strong class="legalizacao-prazo <?= htmlspecialchars($prazoInfo['classe']) ?>">
-                            <?= htmlspecialchars($prazoInfo['texto']) ?>
+                        <strong class="legalizacao-prazo legalizacao-prazo-neutro">
+                            <?= legalizacaoFormatarData($processo['prazo']) ?>
                         </strong>
-                        <small><?= legalizacaoFormatarData($processo['prazo']) ?></small>
+                        <?php if ($processo['prazo'] && !$processoVencido): ?>
+                            <small><?= htmlspecialchars($prazoInfo['texto']) ?></small>
+                        <?php endif; ?>
                     </div>
                     <div>
                         <span>Responsável</span>
@@ -391,7 +461,9 @@ $pendentesChecklist = array_values(array_filter($checklist, static fn(array $ite
 
                 <div class="legalizacao-etapas">
                     <?php foreach ($etapas as $etapa): ?>
-                        <div class="legalizacao-etapa legalizacao-etapa-<?= htmlspecialchars($etapa['status']) ?>">
+                        <div
+                            class="legalizacao-etapa legalizacao-etapa-<?= htmlspecialchars($etapa['status']) ?>"
+                            <?= $etapa['status'] === 'atual' ? 'id="etapaAtualProcesso" tabindex="-1"' : '' ?>>
                             <span><?= (int)$etapa['ordem'] ?></span>
                             <strong><?= htmlspecialchars($etapa['nome']) ?></strong>
                             <small><?= htmlspecialchars($etapa['status'] === 'concluida' ? 'Concluída' : ($etapa['status'] === 'atual' ? 'Atual' : 'Pendente')) ?></small>
@@ -426,7 +498,10 @@ $pendentesChecklist = array_values(array_filter($checklist, static fn(array $ite
                                 <label class="form-label" for="statusProcesso">Status</label>
                                 <select class="form-select" name="status" id="statusProcesso">
                                     <?php foreach (['em_andamento', 'pendente_cliente', 'pendente_orgao', 'pausado', 'concluido', 'cancelado'] as $status): ?>
-                                        <option value="<?= htmlspecialchars($status) ?>" <?= $processo['status'] === $status ? 'selected' : '' ?>>
+                                        <option
+                                            value="<?= htmlspecialchars($status) ?>"
+                                            <?= $processo['status'] === $status ? 'selected' : '' ?>
+                                            <?= $status === 'concluido' && !$processoNaUltimaEtapa ? 'disabled' : '' ?>>
                                             <?= htmlspecialchars(legalizacaoTextoStatus($status)) ?>
                                         </option>
                                     <?php endforeach; ?>
@@ -525,19 +600,77 @@ $pendentesChecklist = array_values(array_filter($checklist, static fn(array $ite
                 </div>
 
                 <?php if ($totalPaginasHistorico > 1): ?>
-                    <nav class="legalizacao-paginacao" aria-label="Paginação do histórico">
-                        <?php for ($pagina = 1; $pagina <= $totalPaginasHistorico; $pagina++): ?>
-                            <a
-                                href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= $pagina ?>"
-                                class="<?= $pagina === $paginaHistorico ? 'ativo' : '' ?>">
-                                <?= $pagina ?>
-                            </a>
-                        <?php endfor; ?>
+                    <nav class="p-3 border-top bg-light" aria-label="Paginação do histórico">
+                        <ul class="pagination justify-content-end mb-0">
+                            <li class="page-item <?= $paginaHistorico <= 1 ? 'disabled' : '' ?>">
+                                <a class="page-link" href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= max(1, $paginaHistorico - 1) ?>">Anterior</a>
+                            </li>
+                            <?php for ($pagina = 1; $pagina <= $totalPaginasHistorico; $pagina++): ?>
+                                <li class="page-item <?= $pagina === $paginaHistorico ? 'active' : '' ?>">
+                                    <a class="page-link" href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= $pagina ?>">
+                                        <?= $pagina ?>
+                                    </a>
+                                </li>
+                            <?php endfor; ?>
+                            <li class="page-item <?= $paginaHistorico >= $totalPaginasHistorico ? 'disabled' : '' ?>">
+                                <a class="page-link" href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= min($totalPaginasHistorico, $paginaHistorico + 1) ?>">Próxima</a>
+                            </li>
+                        </ul>
                     </nav>
                 <?php endif; ?>
             </section>
         </div>
     </main>
+
+    <div class="modal fade" id="modalExcluirProcesso" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title">Excluir processo</h5>
+                        <p class="text-muted small mb-0">Essa ação remove o processo, etapas, checklist e histórico.</p>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    Tem certeza que deseja excluir este processo de
+                    <strong><?= htmlspecialchars(legalizacaoTextoTipo($processo['tipo'])) ?></strong>
+                    da empresa
+                    <strong><?= htmlspecialchars(($processo['cliente_codigo'] ? $processo['cliente_codigo'] . ' - ' : '') . $processo['cliente_nome']) ?></strong>?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <form method="post">
+                        <input type="hidden" name="id" value="<?= $processoId ?>">
+                        <input type="hidden" name="acao" value="excluir_processo">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="bi bi-trash"></i> Excluir processo
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        window.addEventListener('load', function() {
+            const etapaAtual = document.getElementById('etapaAtualProcesso');
+
+            if (!etapaAtual) {
+                return;
+            }
+
+            etapaAtual.scrollIntoView({
+                behavior: 'smooth',
+                block: 'nearest',
+                inline: 'center'
+            });
+            etapaAtual.focus({
+                preventScroll: true
+            });
+        });
+    </script>
 </body>
 
 </html>
