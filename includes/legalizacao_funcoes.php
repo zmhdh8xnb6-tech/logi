@@ -163,6 +163,13 @@ function legalizacaoFluxoPorTipoECliente(string $tipo, array $cliente): array
         ));
     }
 
+    if ($ufCliente === 'DF') {
+        $fluxo['etapas'] = array_values(array_filter(
+            $fluxo['etapas'],
+            static fn(string $etapa): bool => strcasecmp($etapa, 'Inscrição Municipal') !== 0
+        ));
+    }
+
     return $fluxo;
 }
 
@@ -189,7 +196,7 @@ function legalizacaoTextoStatus(string $status): string
 function legalizacaoClasseStatus(string $status): string
 {
     return [
-        'em_andamento' => 'bg-light text-dark border',
+        'em_andamento' => 'bg-primary legalizacao-status-andamento',
         'pendente_cliente' => 'bg-warning text-dark',
         'pendente_orgao' => 'bg-info text-dark',
         'pausado' => 'bg-secondary',
