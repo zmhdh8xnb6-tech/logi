@@ -61,6 +61,13 @@
             </a>
         <?php endif; ?>
 
+        <?php if (usuarioPode('legalizacao')): ?>
+            <a href="legalizacao.php" class="sidebar-link" data-label="Legalização">
+                <i class="bi bi-diagram-3"></i>
+                <span>Legalização</span>
+            </a>
+        <?php endif; ?>
+
         <?php if (usuarioPode('certificados')): ?>
             <a href="certificados.php" class="sidebar-link" data-label="Certificado Digital">
                 <i class="bi bi-file-earmark-text"></i>

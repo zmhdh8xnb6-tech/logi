@@ -1,0 +1,350 @@
+.legalizacao-resumo {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+.legalizacao-metrica,
+.legalizacao-card {
+    padding: 16px;
+    border: 1px solid #dbe2ea;
+    border-left: 4px solid #0d6efd;
+    border-radius: 7px;
+    background: #fff;
+}
+
+.legalizacao-metrica span,
+.legalizacao-metrica strong,
+.legalizacao-card span,
+.legalizacao-card strong {
+    display: block;
+}
+
+.legalizacao-metrica span,
+.legalizacao-card span {
+    color: #64748b;
+    font-size: .82rem;
+    font-weight: 700;
+}
+
+.legalizacao-metrica strong {
+    margin-top: 8px;
+    color: #172033;
+    font-size: 1.35rem;
+}
+
+.metrica-alerta {
+    border-left-color: #d97706;
+}
+
+.metrica-orgao {
+    border-left-color: #0dcaf0;
+}
+
+.metrica-urgente {
+    border-left-color: #dc3545;
+}
+
+.metrica-ok {
+    border-left-color: #198754;
+}
+
+.legalizacao-painel {
+    overflow: hidden;
+    border: 1px solid #dbe2ea;
+    border-radius: 7px;
+    background: #fff;
+}
+
+.legalizacao-painel-titulo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 20px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.legalizacao-filtros {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(150px, 210px)) auto;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #fbfcfe;
+}
+
+.legalizacao-campo-busca {
+    position: relative;
+}
+
+.legalizacao-campo-busca i {
+    position: absolute;
+    top: 50%;
+    left: 13px;
+    z-index: 1;
+    color: #64748b;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.legalizacao-campo-busca .form-control {
+    padding-left: 38px;
+}
+
+.legalizacao-tabela {
+    margin-bottom: 0;
+}
+
+.legalizacao-tabela thead th {
+    padding: 12px 14px;
+    border-bottom: 1px solid #dbe2ea;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: .78rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.legalizacao-tabela tbody td {
+    padding: 13px 14px;
+    vertical-align: middle;
+}
+
+.legalizacao-tabela tbody tr {
+    transition: background-color .18s ease;
+}
+
+.legalizacao-tabela tbody tr:hover td {
+    background: #f3f7fb;
+}
+
+.legalizacao-tabela td small,
+.legalizacao-card small {
+    display: block;
+    margin-top: 3px;
+    color: #64748b;
+}
+
+.legalizacao-vazio {
+    padding: 28px !important;
+    color: #64748b;
+    text-align: center;
+}
+
+.legalizacao-prazo {
+    display: inline-block;
+    width: fit-content;
+    padding: 4px 8px;
+    border-radius: 5px;
+    font-size: .82rem;
+    font-weight: 700;
+}
+
+.legalizacao-prazo-ok {
+    background: #e9f7ef;
+    color: #146c43;
+}
+
+.legalizacao-prazo-alerta {
+    background: #fff3cd;
+    color: #8a5a00;
+}
+
+.legalizacao-prazo-urgente {
+    background: #f8d7da;
+    color: #b42318;
+}
+
+.legalizacao-prazo-neutro {
+    background: #eef2f6;
+    color: #64748b;
+}
+
+.legalizacao-detalhes {
+    display: grid;
+}
+
+.legalizacao-card-principal {
+    display: grid;
+    grid-template-columns: minmax(240px, 1.4fr) repeat(4, minmax(130px, 1fr));
+    gap: 14px;
+}
+
+.legalizacao-card strong {
+    margin-top: 5px;
+    color: #172033;
+}
+
+.legalizacao-etapas {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 18px 20px;
+}
+
+.legalizacao-etapa {
+    position: relative;
+    flex: 0 0 190px;
+    min-height: 112px;
+    padding: 14px;
+    border: 1px solid #dbe2ea;
+    border-radius: 7px;
+    background: #fff;
+    transition: background-color .18s ease, border-color .18s ease;
+}
+
+.legalizacao-etapa:hover {
+    border-color: #b8c5d3;
+    background: #f8fafc;
+}
+
+.legalizacao-etapa span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin-bottom: 10px;
+    border-radius: 50%;
+    background: #eaf2fb;
+    color: #0d6efd;
+    font-weight: 700;
+}
+
+.legalizacao-etapa strong,
+.legalizacao-etapa small {
+    display: block;
+}
+
+.legalizacao-etapa strong {
+    color: #172033;
+}
+
+.legalizacao-etapa small {
+    margin-top: 6px;
+    color: #64748b;
+}
+
+.legalizacao-etapa-concluida {
+    border-color: #badbcc;
+    background: #f0fff6;
+}
+
+.legalizacao-etapa-concluida span {
+    background: #198754;
+    color: #fff;
+}
+
+.legalizacao-etapa-atual {
+    border-color: #93c5fd;
+    background: #eff6ff;
+}
+
+.legalizacao-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr);
+    gap: 18px;
+}
+
+.legalizacao-checklist {
+    display: grid;
+}
+
+.legalizacao-checklist-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 150px;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #edf0f3;
+    transition: background-color .18s ease;
+}
+
+.legalizacao-checklist-item:hover {
+    background: #f3f7fb;
+}
+
+.legalizacao-checklist-item:last-child {
+    border-bottom: 0;
+}
+
+.legalizacao-checklist-item strong {
+    display: block;
+    margin-bottom: 5px;
+    color: #172033;
+}
+
+.legalizacao-historico-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #fbfcfe;
+}
+
+.legalizacao-historico {
+    display: grid;
+}
+
+.legalizacao-historico-item {
+    padding: 14px 20px;
+    border-bottom: 1px solid #edf0f3;
+}
+
+.legalizacao-historico-item:last-child {
+    border-bottom: 0;
+}
+
+.legalizacao-historico-item span {
+    color: #64748b;
+    font-size: .82rem;
+}
+
+.legalizacao-historico-item strong {
+    display: block;
+    margin-top: 2px;
+    color: #172033;
+}
+
+.legalizacao-historico-item p {
+    margin: 6px 0 0;
+}
+
+@media (max-width: 1200px) {
+
+    .legalizacao-resumo,
+    .legalizacao-card-principal {
+        grid-template-columns: repeat(2, minmax(160px, 1fr));
+    }
+
+    .legalizacao-grid,
+    .legalizacao-filtros {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 700px) {
+
+    .legalizacao-resumo,
+    .legalizacao-card-principal {
+        grid-template-columns: 1fr;
+    }
+
+    .legalizacao-painel-titulo {
+        align-items: stretch;
+        flex-direction: column;
+        padding: 14px;
+    }
+
+    .legalizacao-filtros,
+    .legalizacao-historico-form {
+        grid-template-columns: 1fr;
+        padding: 12px 14px;
+    }
+
+    .legalizacao-checklist-item {
+        grid-template-columns: 1fr;
+    }
+}

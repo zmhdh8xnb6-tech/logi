@@ -15,6 +15,7 @@ if (!function_exists('modulosSistema')) {
             'paralisacoes' => 'Paralisações',
             'baixas' => 'Baixas',
             'financeiro' => 'Financeiro',
+            'legalizacao' => 'Legalização',
             'usuarios' => 'Usuários e Permissões',
         ];
     }

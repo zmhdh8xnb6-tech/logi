@@ -60,6 +60,16 @@ exigirLogin();
                     </div>
                 <?php endif; ?>
 
+                <?php if (usuarioPode('legalizacao')): ?>
+                    <div class="col-md-4">
+                        <div class="card-servico" onclick="location.href='legalizacao.php'">
+                            <div class="icon">🗂️</div>
+                            <h5>Legalização</h5>
+                            <p>Processos, etapas e checklists</p>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
                 <?php if (usuarioPode('certificados')): ?>
                     <div class="col-md-4">
                         <div class="card-servico" onclick="location.href='certificados.php'">
