@@ -312,6 +312,39 @@
     margin: 6px 0 0;
 }
 
+.legalizacao-paginacao {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 14px 20px;
+    border-top: 1px solid #edf0f3;
+    background: #fbfcfe;
+}
+
+.legalizacao-paginacao a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid #dbe2ea;
+    border-radius: 5px;
+    background: #fff;
+    color: #172033;
+    font-weight: 700;
+    text-decoration: none;
+    transition: background-color .18s ease, border-color .18s ease;
+}
+
+.legalizacao-paginacao a:hover,
+.legalizacao-paginacao a.ativo {
+    border-color: #0d6efd;
+    background: #eaf2fb;
+    color: #0d6efd;
+}
+
 @media (max-width: 1200px) {
 
     .legalizacao-resumo,

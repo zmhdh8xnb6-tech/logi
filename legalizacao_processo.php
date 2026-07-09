@@ -268,11 +268,30 @@ $stmt = $pdo->prepare("
 $stmt->execute([$processoId]);
 $checklist = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+$historicoPorPagina = 10;
+$paginaHistorico = max(1, (int)($_GET['historico_pagina'] ?? 1));
+$offsetHistorico = ($paginaHistorico - 1) * $historicoPorPagina;
+
+$stmt = $pdo->prepare("
+    SELECT COUNT(*)
+    FROM legalizacao_historico
+    WHERE processo_id = ?
+");
+$stmt->execute([$processoId]);
+$totalHistorico = (int)$stmt->fetchColumn();
+$totalPaginasHistorico = max(1, (int)ceil($totalHistorico / $historicoPorPagina));
+
+if ($paginaHistorico > $totalPaginasHistorico) {
+    $paginaHistorico = $totalPaginasHistorico;
+    $offsetHistorico = ($paginaHistorico - 1) * $historicoPorPagina;
+}
+
 $stmt = $pdo->prepare("
     SELECT *
     FROM legalizacao_historico
     WHERE processo_id = ?
     ORDER BY criado_em DESC, id DESC
+    LIMIT {$historicoPorPagina} OFFSET {$offsetHistorico}
 ");
 $stmt->execute([$processoId]);
 $historico = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -504,6 +523,18 @@ $pendentesChecklist = array_values(array_filter($checklist, static fn(array $ite
                         </div>
                     <?php endforeach; ?>
                 </div>
+
+                <?php if ($totalPaginasHistorico > 1): ?>
+                    <nav class="legalizacao-paginacao" aria-label="Paginação do histórico">
+                        <?php for ($pagina = 1; $pagina <= $totalPaginasHistorico; $pagina++): ?>
+                            <a
+                                href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= $pagina ?>"
+                                class="<?= $pagina === $paginaHistorico ? 'ativo' : '' ?>">
+                                <?= $pagina ?>
+                            </a>
+                        <?php endfor; ?>
+                    </nav>
+                <?php endif; ?>
             </section>
         </div>
     </main>

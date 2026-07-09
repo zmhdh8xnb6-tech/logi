@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $responsavelId = (int)($_SESSION['usuario_id'] ?? 0);
         }
 
-        $fluxo = legalizacaoFluxoPorTipo($tipo);
+        $fluxo = legalizacaoFluxoPorTipoECliente($tipo, $cliente);
         $etapaInicial = $fluxo['etapas'][0] ?? 'Novo processo';
         $prazo = $prazo === '' ? null : $prazo;
 

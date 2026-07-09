@@ -38,7 +38,6 @@ function legalizacaoTiposProcesso(): array
         'constituicao' => 'Constituição',
         'alteracao_contratual' => 'Alteração Contratual',
         'baixa' => 'Baixa',
-        'alvara' => 'Alvará / Licenciamento',
         'inscricao_estadual' => 'Inscrição Estadual',
         'inscricao_municipal' => 'Inscrição Municipal',
         'regularizacao' => 'Regularização',
@@ -70,9 +69,8 @@ function legalizacaoFluxosPadrao(): array
                 'Comprovante de endereço',
                 'IPTU',
                 'Procuração',
+                'Viabilidade',
                 'DBE',
-                'Contrato Social',
-                'Assinatura GOV',
                 'Taxa Junta',
                 'Taxa Prefeitura',
             ],
@@ -96,8 +94,8 @@ function legalizacaoFluxosPadrao(): array
                 'Contrato atual',
                 'Documentos dos sócios',
                 'Alteração solicitada',
+                'Viabilidade',
                 'DBE',
-                'Assinatura GOV',
                 'Taxa Junta',
                 'Comprovante do protocolo',
             ],
@@ -120,30 +118,7 @@ function legalizacaoFluxosPadrao(): array
                 'Documentos dos sócios',
                 'Certidões',
                 'DBE',
-                'Assinatura GOV',
                 'Taxa Junta',
-            ],
-        ],
-        'alvara' => [
-            'etapas' => [
-                'Recebimento das informações',
-                'Análise do endereço',
-                'Consulta de viabilidade',
-                'Documentação do órgão',
-                'Protocolo',
-                'Aguardando análise',
-                'Exigência',
-                'Deferido',
-                'Entrega ao cliente',
-                'Processo concluído',
-            ],
-            'checklist' => [
-                'IPTU',
-                'Contrato social',
-                'Comprovante de endereço',
-                'Procuração',
-                'Taxa do órgão',
-                'Protocolo',
             ],
         ],
         'default' => [
@@ -172,6 +147,25 @@ function legalizacaoFluxoPorTipo(string $tipo): array
     return $fluxos[$tipo] ?? $fluxos['default'];
 }
 
+function legalizacaoFluxoPorTipoECliente(string $tipo, array $cliente): array
+{
+    $fluxo = legalizacaoFluxoPorTipo($tipo);
+    $ufCliente = strtoupper(trim((string)($cliente['uf'] ?? '')));
+
+    if ($ufCliente !== 'GO') {
+        $fluxo['etapas'] = array_values(array_filter(
+            $fluxo['etapas'],
+            static fn(string $etapa): bool => strcasecmp($etapa, 'Prefeitura') !== 0
+        ));
+        $fluxo['checklist'] = array_values(array_filter(
+            $fluxo['checklist'],
+            static fn(string $item): bool => strcasecmp($item, 'Taxa Prefeitura') !== 0
+        ));
+    }
+
+    return $fluxo;
+}
+
 function legalizacaoTextoTipo(string $tipo): string
 {
     $tipos = legalizacaoTiposProcesso();
@@ -195,7 +189,7 @@ function legalizacaoTextoStatus(string $status): string
 function legalizacaoClasseStatus(string $status): string
 {
     return [
-        'em_andamento' => 'bg-primary',
+        'em_andamento' => 'bg-light text-dark border',
         'pendente_cliente' => 'bg-warning text-dark',
         'pendente_orgao' => 'bg-info text-dark',
         'pausado' => 'bg-secondary',
@@ -319,7 +313,7 @@ function legalizacaoListarClientes(PDO $pdo): array
 {
     try {
         $stmt = $pdo->query("
-            SELECT id, codigo, nome, documento
+            SELECT id, codigo, nome, documento, uf
             FROM clientes
             ORDER BY CAST(codigo AS UNSIGNED), nome
         ");
@@ -347,7 +341,7 @@ function legalizacaoListarUsuarios(PDO $pdo): array
 function legalizacaoBuscarCliente(PDO $pdo, int $clienteId): ?array
 {
     $stmt = $pdo->prepare("
-        SELECT id, codigo, nome, documento
+        SELECT id, codigo, nome, documento, uf
         FROM clientes
         WHERE id = ?
     ");
@@ -359,7 +353,7 @@ function legalizacaoBuscarCliente(PDO $pdo, int $clienteId): ?array
 function legalizacaoBuscarProcesso(PDO $pdo, int $processoId): ?array
 {
     $stmt = $pdo->prepare("
-        SELECT p.*, c.codigo AS cliente_codigo_atual, c.nome AS cliente_nome_atual, c.documento AS cliente_documento_atual
+        SELECT p.*, c.codigo AS cliente_codigo_atual, c.nome AS cliente_nome_atual, c.documento AS cliente_documento_atual, c.uf AS cliente_uf_atual
         FROM legalizacao_processos p
         LEFT JOIN clientes c ON c.id = p.cliente_id
         WHERE p.id = ?
