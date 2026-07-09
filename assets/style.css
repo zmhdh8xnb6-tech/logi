@@ -218,6 +218,20 @@ body {
     position: relative;
 }
 
+.cliente-seletor-icone {
+    position: absolute;
+    top: 50%;
+    left: 13px;
+    z-index: 1;
+    color: #6b7280;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.cliente-seletor-input {
+    padding-left: 38px;
+}
+
 .cliente-seletor-menu {
     position: absolute;
     top: calc(100% + 6px);

@@ -159,28 +159,18 @@ foreach ($clientes as $clienteLista) {
                             </label>
 
                             <div class="cliente-seletor" id="clienteSeletor">
-                                <button
-                                    type="button"
-                                    class="form-select text-start"
-                                    id="clienteSeletorBotao"
+                                <i class="bi bi-search cliente-seletor-icone"></i>
+                                <input
+                                    type="search"
+                                    class="form-control cliente-seletor-input"
+                                    id="cliente_busca"
+                                    placeholder="Digite o código ou a razão social"
+                                    value="<?= htmlspecialchars($clienteSelecionadoTexto) ?>"
+                                    autocomplete="off"
                                     aria-haspopup="listbox"
                                     aria-expanded="false">
-                                    <span id="clienteSeletorTexto">
-                                        <?= $clienteSelecionadoTexto !== '' ? htmlspecialchars($clienteSelecionadoTexto) : 'Selecione' ?>
-                                    </span>
-                                </button>
 
                                 <div class="cliente-seletor-menu d-none" id="clienteSeletorMenu">
-                                    <div class="cliente-seletor-busca">
-                                        <i class="bi bi-search"></i>
-                                        <input
-                                            type="search"
-                                            class="form-control"
-                                            id="cliente_busca"
-                                            placeholder="Digite o código ou a razão social"
-                                            autocomplete="off">
-                                    </div>
-
                                     <div class="cliente-seletor-opcoes" id="clienteSeletorOpcoes" role="listbox">
                                         <?php foreach ($clientes as $c):
                                             $textoCliente = $c['codigo'] . ' - ' . $c['nome'];
@@ -405,10 +395,8 @@ foreach ($clientes as $clienteLista) {
         ];
 
         const seletorCliente = document.getElementById('clienteSeletor');
-        const botaoCliente = document.getElementById('clienteSeletorBotao');
-        const textoBotaoCliente = document.getElementById('clienteSeletorTexto');
-        const menuCliente = document.getElementById('clienteSeletorMenu');
         const campoBuscaCliente = document.getElementById('cliente_busca');
+        const menuCliente = document.getElementById('clienteSeletorMenu');
         const campoClienteId = document.getElementById('cliente_id');
         const feedbackCliente = document.getElementById('clienteFeedback');
         const avisoClienteVazio = document.getElementById('clienteSeletorVazio');
@@ -437,21 +425,19 @@ foreach ($clientes as $clienteLista) {
 
         function abrirListaClientes() {
             menuCliente.classList.remove('d-none');
-            botaoCliente.setAttribute('aria-expanded', 'true');
-            campoBuscaCliente.value = '';
+            campoBuscaCliente.setAttribute('aria-expanded', 'true');
             filtrarClientes();
-            campoBuscaCliente.focus();
         }
 
         function fecharListaClientes() {
             menuCliente.classList.add('d-none');
-            botaoCliente.setAttribute('aria-expanded', 'false');
+            campoBuscaCliente.setAttribute('aria-expanded', 'false');
         }
 
         function selecionarCliente(opcao) {
             campoClienteId.value = opcao.dataset.id;
-            textoBotaoCliente.textContent = opcao.dataset.texto;
-            botaoCliente.classList.remove('is-invalid');
+            campoBuscaCliente.value = opcao.dataset.texto;
+            campoBuscaCliente.classList.remove('is-invalid');
             feedbackCliente.classList.remove('d-block');
 
             opcoesClientes.forEach(function(item) {
@@ -463,15 +449,21 @@ foreach ($clientes as $clienteLista) {
             fecharListaClientes();
         }
 
-        botaoCliente.addEventListener('click', function() {
-            if (menuCliente.classList.contains('d-none')) {
-                abrirListaClientes();
-            } else {
-                fecharListaClientes();
-            }
+        campoBuscaCliente.addEventListener('focus', abrirListaClientes);
+
+        campoBuscaCliente.addEventListener('input', function() {
+            campoClienteId.value = '';
+            campoBuscaCliente.classList.remove('is-invalid');
+            feedbackCliente.classList.remove('d-block');
+            abrirListaClientes();
         });
 
-        campoBuscaCliente.addEventListener('input', filtrarClientes);
+        campoBuscaCliente.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                fecharListaClientes();
+                campoBuscaCliente.blur();
+            }
+        });
 
         opcoesClientes.forEach(function(opcao) {
             opcao.addEventListener('click', function() {
@@ -482,13 +474,6 @@ foreach ($clientes as $clienteLista) {
         document.addEventListener('click', function(event) {
             if (!seletorCliente.contains(event.target)) {
                 fecharListaClientes();
-            }
-        });
-
-        campoBuscaCliente.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                fecharListaClientes();
-                botaoCliente.focus();
             }
         });
 
@@ -524,7 +509,7 @@ foreach ($clientes as $clienteLista) {
                 }
 
                 if (!campo.value.trim()) {
-                    const campoComErro = id === 'cliente_id' ? botaoCliente : campo;
+                    const campoComErro = id === 'cliente_id' ? campoBuscaCliente : campo;
                     campoComErro.classList.add('is-invalid');
 
                     if (id === 'cliente_id') {

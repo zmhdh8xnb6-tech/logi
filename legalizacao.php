@@ -426,16 +426,43 @@ if ($tabelasDisponiveis) {
                         <div class="modal-body">
                             <div class="row g-3">
                                 <div class="col-md-7">
-                                    <label class="form-label" for="clienteProcesso">Empresa</label>
-                                    <select class="form-select" name="cliente_id" id="clienteProcesso" required>
-                                        <option value="">Selecione</option>
-                                        <?php foreach ($clientes as $cliente): ?>
-                                            <option value="<?= (int)$cliente['id'] ?>">
-                                                <?= htmlspecialchars(($cliente['codigo'] ? $cliente['codigo'] . ' - ' : '') . $cliente['nome']) ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <div class="invalid-feedback">Selecione a empresa.</div>
+                                    <label class="form-label">Empresa</label>
+                                    <div class="cliente-seletor" id="clienteSeletorLegalizacao">
+                                        <i class="bi bi-search cliente-seletor-icone"></i>
+                                        <input
+                                            type="search"
+                                            class="form-control cliente-seletor-input"
+                                            id="clienteBuscaLegalizacao"
+                                            placeholder="Digite o código ou a razão social"
+                                            autocomplete="off"
+                                            aria-haspopup="listbox"
+                                            aria-expanded="false">
+
+                                        <div class="cliente-seletor-menu d-none" id="clienteSeletorLegalizacaoMenu">
+                                            <div class="cliente-seletor-opcoes" id="clienteOpcoesLegalizacao" role="listbox">
+                                                <?php foreach ($clientes as $cliente):
+                                                    $textoCliente = trim(($cliente['codigo'] ? $cliente['codigo'] . ' - ' : '') . $cliente['nome']);
+                                                ?>
+                                                    <button
+                                                        type="button"
+                                                        class="cliente-seletor-opcao"
+                                                        data-id="<?= (int)$cliente['id'] ?>"
+                                                        data-texto="<?= htmlspecialchars($textoCliente) ?>"
+                                                        role="option"
+                                                        aria-selected="false">
+                                                        <strong><?= htmlspecialchars($cliente['codigo'] ?: '-') ?></strong>
+                                                        <span><?= htmlspecialchars($cliente['nome']) ?></span>
+                                                    </button>
+                                                <?php endforeach; ?>
+
+                                                <div class="cliente-seletor-vazio d-none" id="clienteVazioLegalizacao">
+                                                    Nenhum cliente encontrado.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <input type="hidden" name="cliente_id" id="clienteProcesso" value="">
+                                    <div class="invalid-feedback" id="clienteFeedbackLegalizacao">Selecione uma empresa da lista.</div>
                                 </div>
                                 <div class="col-md-5">
                                     <label class="form-label" for="tipoProcesso">Tipo</label>
@@ -489,9 +516,96 @@ if ($tabelasDisponiveis) {
 
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
         <script>
+            const seletorClienteLegalizacao = document.getElementById('clienteSeletorLegalizacao');
+            const menuClienteLegalizacao = document.getElementById('clienteSeletorLegalizacaoMenu');
+            const campoBuscaClienteLegalizacao = document.getElementById('clienteBuscaLegalizacao');
+            const campoClienteLegalizacao = document.getElementById('clienteProcesso');
+            const feedbackClienteLegalizacao = document.getElementById('clienteFeedbackLegalizacao');
+            const avisoClienteVazioLegalizacao = document.getElementById('clienteVazioLegalizacao');
+            const opcoesClientesLegalizacao = Array.from(document.querySelectorAll('#clienteOpcoesLegalizacao .cliente-seletor-opcao'));
+
+            function normalizarBuscaClienteLegalizacao(texto) {
+                return String(texto || '')
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .toLowerCase()
+                    .trim();
+            }
+
+            function filtrarClientesLegalizacao() {
+                const busca = normalizarBuscaClienteLegalizacao(campoBuscaClienteLegalizacao.value);
+                let totalVisivel = 0;
+
+                opcoesClientesLegalizacao.forEach(function(opcao) {
+                    const visivel = normalizarBuscaClienteLegalizacao(opcao.dataset.texto).includes(busca);
+                    opcao.classList.toggle('d-none', !visivel);
+                    totalVisivel += visivel ? 1 : 0;
+                });
+
+                avisoClienteVazioLegalizacao.classList.toggle('d-none', totalVisivel > 0);
+            }
+
+            function abrirClientesLegalizacao() {
+                menuClienteLegalizacao.classList.remove('d-none');
+                campoBuscaClienteLegalizacao.setAttribute('aria-expanded', 'true');
+                filtrarClientesLegalizacao();
+            }
+
+            function fecharClientesLegalizacao() {
+                menuClienteLegalizacao.classList.add('d-none');
+                campoBuscaClienteLegalizacao.setAttribute('aria-expanded', 'false');
+            }
+
+            function selecionarClienteLegalizacao(opcao) {
+                campoClienteLegalizacao.value = opcao.dataset.id;
+                campoBuscaClienteLegalizacao.value = opcao.dataset.texto;
+                campoBuscaClienteLegalizacao.classList.remove('is-invalid');
+                feedbackClienteLegalizacao.classList.remove('d-block');
+
+                opcoesClientesLegalizacao.forEach(function(item) {
+                    const selecionado = item === opcao;
+                    item.classList.toggle('selecionado', selecionado);
+                    item.setAttribute('aria-selected', selecionado ? 'true' : 'false');
+                });
+
+                fecharClientesLegalizacao();
+            }
+
+            campoBuscaClienteLegalizacao?.addEventListener('focus', abrirClientesLegalizacao);
+
+            campoBuscaClienteLegalizacao?.addEventListener('input', function() {
+                campoClienteLegalizacao.value = '';
+                campoBuscaClienteLegalizacao.classList.remove('is-invalid');
+                feedbackClienteLegalizacao.classList.remove('d-block');
+                abrirClientesLegalizacao();
+            });
+
+            opcoesClientesLegalizacao.forEach(function(opcao) {
+                opcao.addEventListener('click', function() {
+                    selecionarClienteLegalizacao(opcao);
+                });
+            });
+
+            document.addEventListener('click', function(evento) {
+                if (seletorClienteLegalizacao && !seletorClienteLegalizacao.contains(evento.target)) {
+                    fecharClientesLegalizacao();
+                }
+            });
+
+            campoBuscaClienteLegalizacao?.addEventListener('keydown', function(evento) {
+                if (evento.key === 'Escape') {
+                    fecharClientesLegalizacao();
+                    campoBuscaClienteLegalizacao.blur();
+                }
+            });
+
             document.querySelectorAll('.needs-validation').forEach(function(formulario) {
                 formulario.addEventListener('submit', function(evento) {
-                    if (!formulario.checkValidity()) {
+                    const clienteSelecionado = campoClienteLegalizacao?.value.trim() !== '';
+                    campoBuscaClienteLegalizacao?.classList.toggle('is-invalid', !clienteSelecionado);
+                    feedbackClienteLegalizacao?.classList.toggle('d-block', !clienteSelecionado);
+
+                    if (!formulario.checkValidity() || !clienteSelecionado) {
                         evento.preventDefault();
                         evento.stopPropagation();
                     }
