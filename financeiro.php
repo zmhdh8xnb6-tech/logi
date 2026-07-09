@@ -1307,8 +1307,6 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             id="buscaGeralFinanceiro"
                             placeholder="Buscar no financeiro..."
                             autocomplete="off"
-                            data-bs-toggle="modal"
-                            data-bs-target="#modalBuscaFinanceiro"
                             aria-label="Buscar em todo o financeiro">
                     </div>
                     <a href="financeiro_categorias.php" class="btn btn-outline-primary">
@@ -2492,14 +2490,51 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 }, 250);
             }
 
-            campoBuscaGeral?.addEventListener('focus', function() {
-                campoBuscaGeralModal.value = campoBuscaGeral.value;
+            campoBuscaGeral?.addEventListener('input', function() {
+                const busca = this.value.trim();
+
+                if (campoBuscaGeralModal) {
+                    campoBuscaGeralModal.value = this.value;
+                }
+
+                if (busca.length >= 2 && modalBuscaFinanceiro) {
+                    bootstrap.Modal.getOrCreateInstance(modalBuscaFinanceiro).show();
+                }
             });
 
             modalBuscaFinanceiro?.addEventListener('shown.bs.modal', function() {
                 campoBuscaGeralModal.focus();
-                campoBuscaGeralModal.select();
+                campoBuscaGeralModal.setSelectionRange(
+                    campoBuscaGeralModal.value.length,
+                    campoBuscaGeralModal.value.length
+                );
                 buscarFinanceiroGeral(campoBuscaGeralModal.value || campoBuscaGeral?.value || '');
+            });
+
+            modalBuscaFinanceiro?.addEventListener('hidden.bs.modal', function() {
+                if (controleBuscaFinanceiro) {
+                    controleBuscaFinanceiro.abort();
+                }
+
+                clearTimeout(timerBuscaFinanceiro);
+                reiniciarPaginasBuscaFinanceiro();
+                ultimoTermoBuscaFinanceiro = '';
+
+                if (campoBuscaGeral) {
+                    campoBuscaGeral.value = '';
+                }
+
+                if (campoBuscaGeralModal) {
+                    campoBuscaGeralModal.value = '';
+                }
+
+                if (resultadosBuscaFinanceiro) {
+                    resultadosBuscaFinanceiro.innerHTML = '';
+                }
+
+                if (statusBuscaFinanceiro) {
+                    statusBuscaFinanceiro.textContent = 'Digite para buscar em todo o financeiro.';
+                }
             });
 
             resultadosBuscaFinanceiro?.addEventListener('click', function(evento) {
