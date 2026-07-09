@@ -2361,6 +2361,19 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
             const resultadosBuscaFinanceiro = document.getElementById('resultadosBuscaFinanceiro');
             let timerBuscaFinanceiro = null;
             let controleBuscaFinanceiro = null;
+            let ultimoTermoBuscaFinanceiro = '';
+            const paginasBuscaFinanceiro = {
+                recebimentos: 1,
+                contas: 1,
+                metas: 1,
+                cartoes: 1
+            };
+
+            function reiniciarPaginasBuscaFinanceiro() {
+                Object.keys(paginasBuscaFinanceiro).forEach(function(chave) {
+                    paginasBuscaFinanceiro[chave] = 1;
+                });
+            }
 
             function renderizarResultadosBuscaFinanceiro(grupos) {
                 if (!resultadosBuscaFinanceiro || !statusBuscaFinanceiro) {
@@ -2386,22 +2399,45 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             </a>
                         `;
                     }).join('');
+                    const rodape = grupo.temMais ?
+                        `
+                            <button
+                                type="button"
+                                class="financeiro-busca-mais"
+                                data-grupo="${escaparHtml(grupo.chave)}">
+                                Ver mais resultados
+                            </button>
+                        ` :
+                        '';
+                    const resumo = grupo.total > grupo.itens.length ?
+                        `<small>${grupo.itens.length} de ${grupo.total}</small>` :
+                        `<small>${grupo.total} ${grupo.total === 1 ? 'resultado' : 'resultados'}</small>`;
 
                     return `
                         <section class="financeiro-busca-grupo">
-                            <h6>${escaparHtml(grupo.titulo)}</h6>
+                            <h6>
+                                <span>${escaparHtml(grupo.titulo)}</span>
+                                ${resumo}
+                            </h6>
                             ${itens}
+                            ${rodape}
                         </section>
                     `;
                 }).join('');
             }
 
-            function buscarFinanceiroGeral(termo) {
+            function buscarFinanceiroGeral(termo, reiniciarPaginas = false) {
                 if (!statusBuscaFinanceiro || !resultadosBuscaFinanceiro) {
                     return;
                 }
 
                 const busca = termo.trim();
+
+                if (reiniciarPaginas || busca !== ultimoTermoBuscaFinanceiro) {
+                    reiniciarPaginasBuscaFinanceiro();
+                }
+
+                ultimoTermoBuscaFinanceiro = busca;
 
                 if (busca.length < 2) {
                     resultadosBuscaFinanceiro.innerHTML = '';
@@ -2415,8 +2451,15 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
 
                 controleBuscaFinanceiro = new AbortController();
                 statusBuscaFinanceiro.textContent = 'Buscando...';
+                const parametros = new URLSearchParams({
+                    q: busca,
+                    pagina_recebimentos: String(paginasBuscaFinanceiro.recebimentos),
+                    pagina_contas: String(paginasBuscaFinanceiro.contas),
+                    pagina_metas: String(paginasBuscaFinanceiro.metas),
+                    pagina_cartoes: String(paginasBuscaFinanceiro.cartoes)
+                });
 
-                fetch('financeiro_busca.php?q=' + encodeURIComponent(busca), {
+                fetch('financeiro_busca.php?' + parametros.toString(), {
                         signal: controleBuscaFinanceiro.signal,
                         headers: {
                             'Accept': 'application/json'
@@ -2445,7 +2488,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
             function agendarBuscaFinanceiro() {
                 clearTimeout(timerBuscaFinanceiro);
                 timerBuscaFinanceiro = setTimeout(function() {
-                    buscarFinanceiroGeral(campoBuscaGeralModal?.value || '');
+                    buscarFinanceiroGeral(campoBuscaGeralModal?.value || '', true);
                 }, 250);
             }
 
@@ -2457,6 +2500,23 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 campoBuscaGeralModal.focus();
                 campoBuscaGeralModal.select();
                 buscarFinanceiroGeral(campoBuscaGeralModal.value || campoBuscaGeral?.value || '');
+            });
+
+            resultadosBuscaFinanceiro?.addEventListener('click', function(evento) {
+                const botao = evento.target.closest('.financeiro-busca-mais');
+
+                if (!botao) {
+                    return;
+                }
+
+                const grupo = botao.dataset.grupo;
+
+                if (!Object.prototype.hasOwnProperty.call(paginasBuscaFinanceiro, grupo)) {
+                    return;
+                }
+
+                paginasBuscaFinanceiro[grupo] += 1;
+                buscarFinanceiroGeral(campoBuscaGeralModal?.value || '');
             });
 
             campoBuscaGeralModal?.addEventListener('input', function() {
