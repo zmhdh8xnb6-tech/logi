@@ -1444,10 +1444,29 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                 $faltante = max(0, $valorAlvo - $saldoMeta);
                                 $mesesRestantes = null;
                                 $sugestaoMensal = (float)($meta['valor_mensal_planejado'] ?? 0);
+                                $prazoTexto = 'Sem prazo definido';
+                                $prazoClasse = 'financeiro-prazo-neutro';
 
-                                if ($sugestaoMensal <= 0 && !empty($meta['prazo'])) {
+                                if (!empty($meta['prazo'])) {
                                     $hojeMeta = new DateTimeImmutable('today');
                                     $prazoMeta = new DateTimeImmutable($meta['prazo']);
+                                    $diasRestantes = (int)$hojeMeta->diff($prazoMeta)->format('%r%a');
+
+                                    if ($diasRestantes < 0) {
+                                        $prazoTexto = 'Vencida há ' . abs($diasRestantes) . ' ' . (abs($diasRestantes) === 1 ? 'dia' : 'dias');
+                                        $prazoClasse = 'financeiro-prazo-urgente';
+                                    } elseif ($diasRestantes === 0) {
+                                        $prazoTexto = 'Vence hoje';
+                                        $prazoClasse = 'financeiro-prazo-alerta';
+                                    } else {
+                                        $prazoTexto = 'Faltam ' . $diasRestantes . ' ' . ($diasRestantes === 1 ? 'dia' : 'dias');
+                                        $prazoClasse = $diasRestantes <= 15
+                                            ? 'financeiro-prazo-urgente'
+                                            : ($diasRestantes <= 30 ? 'financeiro-prazo-alerta' : 'financeiro-prazo-ok');
+                                    }
+                                }
+
+                                if ($sugestaoMensal <= 0 && !empty($meta['prazo'])) {
                                     $mesesRestantes = max(
                                         1,
                                         ((int)$hojeMeta->diff($prazoMeta)->format('%r%y') * 12)
@@ -1477,6 +1496,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                     </div>
                                     <div class="financeiro-meta-info">
                                         <span>Prazo: <?= financeiroData($meta['prazo']) ?></span>
+                                        <span class="financeiro-meta-prazo <?= $prazoClasse ?>"><?= htmlspecialchars($prazoTexto) ?></span>
                                         <span>Sugestão mensal: <?= $sugestaoMensal > 0 ? financeiroMoeda($sugestaoMensal) : '-' ?></span>
                                     </div>
                                     <div class="financeiro-meta-acoes">
