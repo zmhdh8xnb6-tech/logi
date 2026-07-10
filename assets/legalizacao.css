@@ -165,6 +165,17 @@
     color: #000 !important;
 }
 
+.legalizacao-status-pausado {
+    color: #000 !important;
+}
+
+.legalizacao-status-concluido,
+.legalizacao-status-cancelado,
+.legalizacao-tabela .badge.bg-danger,
+.legalizacao-card .badge.bg-danger {
+    color: #fff !important;
+}
+
 .legalizacao-detalhes {
     display: grid;
 }
@@ -238,6 +249,10 @@
 .legalizacao-etapa-concluida span {
     background: #198754;
     color: #fff;
+}
+
+.legalizacao-etapa-concluida small {
+    color: #146c43;
 }
 
 .legalizacao-etapa-atual {

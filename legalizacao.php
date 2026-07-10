@@ -30,9 +30,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $clienteId <= 0
             || !array_key_exists($tipo, $tiposProcesso)
             || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $solicitadoEm)
-            || ($prazo !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $prazo))
+            || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $prazo)
+            || $responsavelId <= 0
+            || $contatoCliente === ''
+            || $observacoes === ''
         ) {
-            legalizacaoRedirect('legalizacao.php', 'Preencha os dados do processo corretamente.', 'danger');
+            legalizacaoRedirect('legalizacao.php', 'Preencha todos os campos obrigatórios do processo.', 'danger');
         }
 
         $cliente = legalizacaoBuscarCliente($pdo, $clienteId);
@@ -56,8 +59,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $fluxo = legalizacaoFluxoPorTipoECliente($tipo, $cliente);
         $etapaInicial = $fluxo['etapas'][0] ?? 'Novo processo';
-        $prazo = $prazo === '' ? null : $prazo;
-
         $pdo->beginTransaction();
 
         try {
@@ -488,25 +489,30 @@ if ($tabelasDisponiveis) {
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label" for="prazoProcesso">Prazo</label>
-                                    <input type="date" class="form-control" name="prazo" id="prazoProcesso">
+                                    <input type="date" class="form-control" name="prazo" id="prazoProcesso" required>
+                                    <div class="invalid-feedback">Informe o prazo.</div>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label" for="responsavelProcesso">Responsável</label>
-                                    <select class="form-select" name="responsavel_id" id="responsavelProcesso">
+                                    <select class="form-select" name="responsavel_id" id="responsavelProcesso" required>
+                                        <option value="">Selecione</option>
                                         <?php foreach ($usuarios as $usuario): ?>
                                             <option value="<?= (int)$usuario['id'] ?>" <?= (int)$usuario['id'] === (int)($_SESSION['usuario_id'] ?? 0) ? 'selected' : '' ?>>
                                                 <?= htmlspecialchars($usuario['nome']) ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
+                                    <div class="invalid-feedback">Selecione o responsável.</div>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label" for="contatoCliente">Contato do cliente</label>
-                                    <input type="text" class="form-control" name="contato_cliente" id="contatoCliente" placeholder="Nome, telefone ou e-mail">
+                                    <input type="text" class="form-control" name="contato_cliente" id="contatoCliente" placeholder="Nome, telefone ou e-mail" required>
+                                    <div class="invalid-feedback">Informe o contato do cliente.</div>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label" for="observacoesProcesso">Observações</label>
-                                    <input type="text" class="form-control" name="observacoes" id="observacoesProcesso" placeholder="Resumo inicial">
+                                    <input type="text" class="form-control" name="observacoes" id="observacoesProcesso" placeholder="Resumo inicial" required>
+                                    <div class="invalid-feedback">Informe uma observação inicial.</div>
                                 </div>
                             </div>
                         </div>

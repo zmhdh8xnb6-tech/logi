@@ -66,13 +66,14 @@ function legalizacaoFluxosPadrao(): array
             'checklist' => [
                 'RG',
                 'CPF',
+                'CNH',
                 'Comprovante de endereço',
                 'IPTU',
-                'Procuração',
+                'Certidão de casamento',
+                'Termo de ciência',
                 'Viabilidade',
                 'DBE',
                 'Taxa Junta',
-                'Taxa Prefeitura',
             ],
         ],
         'alteracao_contratual' => [
@@ -93,11 +94,11 @@ function legalizacaoFluxosPadrao(): array
             'checklist' => [
                 'Contrato atual',
                 'Documentos dos sócios',
-                'Alteração solicitada',
+                'Certidão de casamento',
+                'Termo de ciência',
                 'Viabilidade',
                 'DBE',
                 'Taxa Junta',
-                'Comprovante do protocolo',
             ],
         ],
         'baixa' => [
@@ -199,9 +200,9 @@ function legalizacaoClasseStatus(string $status): string
         'em_andamento' => 'bg-primary legalizacao-status-andamento',
         'pendente_cliente' => 'bg-warning text-dark',
         'pendente_orgao' => 'bg-info text-dark',
-        'pausado' => 'bg-secondary',
-        'concluido' => 'bg-success',
-        'cancelado' => 'bg-danger',
+        'pausado' => 'bg-secondary legalizacao-status-pausado',
+        'concluido' => 'bg-success legalizacao-status-concluido',
+        'cancelado' => 'bg-danger legalizacao-status-cancelado',
     ][$status] ?? 'bg-primary';
 }
 

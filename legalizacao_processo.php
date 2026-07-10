@@ -460,13 +460,19 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                 </div>
 
                 <div class="legalizacao-etapas">
-                    <?php foreach ($etapas as $etapa): ?>
+                    <?php foreach ($etapas as $etapa):
+                        $statusEtapaVisual = $etapa['status'];
+
+                        if ($processo['status'] === 'concluido' && (int)$etapa['ordem'] === (int)$processo['etapa_atual_ordem']) {
+                            $statusEtapaVisual = 'concluida';
+                        }
+                    ?>
                         <div
-                            class="legalizacao-etapa legalizacao-etapa-<?= htmlspecialchars($etapa['status']) ?>"
+                            class="legalizacao-etapa legalizacao-etapa-<?= htmlspecialchars($statusEtapaVisual) ?>"
                             <?= $etapa['status'] === 'atual' ? 'id="etapaAtualProcesso" tabindex="-1"' : '' ?>>
                             <span><?= (int)$etapa['ordem'] ?></span>
                             <strong><?= htmlspecialchars($etapa['nome']) ?></strong>
-                            <small><?= htmlspecialchars($etapa['status'] === 'concluida' ? 'Concluída' : ($etapa['status'] === 'atual' ? 'Atual' : 'Pendente')) ?></small>
+                            <small><?= htmlspecialchars($statusEtapaVisual === 'concluida' ? 'Concluída' : ($statusEtapaVisual === 'atual' ? 'Atual' : 'Pendente')) ?></small>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -568,7 +574,7 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                 </section>
             </div>
 
-            <section class="legalizacao-painel mt-4">
+            <section class="legalizacao-painel mt-4" id="historicoProcesso">
                 <div class="legalizacao-painel-titulo">
                     <div>
                         <h5 class="mb-1">Histórico</h5>
@@ -585,7 +591,7 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                     </button>
                 </form>
 
-                <div class="legalizacao-historico">
+                <div class="legalizacao-historico" id="listaHistoricoProcesso">
                     <?php if ($historico === []): ?>
                         <div class="legalizacao-vazio">Nenhum histórico registrado.</div>
                     <?php endif; ?>
@@ -600,20 +606,20 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                 </div>
 
                 <?php if ($totalPaginasHistorico > 1): ?>
-                    <nav class="p-3 border-top bg-light" aria-label="Paginação do histórico">
+                    <nav class="p-3 border-top bg-light legalizacao-historico-paginacao" aria-label="Paginação do histórico">
                         <ul class="pagination justify-content-end mb-0">
                             <li class="page-item <?= $paginaHistorico <= 1 ? 'disabled' : '' ?>">
-                                <a class="page-link" href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= max(1, $paginaHistorico - 1) ?>">Anterior</a>
+                                <a class="page-link" data-historico-link href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= max(1, $paginaHistorico - 1) ?>">Anterior</a>
                             </li>
                             <?php for ($pagina = 1; $pagina <= $totalPaginasHistorico; $pagina++): ?>
                                 <li class="page-item <?= $pagina === $paginaHistorico ? 'active' : '' ?>">
-                                    <a class="page-link" href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= $pagina ?>">
+                                    <a class="page-link" data-historico-link href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= $pagina ?>">
                                         <?= $pagina ?>
                                     </a>
                                 </li>
                             <?php endfor; ?>
                             <li class="page-item <?= $paginaHistorico >= $totalPaginasHistorico ? 'disabled' : '' ?>">
-                                <a class="page-link" href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= min($totalPaginasHistorico, $paginaHistorico + 1) ?>">Próxima</a>
+                                <a class="page-link" data-historico-link href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= min($totalPaginasHistorico, $paginaHistorico + 1) ?>">Próxima</a>
                             </li>
                         </ul>
                     </nav>
@@ -654,21 +660,80 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        window.addEventListener('load', function() {
+        window.addEventListener('DOMContentLoaded', function() {
             const etapaAtual = document.getElementById('etapaAtualProcesso');
+            const trilhaEtapas = etapaAtual?.closest('.legalizacao-etapas');
 
-            if (!etapaAtual) {
+            if (!etapaAtual || !trilhaEtapas) {
                 return;
             }
 
-            etapaAtual.scrollIntoView({
-                behavior: 'smooth',
-                block: 'nearest',
-                inline: 'center'
+            window.requestAnimationFrame(function() {
+                const esquerda = etapaAtual.offsetLeft - ((trilhaEtapas.clientWidth - etapaAtual.clientWidth) / 2);
+                trilhaEtapas.scrollLeft = Math.max(0, esquerda);
+
+                etapaAtual.focus({
+                    preventScroll: true
+                });
             });
-            etapaAtual.focus({
-                preventScroll: true
-            });
+        });
+
+        document.addEventListener('click', function(evento) {
+            const linkHistorico = evento.target.closest('[data-historico-link]');
+
+            if (!linkHistorico || linkHistorico.closest('.page-item')?.classList.contains('disabled')) {
+                return;
+            }
+
+            evento.preventDefault();
+
+            const historico = document.getElementById('listaHistoricoProcesso');
+            const paginacao = document.querySelector('.legalizacao-historico-paginacao');
+
+            if (!historico) {
+                window.location.href = linkHistorico.href;
+                return;
+            }
+
+            historico.style.opacity = '.55';
+
+            fetch(linkHistorico.href, {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(function(resposta) {
+                    if (!resposta.ok) {
+                        throw new Error('Falha ao carregar histórico.');
+                    }
+
+                    return resposta.text();
+                })
+                .then(function(html) {
+                    const documento = new DOMParser().parseFromString(html, 'text/html');
+                    const novoHistorico = documento.getElementById('listaHistoricoProcesso');
+                    const novaPaginacao = documento.querySelector('.legalizacao-historico-paginacao');
+
+                    if (!novoHistorico) {
+                        throw new Error('Histórico não encontrado.');
+                    }
+
+                    historico.innerHTML = novoHistorico.innerHTML;
+
+                    if (paginacao && novaPaginacao) {
+                        paginacao.innerHTML = novaPaginacao.innerHTML;
+                    } else if (paginacao && !novaPaginacao) {
+                        paginacao.remove();
+                    }
+
+                    window.history.replaceState(null, '', linkHistorico.href);
+                })
+                .catch(function() {
+                    window.location.href = linkHistorico.href;
+                })
+                .finally(function() {
+                    historico.style.opacity = '1';
+                });
         });
     </script>
 </body>
