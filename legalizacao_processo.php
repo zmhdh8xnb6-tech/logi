@@ -33,8 +33,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (
             !in_array($status, $statusValidos, true)
             || ($prazo !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $prazo))
+            || $observacoes === ''
         ) {
-            legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Confira os dados informados.', 'danger');
+            legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Informe as observações antes de salvar.', 'danger');
         }
 
         if ($status === 'concluido') {
@@ -487,7 +488,7 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                         </div>
                     </div>
 
-                    <form method="post" class="p-3">
+                    <form method="post" class="p-3 needs-validation" novalidate>
                         <input type="hidden" name="id" value="<?= $processoId ?>">
                         <input type="hidden" name="acao" value="atualizar_dados">
 
@@ -498,11 +499,11 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="prazoProcesso">Prazo</label>
-                                <input type="date" class="form-control" name="prazo" id="prazoProcesso" value="<?= htmlspecialchars($processo['prazo'] ?? '') ?>">
+                                <input type="date" class="form-control legalizacao-dado-editavel" name="prazo" id="prazoProcesso" value="<?= htmlspecialchars($processo['prazo'] ?? '') ?>" disabled>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="statusProcesso">Status</label>
-                                <select class="form-select" name="status" id="statusProcesso">
+                                <select class="form-select legalizacao-dado-editavel" name="status" id="statusProcesso" disabled>
                                     <?php foreach (['em_andamento', 'pendente_cliente', 'pendente_orgao', 'pausado', 'concluido', 'cancelado'] as $status): ?>
                                         <option
                                             value="<?= htmlspecialchars($status) ?>"
@@ -515,7 +516,7 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="responsavelProcesso">Responsável</label>
-                                <select class="form-select" name="responsavel_id" id="responsavelProcesso">
+                                <select class="form-select legalizacao-dado-editavel" name="responsavel_id" id="responsavelProcesso" disabled>
                                     <?php foreach ($usuarios as $usuario): ?>
                                         <option value="<?= (int)$usuario['id'] ?>" <?= (int)$processo['responsavel_id'] === (int)$usuario['id'] ? 'selected' : '' ?>>
                                             <?= htmlspecialchars($usuario['nome']) ?>
@@ -525,16 +526,23 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                             </div>
                             <div class="col-md-12">
                                 <label class="form-label" for="contatoCliente">Contato do cliente</label>
-                                <input type="text" class="form-control" name="contato_cliente" id="contatoCliente" value="<?= htmlspecialchars($processo['contato_cliente'] ?? '') ?>">
+                                <input type="text" class="form-control legalizacao-dado-editavel" name="contato_cliente" id="contatoCliente" value="<?= htmlspecialchars($processo['contato_cliente'] ?? '') ?>" disabled>
                             </div>
                             <div class="col-md-12">
                                 <label class="form-label" for="observacoesProcesso">Observações</label>
-                                <textarea class="form-control" name="observacoes" id="observacoesProcesso" rows="4"><?= htmlspecialchars($processo['observacoes'] ?? '') ?></textarea>
+                                <textarea class="form-control legalizacao-dado-editavel" name="observacoes" id="observacoesProcesso" rows="4" required disabled><?= htmlspecialchars($processo['observacoes'] ?? '') ?></textarea>
+                                <div class="invalid-feedback">Informe as observações.</div>
                             </div>
                         </div>
 
-                        <div class="text-end mt-3">
-                            <button type="submit" class="btn btn-success">
+                        <div class="d-flex justify-content-end gap-2 mt-3">
+                            <button type="button" class="btn btn-outline-primary" id="btnEditarDadosProcesso">
+                                <i class="bi bi-pencil"></i> Editar dados
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary d-none" id="btnCancelarDadosProcesso">
+                                Cancelar
+                            </button>
+                            <button type="submit" class="btn btn-success d-none" id="btnSalvarDadosProcesso">
                                 <i class="bi bi-check-lg"></i> Salvar dados
                             </button>
                         </div>
@@ -676,6 +684,56 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                     preventScroll: true
                 });
             });
+        });
+
+        document.querySelectorAll('.needs-validation').forEach(function(formulario) {
+            formulario.addEventListener('submit', function(evento) {
+                if (!formulario.checkValidity()) {
+                    evento.preventDefault();
+                    evento.stopPropagation();
+                }
+
+                formulario.classList.add('was-validated');
+            });
+        });
+
+        const botaoEditarDados = document.getElementById('btnEditarDadosProcesso');
+        const botaoCancelarDados = document.getElementById('btnCancelarDadosProcesso');
+        const botaoSalvarDados = document.getElementById('btnSalvarDadosProcesso');
+        const camposDadosProcesso = Array.from(document.querySelectorAll('.legalizacao-dado-editavel'));
+        const valoresOriginaisDados = new Map();
+
+        camposDadosProcesso.forEach(function(campo) {
+            valoresOriginaisDados.set(campo, campo.value);
+        });
+
+        function alternarEdicaoDadosProcesso(editando) {
+            camposDadosProcesso.forEach(function(campo) {
+                campo.disabled = !editando;
+
+                if (!editando && valoresOriginaisDados.has(campo)) {
+                    campo.value = valoresOriginaisDados.get(campo);
+                }
+            });
+
+            document.querySelector('.needs-validation')?.classList.remove('was-validated');
+            botaoEditarDados?.classList.toggle('d-none', editando);
+            botaoCancelarDados?.classList.toggle('d-none', !editando);
+            botaoSalvarDados?.classList.toggle('d-none', !editando);
+
+            if (editando) {
+                camposDadosProcesso.find(function(campo) {
+                    return !campo.disabled;
+                })?.focus();
+            }
+        }
+
+        botaoEditarDados?.addEventListener('click', function() {
+            alternarEdicaoDadosProcesso(true);
+        });
+
+        botaoCancelarDados?.addEventListener('click', function() {
+            alternarEdicaoDadosProcesso(false);
         });
 
         document.addEventListener('click', function(evento) {
