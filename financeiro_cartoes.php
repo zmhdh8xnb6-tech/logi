@@ -31,6 +31,9 @@ if ($preferenciasDisponiveis) {
 }
 $temCompetenciaFatura = $tabelasDisponiveis
     && financeiroColunaExiste($pdo, 'financeiro_cartao_lancamentos', 'competencia_fatura');
+$temContaFaturaCartao = financeiroTabelasDisponiveis($pdo, ['financeiro_contas'])
+    && financeiroColunaExiste($pdo, 'financeiro_contas', 'cartao_id')
+    && financeiroColunaExiste($pdo, 'financeiro_contas', 'competencia_cartao');
 $expressaoCompetenciaFatura = $temCompetenciaFatura
     ? 'COALESCE(competencia_fatura, DATE_FORMAT(data_compra, \'%Y-%m-01\'))'
     : 'DATE_FORMAT(data_compra, \'%Y-%m-01\')';
@@ -797,60 +800,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($acao === 'pagar_fatura') {
         $cartaoId = (int)($_POST['cartao_id'] ?? 0);
         $dataPagamento = trim($_POST['data_pagamento'] ?? '');
+        $valorPagoInformado = $_POST['valor_pago'] ?? '';
+        $valorPago = financeiroValorEntrada($valorPagoInformado);
         $mesFatura = financeiroMesValido($_POST['mes_fatura'] ?? null);
-        $inicioMesFatura = $mesFatura . '-01';
-        $fimMesFatura = date('Y-m-d', strtotime($mesFatura . '-01 +1 month'));
 
         if (
             $cartaoId <= 0
             || $dataPagamento === ''
+            || !financeiroValorValido($valorPagoInformado)
+            || $valorPago <= 0
             || !preg_match('/^\d{4}-\d{2}$/', $_POST['mes_fatura'] ?? '')
         ) {
-            financeiroRedirecionar($urlRetorno, 'Informe o mês da fatura e a data de pagamento.', 'danger');
+            financeiroRedirecionar($urlRetorno, 'Informe o valor, o mês da fatura e a data de pagamento.', 'danger');
         }
 
-        $stmtFatura = $pdo->prepare("
-            SELECT COUNT(*) AS quantidade, COALESCE(SUM(valor), 0) AS total
-            FROM financeiro_cartao_lancamentos
-            WHERE cartao_id = ?
-              AND usuario_id = ?
-              AND status = 'aberto'
-              AND {$expressaoCompetenciaFatura} >= ?
-              AND {$expressaoCompetenciaFatura} < ?
-        ");
-        $stmtFatura->execute([$cartaoId, $usuarioId, $inicioMesFatura, $fimMesFatura]);
-        $faturaAntes = $stmtFatura->fetch(PDO::FETCH_ASSOC) ?: ['quantidade' => 0, 'total' => 0];
-        $stmt = $pdo->prepare("
-            UPDATE financeiro_cartao_lancamentos l
-            INNER JOIN financeiro_cartoes c ON c.id = l.cartao_id
-            SET l.status = 'pago', l.data_pagamento = ?
-            WHERE l.cartao_id = ?
-              AND l.usuario_id = ?
-              AND c.usuario_id = ?
-              AND l.status = 'aberto'
-              AND {$expressaoCompetenciaFaturaL} >= ?
-              AND {$expressaoCompetenciaFaturaL} < ?
-        ");
-        $stmt->execute([
-            $dataPagamento,
-            $cartaoId,
-            $usuarioId,
-            $usuarioId,
-            $inicioMesFatura,
-            $fimMesFatura,
-        ]);
+        try {
+            $resultadoPagamento = financeiroRegistrarPagamentoFaturaCartao(
+                $pdo,
+                $usuarioId,
+                $cartaoId,
+                $mesFatura,
+                $valorPago,
+                $dataPagamento
+            );
+        } catch (Throwable $e) {
+            financeiroRedirecionar($urlRetorno, 'Não foi possível registrar o pagamento da fatura.', 'danger');
+        }
+
         registrarAuditoria(
             $pdo,
             'Financeiro - Cartões',
-            'pagar_fatura',
+            $resultadoPagamento['pagamento_total'] ? 'pagar_fatura' : 'pagar_fatura_parcial',
             'cartao',
             $cartaoId,
-            'Pagou a fatura do cartão de ' . $mesFatura,
-            ['parcelas_em_aberto' => (int)$faturaAntes['quantidade'], 'valor' => (float)$faturaAntes['total']],
-            ['parcelas_em_aberto' => 0, 'data_pagamento' => $dataPagamento]
+            ($resultadoPagamento['pagamento_total'] ? 'Pagou' : 'Pagou parcialmente') . ' a fatura do cartão de ' . $mesFatura,
+            [
+                'parcelas_em_aberto' => $resultadoPagamento['parcelas_em_aberto'],
+                'valor' => $resultadoPagamento['valor_total'],
+            ],
+            [
+                'valor_pago' => $resultadoPagamento['valor_pago'],
+                'restante' => $resultadoPagamento['restante'],
+                'proxima_competencia' => $resultadoPagamento['proxima_competencia'],
+                'data_pagamento' => $dataPagamento,
+            ]
         );
-        financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
-        financeiroRedirecionar(urlCartoes($cartaoId, $mes), 'Fatura paga e limite liberado.');
+        financeiroRedirecionar(
+            urlCartoes($cartaoId, $mes),
+            $resultadoPagamento['pagamento_total']
+                ? 'Fatura paga e limite liberado.'
+                : 'Pagamento parcial registrado. O saldo restante foi lançado na próxima fatura.'
+        );
     }
 
     if ($acao === 'reabrir_lancamento') {
@@ -915,6 +915,30 @@ if ($tabelasDisponiveis) {
 
     financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
     $alertasFinanceiros = financeiroListarAlertasVencimento($pdo, $usuarioId, 10);
+    $selectFaturaPagaMes = ', 0 AS fatura_paga_mes';
+    $parametrosCartoes = [$inicioMes, $fimMes];
+
+    if ($temContaFaturaCartao) {
+        $selectFaturaPagaMes = ",
+            COALESCE((
+                SELECT CASE
+                    WHEN fc.status = 'pago'
+                     AND COALESCE(fc.valor_previsto, 0) > 0
+                     AND COALESCE(fc.valor_pago, 0) >= COALESCE(fc.valor_previsto, 0)
+                    THEN 1
+                    ELSE 0
+                END
+                FROM financeiro_contas fc
+                WHERE fc.usuario_id = c.usuario_id
+                  AND fc.cartao_id = c.id
+                  AND fc.competencia_cartao = ?
+                ORDER BY fc.id DESC
+                LIMIT 1
+            ), 0) AS fatura_paga_mes";
+        $parametrosCartoes[] = $mes;
+    }
+
+    $parametrosCartoes[] = $usuarioId;
     $stmt = $pdo->prepare("
         SELECT
             c.*,
@@ -928,6 +952,7 @@ if ($tabelasDisponiveis) {
                     ELSE 0
                 END
             ), 0) AS fatura_mes
+            {$selectFaturaPagaMes}
         FROM financeiro_cartoes c
         LEFT JOIN financeiro_cartao_lancamentos l
             ON l.cartao_id = c.id
@@ -936,7 +961,7 @@ if ($tabelasDisponiveis) {
         GROUP BY c.id
         ORDER BY c.ativo DESC, c.tipo ASC, c.nome ASC
     ");
-    $stmt->execute([$inicioMes, $fimMes, $usuarioId]);
+    $stmt->execute($parametrosCartoes);
     $cartoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($cartoes as &$cartao) {
@@ -1178,7 +1203,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                             <?php foreach ($cartoesVisiveis as $cartao): ?>
                                 <a
                                     href="<?= htmlspecialchars(urlCartoes((int)$cartao['id'], $mes)) ?>"
-                                    class="financeiro-cartao-item<?= (int)$cartao['id'] === $cartaoSelecionadoId ? ' ativo' : '' ?><?= (int)$cartao['ativo'] !== 1 ? ' cancelado' : '' ?>">
+                                    class="financeiro-cartao-item<?= (int)$cartao['id'] === $cartaoSelecionadoId ? ' ativo' : '' ?><?= (int)$cartao['ativo'] !== 1 ? ' cancelado' : '' ?><?= (int)($cartao['fatura_paga_mes'] ?? 0) === 1 ? ' fatura-paga' : '' ?>">
                                     <span class="financeiro-cartao-icone">
                                         <i class="bi <?= $cartao['tipo'] === 'loja' ? 'bi-shop' : 'bi-credit-card' ?>"></i>
                                     </span>
@@ -1715,11 +1740,29 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                     Pagar a fatura de <strong><?= htmlspecialchars($nomeMes) ?></strong>
                                     do cartão <?= htmlspecialchars($cartaoSelecionado['nome']) ?>.
                                 </p>
+                                <div class="alert alert-info py-2">
+                                    Valor da fatura:
+                                    <strong><?= financeiroMoeda((float)$cartaoSelecionado['fatura_mes']) ?></strong>.
+                                    Se informar um valor menor, o restante irá para a próxima fatura como saldo anterior.
+                                </div>
                                 <input type="hidden" name="mes_fatura" value="<?= htmlspecialchars($mes) ?>">
                                 <div class="row">
-                                    <div class="col-12 mb-3">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="valorPagamentoFatura" class="form-label">Valor pago</label>
+                                        <input
+                                            type="text"
+                                            inputmode="decimal"
+                                            class="form-control campo-moeda"
+                                            name="valor_pago"
+                                            id="valorPagamentoFatura"
+                                            value="<?= number_format((float)$cartaoSelecionado['fatura_mes'], 2, ',', '.') ?>"
+                                            required>
+                                        <div class="invalid-feedback">Informe o valor pago.</div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
                                         <label for="dataPagamentoFatura" class="form-label">Data do pagamento</label>
                                         <input type="date" class="form-control financeiro-calendario" name="data_pagamento" id="dataPagamentoFatura" value="<?= date('Y-m-d') ?>" required>
+                                        <div class="invalid-feedback">Informe a data do pagamento.</div>
                                     </div>
                                 </div>
                             </div>

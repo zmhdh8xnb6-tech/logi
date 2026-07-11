@@ -472,6 +472,21 @@
     background: #eff6ff;
 }
 
+.financeiro-cartao-item.fatura-paga {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+}
+
+.financeiro-cartao-item.fatura-paga:hover {
+    border-color: #86efac;
+    background: #dcfce7;
+}
+
+.financeiro-cartao-item.fatura-paga.ativo {
+    border-color: #4ade80;
+    background: #dcfce7;
+}
+
 .financeiro-cartao-item.cancelado {
     border-color: #d1d5db;
     background: #f8fafc;

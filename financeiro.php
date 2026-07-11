@@ -875,46 +875,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
 
         if (!empty($antes['cartao_id']) && !empty($antes['competencia_cartao'])) {
-            $inicioCompetencia = $antes['competencia_cartao'] . '-01';
-            $fimCompetencia = date('Y-m-d', strtotime($inicioCompetencia . ' +1 month'));
-            $valorPago = (float)$antes['valor_previsto'];
-            $temCompetenciaFatura = financeiroColunaExiste(
-                $pdo,
-                'financeiro_cartao_lancamentos',
-                'competencia_fatura'
-            );
-            $filtroCompetenciaFatura = $temCompetenciaFatura
-                ? "COALESCE(competencia_fatura, DATE_FORMAT(data_compra, '%Y-%m-01'))"
-                : "DATE_FORMAT(data_compra, '%Y-%m-01')";
-            $pdo->beginTransaction();
-
             try {
-                $stmt = $pdo->prepare("
-                    UPDATE financeiro_cartao_lancamentos
-                    SET status = 'pago', data_pagamento = ?
-                    WHERE usuario_id = ?
-                      AND cartao_id = ?
-                      AND {$filtroCompetenciaFatura} >= ?
-                      AND {$filtroCompetenciaFatura} < ?
-                      AND status = 'aberto'
-                ");
-                $stmt->execute([
-                    $dataPagamento,
+                $resultadoPagamentoFatura = financeiroRegistrarPagamentoFaturaCartao(
+                    $pdo,
                     $usuarioId,
-                    $antes['cartao_id'],
-                    $inicioCompetencia,
-                    $fimCompetencia,
-                ]);
-
-                $stmt = $pdo->prepare("
-                    UPDATE financeiro_contas
-                    SET status = 'pago', valor_pago = ?, data_pagamento = ?
-                    WHERE id = ? AND usuario_id = ?
-                ");
-                $stmt->execute([$valorPago, $dataPagamento, $id, $usuarioId]);
-                $pdo->commit();
+                    (int)$antes['cartao_id'],
+                    $antes['competencia_cartao'],
+                    $valorPago,
+                    $dataPagamento
+                );
+                $valorPago = (float)$resultadoPagamentoFatura['valor_pago'];
             } catch (Throwable $e) {
-                $pdo->rollBack();
                 financeiroRedirecionar($urlRetorno, 'Não foi possível pagar a fatura do cartão.', 'danger');
             }
         } else {
@@ -1233,7 +1204,16 @@ if ($tabelasDisponiveis) {
             && $conta['data_pagamento'] < $fimMes;
 
         if ($conta['status'] !== 'pago' || $pagaNoMesSelecionado) {
-            $totalPrevisto += (float)$conta['valor_previsto'];
+            $valorPrevistoConta = (float)$conta['valor_previsto'];
+            $valorPagoConta = (float)($conta['valor_pago'] ?? 0);
+
+            if ($conta['status'] === 'pago' && $pagaNoMesSelecionado && $valorPagoConta > 0 && $valorPagoConta < $valorPrevistoConta) {
+                $totalPrevisto += $valorPagoConta;
+            } elseif ($conta['status'] !== 'pago' && $valorPagoConta > 0 && $valorPagoConta < $valorPrevistoConta) {
+                $totalPrevisto += $valorPrevistoConta - $valorPagoConta;
+            } else {
+                $totalPrevisto += $valorPrevistoConta;
+            }
         }
     }
 
@@ -1253,7 +1233,7 @@ if ($tabelasDisponiveis) {
         if ($conta['status'] === 'pago') {
             $totalPago += (float)($conta['valor_pago'] ?? 0);
         } else {
-            $totalPendente += (float)$conta['valor_previsto'];
+            $totalPendente += max(0, (float)$conta['valor_previsto'] - (float)($conta['valor_pago'] ?? 0));
         }
     }
 }
@@ -1780,6 +1760,9 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                         ->diff(new DateTimeImmutable($conta['vencimento']))
                                         ->format('%r%a');
                                     $faturaCartao = !empty($conta['cartao_id']);
+                                    $valorPrevistoConta = (float)$conta['valor_previsto'];
+                                    $valorPagoConta = (float)($conta['valor_pago'] ?? 0);
+                                    $pagaParcial = $paga && $faturaCartao && $valorPagoConta > 0 && $valorPagoConta < $valorPrevistoConta;
                                     $contaRecorrente = !empty($conta['recorrencia_id']);
                                     $recorrencia = $contaRecorrente
                                         ? ($recorrenciasPorId[(int)$conta['recorrencia_id']] ?? null)
@@ -1839,8 +1822,8 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                         <td class="text-end"><?= $paga ? financeiroMoeda((float)$conta['valor_pago']) : '-' ?></td>
                                         <td><?= financeiroData($conta['data_pagamento']) ?></td>
                                         <td>
-                                            <span class="badge <?= $paga ? 'bg-success' : ($atrasada ? 'bg-danger' : 'bg-warning text-dark') ?>">
-                                                <?= $paga ? 'Pago' : ($atrasada ? 'Atrasado' : 'Pendente') ?>
+                                            <span class="badge <?= $pagaParcial ? 'bg-info text-dark' : ($paga ? 'bg-success' : ($atrasada ? 'bg-danger' : 'bg-warning text-dark')) ?>">
+                                                <?= $pagaParcial ? 'Pago parcial' : ($paga ? 'Pago' : ($atrasada ? 'Atrasado' : 'Pendente')) ?>
                                             </span>
                                         </td>
                                         <td class="text-end">

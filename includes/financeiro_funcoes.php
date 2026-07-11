@@ -252,6 +252,38 @@ function financeiroCategoriaValida(
     }
 }
 
+function financeiroObterCategoriaPorNome(PDO $pdo, int $usuarioId, string $tipo, array $nomes): ?int
+{
+    if (
+        $usuarioId <= 0
+        || $nomes === []
+        || !in_array($tipo, ['receita', 'despesa'], true)
+        || !financeiroTabelasDisponiveis($pdo, ['financeiro_categorias'])
+    ) {
+        return null;
+    }
+
+    $marcadores = implode(',', array_fill(0, count($nomes), '?'));
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM financeiro_categorias
+            WHERE usuario_id = ?
+              AND tipo = ?
+              AND nome IN ({$marcadores})
+            ORDER BY ativa DESC, FIELD(nome, {$marcadores})
+            LIMIT 1
+        ");
+        $stmt->execute(array_merge([$usuarioId, $tipo], $nomes, $nomes));
+        $categoriaId = (int)$stmt->fetchColumn();
+
+        return $categoriaId > 0 ? $categoriaId : null;
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
 function financeiroVencimentoFatura(string $competencia, int $dia): string
 {
     $inicioMes = new DateTime($competencia . '-01');
@@ -427,6 +459,14 @@ function financeiroSincronizarFaturasCartoes(PDO $pdo, int $usuarioId): void
     $expressaoCompetencia = $temCompetenciaFatura
         ? "COALESCE(DATE_FORMAT(competencia_fatura, '%Y-%m'), DATE_FORMAT(data_compra, '%Y-%m'))"
         : "DATE_FORMAT(data_compra, '%Y-%m')";
+    $temCategoriaConta = financeiroColunaExiste($pdo, 'financeiro_contas', 'categoria_id')
+        && financeiroTabelasDisponiveis($pdo, ['financeiro_categorias']);
+    $categoriaFaturaId = $temCategoriaConta
+        ? financeiroObterCategoriaPorNome($pdo, $usuarioId, 'despesa', ['Dívidas', 'Dividas'])
+        : null;
+    $colunaCategoriaConta = $temCategoriaConta ? ', categoria_id' : '';
+    $valorCategoriaConta = $temCategoriaConta ? ', ?' : '';
+    $setCategoriaConta = $temCategoriaConta ? ', categoria_id = COALESCE(categoria_id, ?)' : '';
 
     try {
         $stmtCartoes = $pdo->prepare("
@@ -461,7 +501,7 @@ function financeiroSincronizarFaturasCartoes(PDO $pdo, int $usuarioId): void
             ORDER BY competencia
         ");
         $stmtBuscarConta = $pdo->prepare("
-            SELECT id
+            SELECT *
             FROM financeiro_contas
             WHERE usuario_id = ?
               AND cartao_id = ?
@@ -480,8 +520,9 @@ function financeiroSincronizarFaturasCartoes(PDO $pdo, int $usuarioId): void
                 data_pagamento,
                 cartao_id,
                 competencia_cartao
+                {$colunaCategoriaConta}
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?{$valorCategoriaConta})
         ");
         $stmtAtualizarConta = $pdo->prepare("
             UPDATE financeiro_contas
@@ -491,6 +532,7 @@ function financeiroSincronizarFaturasCartoes(PDO $pdo, int $usuarioId): void
                 status = ?,
                 valor_pago = ?,
                 data_pagamento = ?
+                {$setCategoriaConta}
             WHERE id = ? AND usuario_id = ?
         ");
         $stmtExcluirDuplicadas = $pdo->prepare("
@@ -522,26 +564,43 @@ function financeiroSincronizarFaturasCartoes(PDO $pdo, int $usuarioId): void
                     $competencia,
                     (int)$cartao['dia_vencimento']
                 );
-                $status = $paga ? 'pago' : 'pendente';
-                $valorPago = $paga ? $valorTotal : null;
-                $dataPagamento = $paga ? $fatura['data_pagamento'] : null;
-
                 $stmtBuscarConta->execute([$usuarioId, $cartao['id'], $competencia]);
-                $contaId = (int)$stmtBuscarConta->fetchColumn();
+                $contaExistente = $stmtBuscarConta->fetch(PDO::FETCH_ASSOC) ?: null;
+                $contaId = (int)($contaExistente['id'] ?? 0);
+                $valorPagoExistente = $contaExistente && $contaExistente['valor_pago'] !== null
+                    ? (float)$contaExistente['valor_pago']
+                    : null;
+
+                if ($paga && $valorPagoExistente !== null && $valorPagoExistente > 0 && $valorPagoExistente < $valorTotal) {
+                    $status = 'pago';
+                    $valorPago = $valorPagoExistente;
+                    $dataPagamento = $contaExistente['data_pagamento'] ?: $fatura['data_pagamento'];
+                } else {
+                    $status = $paga ? 'pago' : 'pendente';
+                    $valorPago = $paga ? $valorTotal : null;
+                    $dataPagamento = $paga ? $fatura['data_pagamento'] : null;
+                }
 
                 if ($contaId > 0) {
-                    $stmtAtualizarConta->execute([
+                    $valoresAtualizar = [
                         $descricao,
                         $valorTotal,
                         $vencimento,
                         $status,
                         $valorPago,
                         $dataPagamento,
+                    ];
+
+                    if ($temCategoriaConta) {
+                        $valoresAtualizar[] = $categoriaFaturaId;
+                    }
+
+                    $stmtAtualizarConta->execute(array_merge($valoresAtualizar, [
                         $contaId,
                         $usuarioId,
-                    ]);
+                    ]));
                 } else {
-                    $stmtInserirConta->execute([
+                    $valoresInserir = [
                         $usuarioId,
                         $descricao,
                         $valorTotal,
@@ -551,7 +610,13 @@ function financeiroSincronizarFaturasCartoes(PDO $pdo, int $usuarioId): void
                         $dataPagamento,
                         $cartao['id'],
                         $competencia,
-                    ]);
+                    ];
+
+                    if ($temCategoriaConta) {
+                        $valoresInserir[] = $categoriaFaturaId;
+                    }
+
+                    $stmtInserirConta->execute($valoresInserir);
                     $contaId = (int)$pdo->lastInsertId();
                 }
 
@@ -579,8 +644,193 @@ function financeiroSincronizarFaturasCartoes(PDO $pdo, int $usuarioId): void
             $stmtExcluir->execute(array_merge([$usuarioId, $cartao['id']], $competencias));
         }
     } catch (Throwable $e) {
-        // A sincronização automática não deve impedir a abertura do financeiro.
+        error_log('Erro ao sincronizar faturas dos cartões: ' . $e->getMessage());
     }
+}
+
+function financeiroRegistrarPagamentoFaturaCartao(
+    PDO $pdo,
+    int $usuarioId,
+    int $cartaoId,
+    string $mesFatura,
+    float $valorPago,
+    string $dataPagamento
+): array {
+    $mesFatura = financeiroMesValido($mesFatura);
+    $inicioMesFatura = $mesFatura . '-01';
+    $fimMesFatura = date('Y-m-d', strtotime($inicioMesFatura . ' +1 month'));
+    $proximaCompetencia = date('Y-m-01', strtotime($inicioMesFatura . ' +1 month'));
+    $competenciaAtual = date('Y-m', strtotime($inicioMesFatura));
+
+    if ($usuarioId <= 0 || $cartaoId <= 0 || $valorPago <= 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataPagamento)) {
+        throw new RuntimeException('Dados inválidos para pagamento da fatura.');
+    }
+
+    if (!financeiroTabelasDisponiveis($pdo, ['financeiro_cartoes', 'financeiro_cartao_lancamentos', 'financeiro_contas'])) {
+        throw new RuntimeException('Tabelas do financeiro não encontradas.');
+    }
+
+    if (!financeiroColunaExiste($pdo, 'financeiro_cartao_lancamentos', 'competencia_fatura')) {
+        throw new RuntimeException('Execute o SQL da competência da fatura antes de pagar parcialmente.');
+    }
+
+    $stmtCartao = $pdo->prepare("
+        SELECT id, nome
+        FROM financeiro_cartoes
+        WHERE id = ? AND usuario_id = ?
+    ");
+    $stmtCartao->execute([$cartaoId, $usuarioId]);
+    $cartao = $stmtCartao->fetch(PDO::FETCH_ASSOC);
+
+    if (!$cartao) {
+        throw new RuntimeException('Cartão não encontrado.');
+    }
+
+    $stmtFatura = $pdo->prepare("
+        SELECT COUNT(*) AS quantidade, COALESCE(SUM(valor), 0) AS total
+        FROM financeiro_cartao_lancamentos
+        WHERE cartao_id = ?
+          AND usuario_id = ?
+          AND status = 'aberto'
+          AND COALESCE(competencia_fatura, DATE_FORMAT(data_compra, '%Y-%m-01')) >= ?
+          AND COALESCE(competencia_fatura, DATE_FORMAT(data_compra, '%Y-%m-01')) < ?
+    ");
+    $stmtFatura->execute([$cartaoId, $usuarioId, $inicioMesFatura, $fimMesFatura]);
+    $faturaAntes = $stmtFatura->fetch(PDO::FETCH_ASSOC) ?: ['quantidade' => 0, 'total' => 0];
+    $valorTotal = round((float)$faturaAntes['total'], 2);
+
+    if ($valorTotal <= 0) {
+        throw new RuntimeException('Não há valor em aberto nesta fatura.');
+    }
+
+    $valorPago = min(round($valorPago, 2), $valorTotal);
+    $restante = round($valorTotal - $valorPago, 2);
+    $pagamentoTotal = $restante <= 0.009;
+    $descricaoSaldo = 'Saldo anterior da fatura ' . date('m/Y', strtotime($inicioMesFatura));
+    $categoriaId = null;
+
+    if (financeiroTabelasDisponiveis($pdo, ['financeiro_categorias'])) {
+        $stmtCategoria = $pdo->prepare("
+            SELECT id
+            FROM financeiro_categorias
+            WHERE usuario_id = ?
+              AND tipo = 'despesa'
+              AND nome IN ('Dívidas', 'Dividas')
+            ORDER BY nome
+            LIMIT 1
+        ");
+        $stmtCategoria->execute([$usuarioId]);
+        $categoriaId = $stmtCategoria->fetchColumn() ?: null;
+    }
+
+    $pdo->beginTransaction();
+
+    try {
+        $stmtPagarLancamentos = $pdo->prepare("
+            UPDATE financeiro_cartao_lancamentos
+            SET status = 'pago', data_pagamento = ?
+            WHERE cartao_id = ?
+              AND usuario_id = ?
+              AND status = 'aberto'
+              AND COALESCE(competencia_fatura, DATE_FORMAT(data_compra, '%Y-%m-01')) >= ?
+              AND COALESCE(competencia_fatura, DATE_FORMAT(data_compra, '%Y-%m-01')) < ?
+        ");
+        $stmtPagarLancamentos->execute([
+            $dataPagamento,
+            $cartaoId,
+            $usuarioId,
+            $inicioMesFatura,
+            $fimMesFatura,
+        ]);
+
+        if (!$pagamentoTotal) {
+            $stmtSaldoExistente = $pdo->prepare("
+                SELECT id
+                FROM financeiro_cartao_lancamentos
+                WHERE usuario_id = ?
+                  AND cartao_id = ?
+                  AND descricao = ?
+                  AND competencia_fatura = ?
+                LIMIT 1
+            ");
+            $stmtSaldoExistente->execute([$usuarioId, $cartaoId, $descricaoSaldo, $proximaCompetencia]);
+            $saldoId = (int)$stmtSaldoExistente->fetchColumn();
+
+            if ($saldoId > 0) {
+                $stmtSaldo = $pdo->prepare("
+                    UPDATE financeiro_cartao_lancamentos
+                    SET valor = ?,
+                        status = 'aberto',
+                        data_pagamento = NULL,
+                        categoria_id = ?
+                    WHERE id = ? AND usuario_id = ?
+                ");
+                $stmtSaldo->execute([$restante, $categoriaId, $saldoId, $usuarioId]);
+            } else {
+                $stmtSaldo = $pdo->prepare("
+                    INSERT INTO financeiro_cartao_lancamentos (
+                        usuario_id,
+                        cartao_id,
+                        data_compra,
+                        competencia_fatura,
+                        descricao,
+                        valor,
+                        status,
+                        categoria_id,
+                        grupo_parcelamento,
+                        parcela_numero,
+                        parcelas_total
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 'aberto', ?, NULL, NULL, NULL)
+                ");
+                $stmtSaldo->execute([
+                    $usuarioId,
+                    $cartaoId,
+                    $dataPagamento,
+                    $proximaCompetencia,
+                    $descricaoSaldo,
+                    $restante,
+                    $categoriaId,
+                ]);
+            }
+        }
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+
+    financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
+
+    if (!$pagamentoTotal) {
+        $stmtContaAtual = $pdo->prepare("
+            UPDATE financeiro_contas
+            SET status = 'pago',
+                valor_pago = ?,
+                data_pagamento = ?
+            WHERE usuario_id = ?
+              AND cartao_id = ?
+              AND competencia_cartao = ?
+        ");
+        $stmtContaAtual->execute([
+            $valorPago,
+            $dataPagamento,
+            $usuarioId,
+            $cartaoId,
+            $competenciaAtual,
+        ]);
+    }
+
+    return [
+        'cartao_nome' => $cartao['nome'],
+        'valor_total' => $valorTotal,
+        'valor_pago' => $valorPago,
+        'restante' => $pagamentoTotal ? 0.0 : $restante,
+        'pagamento_total' => $pagamentoTotal,
+        'parcelas_em_aberto' => (int)$faturaAntes['quantidade'],
+        'proxima_competencia' => date('Y-m', strtotime($proximaCompetencia)),
+    ];
 }
 
 function financeiroSincronizarContasRecorrentes(PDO $pdo, int $usuarioId, string $mes): void
