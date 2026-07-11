@@ -1,5 +1,6 @@
 <?php
 $alertasFinanceiros = $alertasFinanceiros ?? [];
+$financeiroAlertasContexto = $financeiroAlertasContexto ?? '';
 ?>
 
 <?php if ($alertasFinanceiros !== []): ?>
@@ -49,18 +50,35 @@ $alertasFinanceiros = $alertasFinanceiros ?? [];
                         <span class="badge bg-<?= htmlspecialchars($alerta['classe']) ?> <?= $alerta['classe'] === 'warning' ? 'text-dark' : '' ?>">
                             <?= htmlspecialchars($alerta['prazo']) ?>
                         </span>
-                        <button
-                            type="button"
-                            class="btn btn-outline-success btn-sm btn-pagar-conta financeiro-alerta-pagar"
-                            data-id="<?= (int)$alerta['id'] ?>"
-                            data-descricao="<?= htmlspecialchars($alerta['descricao']) ?>"
-                            data-valor="<?= number_format((float)$alerta['valor'], 2, ',', '.') ?>"
-                            data-bs-toggle="modal"
-                            data-bs-target="#modalPagarConta"
-                            title="Marcar como pago"
-                            aria-label="Marcar <?= htmlspecialchars($alerta['descricao']) ?> como pago">
-                            <i class="bi bi-check-lg"></i>
-                        </button>
+                        <?php if ($alerta['tipo'] === 'Fatura' && $financeiroAlertasContexto === 'cartoes'): ?>
+                            <button
+                                type="button"
+                                class="btn btn-outline-success btn-sm btn-pagar-fatura financeiro-alerta-pagar"
+                                data-cartao-id="<?= (int)($alerta['cartao_id'] ?? 0) ?>"
+                                data-mes-fatura="<?= htmlspecialchars($alerta['competencia_cartao'] ?? '') ?>"
+                                data-descricao="<?= htmlspecialchars($alerta['descricao']) ?>"
+                                data-valor="<?= number_format((float)$alerta['valor'], 2, ',', '.') ?>"
+                                data-bs-toggle="modal"
+                                data-bs-target="#modalPagarFatura"
+                                title="Pagar fatura"
+                                aria-label="Pagar <?= htmlspecialchars($alerta['descricao']) ?>">
+                                <i class="bi bi-check-lg"></i>
+                            </button>
+                        <?php else: ?>
+                            <button
+                                type="button"
+                                class="btn btn-outline-success btn-sm btn-pagar-conta financeiro-alerta-pagar"
+                                data-id="<?= (int)$alerta['id'] ?>"
+                                data-descricao="<?= htmlspecialchars($alerta['descricao']) ?>"
+                                data-valor="<?= number_format((float)$alerta['valor'], 2, ',', '.') ?>"
+                                data-tipo="<?= htmlspecialchars($alerta['tipo']) ?>"
+                                data-bs-toggle="modal"
+                                data-bs-target="#modalPagarConta"
+                                title="Marcar como pago"
+                                aria-label="Marcar <?= htmlspecialchars($alerta['descricao']) ?> como pago">
+                                <i class="bi bi-check-lg"></i>
+                            </button>
+                        <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
             </div>

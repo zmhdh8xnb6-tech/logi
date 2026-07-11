@@ -1105,6 +1105,8 @@ function financeiroListarAlertasVencimento(
                 'classe' => $classe,
                 'tipo' => $fatura ? 'Fatura' : 'Conta',
                 'url' => $url,
+                'cartao_id' => (int)($conta['cartao_id'] ?? 0),
+                'competencia_cartao' => $conta['competencia_cartao'] ?: $mesConta,
             ];
         }
 

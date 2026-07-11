@@ -487,6 +487,21 @@
     background: #dcfce7;
 }
 
+.financeiro-cartao-item.fatura-parcial {
+    border-color: #fde68a;
+    background: #fffbeb;
+}
+
+.financeiro-cartao-item.fatura-parcial:hover {
+    border-color: #facc15;
+    background: #fef3c7;
+}
+
+.financeiro-cartao-item.fatura-parcial.ativo {
+    border-color: #f59e0b;
+    background: #fef3c7;
+}
+
 .financeiro-cartao-item.cancelado {
     border-color: #d1d5db;
     background: #f8fafc;

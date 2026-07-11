@@ -1835,6 +1835,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                                         data-id="<?= (int)$conta['id'] ?>"
                                                         data-descricao="<?= htmlspecialchars($textoConta) ?>"
                                                         data-valor="<?= number_format((float)$conta['valor_previsto'], 2, ',', '.') ?>"
+                                                        data-tipo="<?= $faturaCartao ? 'Fatura' : 'Conta' ?>"
                                                         data-bs-toggle="modal"
                                                         data-bs-target="#modalPagarConta"
                                                         title="Marcar como paga">
@@ -2223,6 +2224,9 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                         </div>
                         <div class="modal-body">
                             <p class="mb-3">Pagamento de <strong id="pagarContaDescricao"></strong></p>
+                            <div class="alert alert-warning py-2 d-none" id="avisoPagamentoParcialFatura">
+                                Esta é uma fatura de cartão. Se informar um valor menor, o restante será lançado na próxima fatura.
+                            </div>
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label for="pagarContaValor" class="form-label">Valor pago</label>
@@ -2745,6 +2749,10 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     document.getElementById('pagarContaDescricao').textContent = this.dataset.descricao;
                     document.getElementById('pagarContaValor').value = this.dataset.valor;
                     document.getElementById('pagarContaData').value = dataHoje;
+                    document.getElementById('avisoPagamentoParcialFatura')?.classList.toggle(
+                        'd-none',
+                        this.dataset.tipo !== 'Fatura'
+                    );
                 });
             });
 

@@ -915,7 +915,7 @@ if ($tabelasDisponiveis) {
 
     financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
     $alertasFinanceiros = financeiroListarAlertasVencimento($pdo, $usuarioId, 10);
-    $selectFaturaPagaMes = ', 0 AS fatura_paga_mes';
+    $selectFaturaPagaMes = ', 0 AS fatura_paga_mes, 0 AS fatura_parcial_mes';
     $parametrosCartoes = [$inicioMes, $fimMes];
 
     if ($temContaFaturaCartao) {
@@ -934,7 +934,23 @@ if ($tabelasDisponiveis) {
                   AND fc.competencia_cartao = ?
                 ORDER BY fc.id DESC
                 LIMIT 1
-            ), 0) AS fatura_paga_mes";
+            ), 0) AS fatura_paga_mes,
+            COALESCE((
+                SELECT CASE
+                    WHEN fc.status = 'pago'
+                     AND COALESCE(fc.valor_pago, 0) > 0
+                     AND COALESCE(fc.valor_pago, 0) < COALESCE(fc.valor_previsto, 0)
+                    THEN 1
+                    ELSE 0
+                END
+                FROM financeiro_contas fc
+                WHERE fc.usuario_id = c.usuario_id
+                  AND fc.cartao_id = c.id
+                  AND fc.competencia_cartao = ?
+                ORDER BY fc.id DESC
+                LIMIT 1
+            ), 0) AS fatura_parcial_mes";
+        $parametrosCartoes[] = $mes;
         $parametrosCartoes[] = $mes;
     }
 
@@ -1116,7 +1132,10 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     Execute o SQL do financeiro no phpMyAdmin e atualize esta página.
                 </div>
             <?php else: ?>
-                <?php include 'includes/financeiro_alertas.php'; ?>
+                <?php
+                $financeiroAlertasContexto = 'cartoes';
+                include 'includes/financeiro_alertas.php';
+                ?>
 
                 <section class="financeiro-resumo financeiro-resumo-cartoes <?= $mostrarCartoesLoja ? '' : 'financeiro-resumo-cartoes-compacto' ?> mb-4" aria-label="Resumo dos cartões">
                     <div class="financeiro-metrica metrica-cartao">
@@ -1203,7 +1222,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                             <?php foreach ($cartoesVisiveis as $cartao): ?>
                                 <a
                                     href="<?= htmlspecialchars(urlCartoes((int)$cartao['id'], $mes)) ?>"
-                                    class="financeiro-cartao-item<?= (int)$cartao['id'] === $cartaoSelecionadoId ? ' ativo' : '' ?><?= (int)$cartao['ativo'] !== 1 ? ' cancelado' : '' ?><?= (int)($cartao['fatura_paga_mes'] ?? 0) === 1 ? ' fatura-paga' : '' ?>">
+                                    class="financeiro-cartao-item<?= (int)$cartao['id'] === $cartaoSelecionadoId ? ' ativo' : '' ?><?= (int)$cartao['ativo'] !== 1 ? ' cancelado' : '' ?><?= (int)($cartao['fatura_paga_mes'] ?? 0) === 1 ? ' fatura-paga' : '' ?><?= (int)($cartao['fatura_parcial_mes'] ?? 0) === 1 ? ' fatura-parcial' : '' ?>">
                                     <span class="financeiro-cartao-icone">
                                         <i class="bi <?= $cartao['tipo'] === 'loja' ? 'bi-shop' : 'bi-credit-card' ?>"></i>
                                     </span>
@@ -1279,9 +1298,13 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                     </button>
                                     <button
                                         type="button"
-                                        class="btn btn-success btn-sm"
+                                        class="btn btn-success btn-sm btn-pagar-fatura"
                                         data-bs-toggle="modal"
                                         data-bs-target="#modalPagarFatura"
+                                        data-cartao-id="<?= (int)$cartaoSelecionado['id'] ?>"
+                                        data-mes-fatura="<?= htmlspecialchars($mes) ?>"
+                                        data-descricao="Fatura <?= htmlspecialchars($cartaoSelecionado['nome']) ?>"
+                                        data-valor="<?= number_format((float)$cartaoSelecionado['fatura_mes'], 2, ',', '.') ?>"
                                         <?= (float)$cartaoSelecionado['fatura_mes'] <= 0 ? 'disabled' : '' ?>>
                                         <i class="bi bi-check-lg"></i> Pagar fatura
                                     </button>
@@ -1727,25 +1750,25 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     <div class="modal-content">
                         <form method="post" class="financeiro-form" novalidate>
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
-                            <input type="hidden" name="cartao_retorno" value="<?= $cartaoSelecionadoId ?>">
+                            <input type="hidden" name="cartao_retorno" id="pagarFaturaCartaoRetorno" value="<?= $cartaoSelecionadoId ?>">
                             <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
                             <input type="hidden" name="acao" value="pagar_fatura">
-                            <input type="hidden" name="cartao_id" value="<?= $cartaoSelecionadoId ?>">
+                            <input type="hidden" name="cartao_id" id="pagarFaturaCartaoId" value="<?= $cartaoSelecionadoId ?>">
                             <div class="modal-header">
                                 <h5 class="modal-title">Pagar fatura</h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                             </div>
                             <div class="modal-body">
                                 <p>
-                                    Pagar a fatura de <strong><?= htmlspecialchars($nomeMes) ?></strong>
-                                    do cartão <?= htmlspecialchars($cartaoSelecionado['nome']) ?>.
+                                    Pagar <strong id="pagarFaturaDescricao"><?= htmlspecialchars('Fatura ' . $cartaoSelecionado['nome']) ?></strong>
+                                    de <strong id="pagarFaturaMesTexto"><?= htmlspecialchars($nomeMes) ?></strong>.
                                 </p>
                                 <div class="alert alert-info py-2">
                                     Valor da fatura:
-                                    <strong><?= financeiroMoeda((float)$cartaoSelecionado['fatura_mes']) ?></strong>.
+                                    <strong id="pagarFaturaValorTexto"><?= financeiroMoeda((float)$cartaoSelecionado['fatura_mes']) ?></strong>.
                                     Se informar um valor menor, o restante irá para a próxima fatura como saldo anterior.
                                 </div>
-                                <input type="hidden" name="mes_fatura" value="<?= htmlspecialchars($mes) ?>">
+                                <input type="hidden" name="mes_fatura" id="pagarFaturaMes" value="<?= htmlspecialchars($mes) ?>">
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
                                         <label for="valorPagamentoFatura" class="form-label">Valor pago</label>
@@ -1846,6 +1869,49 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     .toLowerCase()
                     .trim();
             }
+
+            function nomeMesFatura(mes) {
+                const nomes = [
+                    'Janeiro',
+                    'Fevereiro',
+                    'Março',
+                    'Abril',
+                    'Maio',
+                    'Junho',
+                    'Julho',
+                    'Agosto',
+                    'Setembro',
+                    'Outubro',
+                    'Novembro',
+                    'Dezembro'
+                ];
+                const partes = String(mes || '').split('-');
+                const indiceMes = Number(partes[1]) - 1;
+
+                if (partes.length !== 2 || !nomes[indiceMes]) {
+                    return mes || '';
+                }
+
+                return nomes[indiceMes] + '/' + partes[0];
+            }
+
+            document.querySelectorAll('.btn-pagar-fatura').forEach(function(botao) {
+                botao.addEventListener('click', function() {
+                    const cartaoId = this.dataset.cartaoId || String(cartaoSelecionado);
+                    const mesFatura = this.dataset.mesFatura || mesFaturaSelecionado;
+                    const descricao = this.dataset.descricao || 'Fatura';
+                    const valor = this.dataset.valor || '0,00';
+
+                    document.getElementById('pagarFaturaCartaoRetorno').value = cartaoId;
+                    document.getElementById('pagarFaturaCartaoId').value = cartaoId;
+                    document.getElementById('pagarFaturaMes').value = mesFatura;
+                    document.getElementById('pagarFaturaDescricao').textContent = descricao;
+                    document.getElementById('pagarFaturaMesTexto').textContent = nomeMesFatura(mesFatura);
+                    document.getElementById('pagarFaturaValorTexto').textContent = 'R$ ' + valor;
+                    document.getElementById('valorPagamentoFatura').value = valor;
+                    document.getElementById('dataPagamentoFatura').value = dataPadraoCompra;
+                });
+            });
 
             const filtroBuscaCompras = document.getElementById('filtroBuscaCompras');
             const filtroStatusCompras = document.getElementById('filtroStatusCompras');
