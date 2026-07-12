@@ -18,23 +18,132 @@
 }
 
 .card-servico {
-    border: none;
-    border-radius: 15px;
-    padding: 30px;
-    text-align: center;
-    transition: 0.3s;
+    --card-accent: #0d6efd;
+    position: relative;
+    min-height: 145px;
+    overflow: hidden;
+    border: 1px solid #dbe2ea;
+    border-left: 5px solid var(--card-accent);
+    border-radius: 8px;
+    padding: 26px 28px 24px 30px;
+    text-align: left;
+    transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease, background-color .22s ease;
     cursor: pointer;
     background: white;
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
 }
 
 .card-servico:hover {
-    transform: translateY(-5px);
+    transform: translateY(-3px);
+    border-color: #cbd5e1;
+    border-left-color: var(--card-accent);
+    background: #fbfdff;
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.09);
 }
 
 .icon {
-    font-size: 40px;
-    margin-bottom: 15px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 46px;
+    margin-bottom: 16px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--card-accent) 12%, white);
+    color: var(--card-accent);
+    font-size: 30px;
+}
+
+.icon i {
+    font-size: 23px;
+    line-height: 1;
+}
+
+.card-servico h5 {
+    margin-bottom: 7px;
+    color: #172033;
+    font-weight: 700;
+}
+
+.card-servico p {
+    margin: 0;
+    color: #3f4b5f;
+    line-height: 1.35;
+}
+
+.card-servico::after {
+    content: "";
+    position: absolute;
+    right: 24px;
+    top: 50%;
+    width: 9px;
+    height: 9px;
+    border-top: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    color: #94a3b8;
+    transform: translateY(-50%) rotate(45deg);
+    transition: color .22s ease, transform .22s ease;
+}
+
+.card-servico:hover::after {
+    color: var(--card-accent);
+    transform: translate(3px, -50%) rotate(45deg);
+}
+
+.card-pendencias {
+    --card-accent: #ef4444;
+}
+
+.card-parcelamentos {
+    --card-accent: #f59e0b;
+}
+
+.card-financeiro {
+    --card-accent: #198754;
+}
+
+.card-legalizacao {
+    --card-accent: #0d6efd;
+}
+
+.card-certificados {
+    --card-accent: #8b5cf6;
+}
+
+.card-alvaras {
+    --card-accent: #14b8a6;
+}
+
+.card-procuracoes {
+    --card-accent: #a16207;
+}
+
+.card-paralisacoes {
+    --card-accent: #64748b;
+}
+
+.card-contador {
+    --card-accent: #7c3aed;
+}
+
+.card-baixas {
+    --card-accent: #0891b2;
+}
+
+.card-crf {
+    --card-accent: #2563eb;
+}
+
+.card-contratos {
+    --card-accent: #ea580c;
+}
+
+.card-usuarios {
+    --card-accent: #475569;
+}
+
+.card-auditoria {
+    --card-accent: #dc2626;
 }
 
 @media (max-width: 768px) {
@@ -50,6 +159,7 @@
         min-height: 0;
         padding: 22px 16px;
         border-radius: 8px;
+        text-align: left;
     }
 
     .card-servico .icon,
