@@ -915,7 +915,7 @@ if ($tabelasDisponiveis) {
 
     financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
     $alertasFinanceiros = financeiroListarAlertasVencimento($pdo, $usuarioId, 10);
-    $selectFaturaPagaMes = ', 0 AS fatura_paga_mes, 0 AS fatura_parcial_mes';
+    $selectFaturaPagaMes = ', 0 AS fatura_paga_mes, 0 AS fatura_parcial_mes, 0 AS fatura_atrasada_mes';
     $parametrosCartoes = [$inicioMes, $fimMes];
 
     if ($temContaFaturaCartao) {
@@ -949,7 +949,23 @@ if ($tabelasDisponiveis) {
                   AND fc.competencia_cartao = ?
                 ORDER BY fc.id DESC
                 LIMIT 1
-            ), 0) AS fatura_parcial_mes";
+            ), 0) AS fatura_parcial_mes,
+            COALESCE((
+                SELECT CASE
+                    WHEN fc.status = 'pendente'
+                     AND COALESCE(fc.valor_previsto, 0) > 0
+                     AND fc.vencimento < CURDATE()
+                    THEN 1
+                    ELSE 0
+                END
+                FROM financeiro_contas fc
+                WHERE fc.usuario_id = c.usuario_id
+                  AND fc.cartao_id = c.id
+                  AND fc.competencia_cartao = ?
+                ORDER BY fc.id DESC
+                LIMIT 1
+            ), 0) AS fatura_atrasada_mes";
+        $parametrosCartoes[] = $mes;
         $parametrosCartoes[] = $mes;
         $parametrosCartoes[] = $mes;
     }
@@ -1220,9 +1236,20 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                             <?php endif; ?>
 
                             <?php foreach ($cartoesVisiveis as $cartao): ?>
+                                <?php
+                                $classeFaturaCartao = '';
+
+                                if ((int)($cartao['fatura_paga_mes'] ?? 0) === 1) {
+                                    $classeFaturaCartao = ' fatura-paga';
+                                } elseif ((int)($cartao['fatura_parcial_mes'] ?? 0) === 1) {
+                                    $classeFaturaCartao = ' fatura-parcial';
+                                } elseif ((int)($cartao['fatura_atrasada_mes'] ?? 0) === 1) {
+                                    $classeFaturaCartao = ' fatura-atrasada';
+                                }
+                                ?>
                                 <a
                                     href="<?= htmlspecialchars(urlCartoes((int)$cartao['id'], $mes)) ?>"
-                                    class="financeiro-cartao-item<?= (int)$cartao['id'] === $cartaoSelecionadoId ? ' ativo' : '' ?><?= (int)$cartao['ativo'] !== 1 ? ' cancelado' : '' ?><?= (int)($cartao['fatura_paga_mes'] ?? 0) === 1 ? ' fatura-paga' : '' ?><?= (int)($cartao['fatura_parcial_mes'] ?? 0) === 1 ? ' fatura-parcial' : '' ?>">
+                                    class="financeiro-cartao-item<?= (int)$cartao['id'] === $cartaoSelecionadoId ? ' ativo' : '' ?><?= (int)$cartao['ativo'] !== 1 ? ' cancelado' : '' ?><?= $classeFaturaCartao ?>">
                                     <span class="financeiro-cartao-icone">
                                         <i class="bi <?= $cartao['tipo'] === 'loja' ? 'bi-shop' : 'bi-credit-card' ?>"></i>
                                     </span>

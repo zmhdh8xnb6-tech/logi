@@ -7,6 +7,46 @@
     gap: 16px;
 }
 
+.financeiro-privacidade-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.financeiro-valor-sensivel {
+    display: inline-block;
+    position: relative;
+    min-width: 78px;
+    font: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+}
+
+.financeiro-valores-ocultos .financeiro-valor-sensivel {
+    color: transparent !important;
+    text-shadow: none !important;
+    user-select: none;
+}
+
+.financeiro-valores-ocultos .financeiro-valor-sensivel::after {
+    content: attr(data-mascara);
+    position: absolute;
+    inset: 0 auto auto 0;
+    color: #172033;
+    font: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    white-space: nowrap;
+}
+
+.financeiro-valores-ocultos .text-success .financeiro-valor-sensivel::after,
+.financeiro-valores-ocultos .text-danger .financeiro-valor-sensivel::after,
+.financeiro-valores-ocultos .text-muted .financeiro-valor-sensivel::after {
+    color: currentColor;
+}
+
 .financeiro-filtros {
     padding: 16px 0;
     border-top: 1px solid #dbe2ea;
@@ -210,18 +250,18 @@
     background: #fff;
 }
 
-.financeiro-metrica span,
-.financeiro-metrica strong {
+.financeiro-metrica>span,
+.financeiro-metrica>strong {
     display: block;
 }
 
-.financeiro-metrica span {
+.financeiro-metrica>span {
     color: #64748b;
     font-size: .82rem;
     font-weight: 600;
 }
 
-.financeiro-metrica strong {
+.financeiro-metrica>strong {
     margin-top: 8px;
     color: #172033;
     font-size: 1.25rem;
@@ -500,6 +540,21 @@
 .financeiro-cartao-item.fatura-parcial.ativo {
     border-color: #f59e0b;
     background: #fef3c7;
+}
+
+.financeiro-cartao-item.fatura-atrasada {
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+
+.financeiro-cartao-item.fatura-atrasada:hover {
+    border-color: #fca5a5;
+    background: #fee2e2;
+}
+
+.financeiro-cartao-item.fatura-atrasada.ativo {
+    border-color: #ef4444;
+    background: #fee2e2;
 }
 
 .financeiro-cartao-item.cancelado {

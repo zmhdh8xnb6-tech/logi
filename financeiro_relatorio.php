@@ -608,6 +608,7 @@ foreach ($categoriasDespesas as $categoria) {
 
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+        <script src="<?= assetUrl('assets/financeiro.js') ?>"></script>
         <script>
             document.getElementById('mesRelatorio').addEventListener('change', function() {
                 document.getElementById('formMesRelatorio').submit();
