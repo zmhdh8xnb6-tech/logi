@@ -1092,6 +1092,10 @@ $totalPagoAtual = 0.0;
 $totalPendente = 0.0;
 $totalReservado = 0.0;
 $totalMovimentoMetasAtual = 0.0;
+$totalRecebidoAnterior = 0.0;
+$totalPagoAnterior = 0.0;
+$totalMovimentoMetasAnterior = 0.0;
+$saldoAnterior = 0.0;
 $recorrenciasPorId = [];
 $recorrenciasRecebimentosPorId = [];
 $alertasFinanceiros = [];
@@ -1189,9 +1193,27 @@ if ($tabelasDisponiveis) {
         ");
         $stmt->execute([$usuarioId, $inicioMes, $fimMes, $hoje]);
         $totalMovimentoMetasAtual = (float)$stmt->fetchColumn();
+
+        $stmt = $pdo->prepare("
+            SELECT COALESCE(SUM(CASE WHEN tipo = 'deposito' THEN valor ELSE -valor END), 0)
+            FROM financeiro_meta_movimentos
+            WHERE usuario_id = ?
+              AND data_movimento < ?
+        ");
+        $stmt->execute([$usuarioId, $inicioMes]);
+        $totalMovimentoMetasAnterior = (float)$stmt->fetchColumn();
     }
 
     $totalReceitas = array_sum(array_map('floatval', array_column($recebimentos, 'valor')));
+
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(valor), 0)
+        FROM financeiro_recebimentos
+        WHERE usuario_id = ?
+          AND data_recebimento < ?
+    ");
+    $stmt->execute([$usuarioId, $inicioMes]);
+    $totalRecebidoAnterior = (float)$stmt->fetchColumn();
 
     foreach ($recebimentos as $recebimento) {
         if ($recebimento['data_recebimento'] <= $hoje) {
@@ -1234,6 +1256,17 @@ if ($tabelasDisponiveis) {
     $stmt->execute([$usuarioId, $inicioMes, $fimMes, $hoje]);
     $totalPagoAtual = (float)$stmt->fetchColumn();
 
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(valor_pago), 0)
+        FROM financeiro_contas
+        WHERE usuario_id = ?
+          AND status = 'pago'
+          AND data_pagamento IS NOT NULL
+          AND data_pagamento < ?
+    ");
+    $stmt->execute([$usuarioId, $inicioMes]);
+    $totalPagoAnterior = (float)$stmt->fetchColumn();
+
     foreach ($contas as $conta) {
         $pagaNoMesSelecionado = $conta['status'] === 'pago'
             && !empty($conta['data_pagamento'])
@@ -1251,8 +1284,10 @@ if ($tabelasDisponiveis) {
     }
 }
 
-$saldoAtual = $totalRecebidoAtual - $totalPagoAtual - $totalMovimentoMetasAtual;
-$saldoPrevisto = $totalReceitas - $totalPrevisto;
+$saldoAnterior = $totalRecebidoAnterior - $totalPagoAnterior - $totalMovimentoMetasAnterior;
+$saldoDoMes = $totalRecebidoAtual - $totalPagoAtual - $totalMovimentoMetasAtual;
+$saldoAtual = $saldoAnterior + $saldoDoMes;
+$saldoPrevisto = $saldoAnterior + $totalReceitas - $totalPrevisto;
 $nomesMeses = [
     1 => 'Janeiro',
     2 => 'Fevereiro',
