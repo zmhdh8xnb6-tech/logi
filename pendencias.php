@@ -255,7 +255,7 @@ foreach ($clientes as $cliente) {
     }
 
     if (($cliente['contador'] ?? '') === '' || ($cliente['contador'] ?? '') === 'nao') {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Contador não informado ou marcado como não', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver contador', 'contador', ['sim' => 'Sim', 'nao' => 'Não']));
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Contador não informado ou marcado como sem contador', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver contador', 'contador', ['sim' => 'Contador ativo', 'nao' => 'Sem contador']));
     }
 
     if (($cliente['cadastro_crf'] ?? '') === '' || ($cliente['cadastro_crf'] ?? '') === 'nao_cadastrado') {

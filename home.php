@@ -120,16 +120,6 @@ exigirLogin();
                     </div>
                 <?php endif; ?>
 
-                <?php if (usuarioPode('baixas')): ?>
-                    <div class="col-md-4">
-                        <div class="card-servico card-baixas" onclick="location.href='baixas.php'">
-                            <div class="icon"><i class="bi bi-clipboard-check"></i></div>
-                            <h5>Baixas</h5>
-                            <p>Controle de Baixas</p>
-                        </div>
-                    </div>
-                <?php endif; ?>
-
                 <?php if (usuarioPode('crf')): ?>
                     <div class="col-md-4">
                         <div class="card-servico card-crf" onclick="location.href='crf.php'">

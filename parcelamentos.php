@@ -1,4 +1,8 @@
-<?php require 'config.php'; ?>
+<?php
+require 'config.php';
+
+exigirPermissao('parcelamentos');
+?>
 
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -37,8 +41,8 @@
 
                 <div class="col-md-4">
                     <a href="parcelamento_simples.php" class="text-decoration-none text-dark d-block">
-                        <div class="card-servico">
-                            <div class="icon">🏦</div>
+                        <div class="card-servico card-parcelamentos">
+                            <div class="icon"><i class="bi bi-bank"></i></div>
                             <h5>Simples Nacional</h5>
                             <p>Parcelamentos DAS</p>
                         </div>
@@ -47,8 +51,8 @@
 
                 <div class="col-md-4">
                     <a href="parcelamento_tributos.php" class="text-decoration-none text-dark d-block">
-                        <div class="card-servico">
-                            <div class="icon">⚖️</div>
+                        <div class="card-servico card-parcelamentos">
+                            <div class="icon"><i class="bi bi-file-earmark-text"></i></div>
                             <h5>Previdência Social</h5>
                             <p>Multas / Tributos</p>
                         </div>
@@ -57,8 +61,8 @@
 
                 <div class="col-md-4">
                     <a href="parcelamento_pgfn.php" class="text-decoration-none text-dark d-block">
-                        <div class="card-servico">
-                            <div class="icon">⚖️</div>
+                        <div class="card-servico card-parcelamentos">
+                            <div class="icon"><i class="bi bi-building-check"></i></div>
                             <h5>PGFN</h5>
                             <p>Dívida Ativa</p>
                         </div>
@@ -67,8 +71,8 @@
 
                 <div class="col-md-4">
                     <a href="parcelamento_sefazdf.php" class="text-decoration-none text-dark d-block">
-                        <div class="card-servico">
-                            <div class="icon">🏢</div>
+                        <div class="card-servico card-parcelamentos">
+                            <div class="icon"><i class="bi bi-building"></i></div>
                             <h5>SEFAZ DF</h5>
                             <p>Débitos Estaduais</p>
                         </div>
@@ -77,8 +81,8 @@
 
                 <div class="col-md-4">
                     <a href="parcelamento_sefazgo.php" class="text-decoration-none text-dark d-block">
-                        <div class="card-servico">
-                            <div class="icon">🏢</div>
+                        <div class="card-servico card-parcelamentos">
+                            <div class="icon"><i class="bi bi-building"></i></div>
                             <h5>SEFAZ GO</h5>
                             <p>Débitos Estaduais</p>
                         </div>

@@ -667,7 +667,7 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                 const atraso = Math.abs(dias);
                 return {
                     texto: 'Vencido há ' + atraso + (atraso === 1 ? ' dia' : ' dias'),
-                    classe: 'bg-dark'
+                    classe: 'bg-danger'
                 };
             }
 
@@ -678,22 +678,22 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                 };
             }
 
-            if (dias <= 14) {
+            if (dias <= 15) {
                 return {
-                    texto: dias + (dias === 1 ? ' dia' : ' dias'),
-                    classe: 'bg-danger'
+                    texto: dias + (dias === 1 ? ' dia para vencer' : ' dias para vencer'),
+                    classe: 'bg-danger-subtle text-dark'
                 };
             }
 
             if (dias <= 30) {
                 return {
-                    texto: dias + ' dias',
+                    texto: dias + (dias === 1 ? ' dia para vencer' : ' dias para vencer'),
                     classe: 'bg-warning text-dark'
                 };
             }
 
             return {
-                texto: dias + ' dias',
+                texto: dias + (dias === 1 ? ' dia para vencer' : ' dias para vencer'),
                 classe: 'bg-success'
             };
         }

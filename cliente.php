@@ -56,6 +56,13 @@ $formatarControle = static function ($valor) use ($rotulosControle): string {
     return $rotulosControle[$valor] ?? 'Não informado';
 };
 
+$formatarContador = static function ($valor): string {
+    return [
+        'sim' => 'Contador ativo',
+        'nao' => 'Sem contador',
+    ][$valor] ?? 'Não informado';
+};
+
 $formatarData = static function ($data): string {
     return !empty($data) ? date('d/m/Y', strtotime($data)) : 'Não informado';
 };
@@ -76,7 +83,7 @@ if ($clienteContabil) {
     $controlesImpressao = [
         ['Cadastro DF Legal', $formatarControle($cliente['cadastro_df_legal'] ?? '')],
         ['Alvará', $formatarControle($cliente['alvara'] ?? '')],
-        ['Contador', $formatarControle($cliente['contador'] ?? '')],
+        ['Contador', $formatarContador($cliente['contador'] ?? '')],
         ['Cadastro CRF', $formatarControle($cliente['cadastro_crf'] ?? '')],
         [
             'Procuração Receita Federal',
@@ -334,7 +341,7 @@ if ($clienteContabil) {
 
                         <div class="col-md-3 mb-2">
                             <small class="text-muted d-block">Contador</small>
-                            <?= htmlspecialchars($formatarControle($cliente['contador'] ?? '')) ?>
+                            <?= htmlspecialchars($formatarContador($cliente['contador'] ?? '')) ?>
                         </div>
 
                         <div class="col-md-3 mb-2">

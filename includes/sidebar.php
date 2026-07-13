@@ -89,6 +89,13 @@
             </a>
         <?php endif; ?>
 
+        <?php if (usuarioPode('paralisacoes')): ?>
+            <a href="paralisadas.php" class="sidebar-link" data-label="Paralisações">
+                <i class="bi bi-folder2-open"></i>
+                <span>Paralisações</span>
+            </a>
+        <?php endif; ?>
+
         <?php if (usuarioPode('clientes')): ?>
             <a href="clientes.php" class="sidebar-link" data-label="Clientes">
                 <i class="bi bi-people"></i>

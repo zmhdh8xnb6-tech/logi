@@ -126,7 +126,7 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                         <?php elseif ($diasRestantes < 0): ?>
 
-                                            <span class="badge bg-dark">
+                                            <span class="badge bg-danger">
                                                 Vencido há <?= abs($diasRestantes) ?> dias
                                             </span>
 
@@ -136,22 +136,25 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 Vence hoje
                                             </span>
 
-                                        <?php elseif ($diasRestantes <= 14): ?>
+                                        <?php elseif ($diasRestantes <= 15): ?>
 
-                                            <span class="badge bg-danger">
-                                                <?= $diasRestantes ?> dias
+                                            <span class="badge bg-danger-subtle text-dark">
+                                                <?= $diasRestantes ?>
+                                                <?= $diasRestantes === 1 ? 'dia para vencer' : 'dias para vencer' ?>
                                             </span>
 
                                         <?php elseif ($diasRestantes <= 30): ?>
 
                                             <span class="badge bg-warning text-dark">
-                                                <?= $diasRestantes ?> dias
+                                                <?= $diasRestantes ?>
+                                                <?= $diasRestantes === 1 ? 'dia para vencer' : 'dias para vencer' ?>
                                             </span>
 
                                         <?php else: ?>
 
                                             <span class="badge bg-success">
-                                                <?= $diasRestantes ?> dias
+                                                <?= $diasRestantes ?>
+                                                <?= $diasRestantes === 1 ? 'dia para vencer' : 'dias para vencer' ?>
                                             </span>
 
                                         <?php endif; ?>
@@ -249,22 +252,22 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
             const diferenca = Math.round((data - hoje) / 86400000);
 
             if (diferenca < 0) {
-                return '<span class="badge bg-dark">Vencido há ' + Math.abs(diferenca) + ' dias</span>';
+                return '<span class="badge bg-danger">Vencido há ' + Math.abs(diferenca) + ' dias</span>';
             }
 
             if (diferenca === 0) {
                 return '<span class="badge bg-danger">Vence hoje</span>';
             }
 
-            if (diferenca <= 14) {
-                return '<span class="badge bg-danger">' + diferenca + ' dias</span>';
+            if (diferenca <= 15) {
+                return '<span class="badge bg-danger-subtle text-dark">' + diferenca + (diferenca === 1 ? ' dia para vencer' : ' dias para vencer') + '</span>';
             }
 
             if (diferenca <= 30) {
-                return '<span class="badge bg-warning text-dark">' + diferenca + ' dias</span>';
+                return '<span class="badge bg-warning text-dark">' + diferenca + (diferenca === 1 ? ' dia para vencer' : ' dias para vencer') + '</span>';
             }
 
-            return '<span class="badge bg-success">' + diferenca + ' dias</span>';
+            return '<span class="badge bg-success">' + diferenca + (diferenca === 1 ? ' dia para vencer' : ' dias para vencer') + '</span>';
         }
 
         function formatarDataCertificado(data) {

@@ -13,7 +13,6 @@ if (!function_exists('modulosSistema')) {
             'crf' => 'Cadastro CRF',
             'contratos' => 'Contrato de Prestação de Serviços',
             'paralisacoes' => 'Paralisações',
-            'baixas' => 'Baixas',
             'financeiro' => 'Financeiro',
             'legalizacao' => 'Legalização',
             'usuarios' => 'Usuários e Permissões',

@@ -147,8 +147,8 @@ $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
             <label for="contador" class="form-label">Contador</label>
             <select class="form-select" name="contador" id="contador">
                 <option value="">Selecione</option>
-                <option value="sim">Sim</option>
-                <option value="nao">Não</option>
+                <option value="sim">Contador ativo</option>
+                <option value="nao">Sem contador</option>
             </select>
         </div>
 
