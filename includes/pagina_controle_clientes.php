@@ -210,10 +210,7 @@ if (!function_exists('controleFormatarPrazo')) {
         }
 
         .controle-paginacao {
-            display: flex;
-            justify-content: flex-end;
-            gap: 6px;
-            padding: 14px;
+            padding: 14px 14px 0;
             border-top: 1px solid #dbe2ea;
         }
 
@@ -550,17 +547,38 @@ if (!function_exists('controleFormatarPrazo')) {
                 return;
             }
 
-            for (let pagina = 1; pagina <= totalPaginas; pagina++) {
+            const nav = document.createElement('nav');
+            const lista = document.createElement('ul');
+            lista.className = 'pagination justify-content-center mt-3';
+
+            function adicionarItem(rotulo, pagina, desabilitado, ativo) {
+                const item = document.createElement('li');
+                item.className = 'page-item' + (desabilitado ? ' disabled' : '') + (ativo ? ' active' : '');
+
                 const botao = document.createElement('button');
                 botao.type = 'button';
-                botao.className = 'btn btn-sm ' + (pagina === controlePaginaAtual ? 'btn-primary' : 'btn-outline-secondary');
-                botao.textContent = pagina;
+                botao.className = 'page-link';
+                botao.textContent = rotulo;
+                botao.disabled = desabilitado;
                 botao.addEventListener('click', () => {
                     controlePaginaAtual = pagina;
                     controleRenderizar();
                 });
-                controlePaginacao.appendChild(botao);
+
+                item.appendChild(botao);
+                lista.appendChild(item);
             }
+
+            adicionarItem('Anterior', Math.max(1, controlePaginaAtual - 1), controlePaginaAtual <= 1, false);
+
+            for (let pagina = 1; pagina <= totalPaginas; pagina++) {
+                adicionarItem(String(pagina), pagina, false, pagina === controlePaginaAtual);
+            }
+
+            adicionarItem('Próxima', Math.min(totalPaginas, controlePaginaAtual + 1), controlePaginaAtual >= totalPaginas, false);
+
+            nav.appendChild(lista);
+            controlePaginacao.appendChild(nav);
         }
 
         controleBusca.addEventListener('input', () => {

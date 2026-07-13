@@ -321,7 +321,7 @@ $stmt = $pdo->prepare("
 $stmt->execute([$processoId]);
 $checklist = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$historicoPorPagina = 10;
+$historicoPorPagina = 15;
 $paginaHistorico = max(1, (int)($_GET['historico_pagina'] ?? 1));
 $offsetHistorico = ($paginaHistorico - 1) * $historicoPorPagina;
 
@@ -614,8 +614,8 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                 </div>
 
                 <?php if ($totalPaginasHistorico > 1): ?>
-                    <nav class="p-3 border-top bg-light legalizacao-historico-paginacao" aria-label="Paginação do histórico">
-                        <ul class="pagination justify-content-end mb-0">
+                    <nav class="mt-3 legalizacao-historico-paginacao" aria-label="Paginação do histórico">
+                        <ul class="pagination justify-content-center mt-3">
                             <li class="page-item <?= $paginaHistorico <= 1 ? 'disabled' : '' ?>">
                                 <a class="page-link" data-historico-link href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= max(1, $paginaHistorico - 1) ?>">Anterior</a>
                             </li>

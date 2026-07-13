@@ -167,6 +167,10 @@ $filtroTipo = $_GET['tipo'] ?? '';
 $filtroStatus = $_GET['status'] ?? '';
 $filtroResponsavel = (int)($_GET['responsavel'] ?? 0);
 $processos = [];
+$processosPorPagina = 15;
+$paginaProcessos = max(1, (int)($_GET['pagina'] ?? 1));
+$totalProcessos = 0;
+$totalPaginasProcessos = 1;
 $resumo = [
     'em_andamento' => 0,
     'pendente_cliente' => 0,
@@ -200,6 +204,17 @@ if ($tabelasDisponiveis) {
         $params[] = $filtroResponsavel;
     }
 
+    $stmtTotalProcessos = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM legalizacao_processos p
+        WHERE " . implode(' AND ', $where) . "
+    ");
+    $stmtTotalProcessos->execute($params);
+    $totalProcessos = (int)$stmtTotalProcessos->fetchColumn();
+    $totalPaginasProcessos = max(1, (int)ceil($totalProcessos / $processosPorPagina));
+    $paginaProcessos = min($paginaProcessos, $totalPaginasProcessos);
+    $offsetProcessos = ($paginaProcessos - 1) * $processosPorPagina;
+
     $stmt = $pdo->prepare("
         SELECT p.*,
                SUM(CASE WHEN ck.status = 'pendente' THEN 1 ELSE 0 END) AS checklist_pendente,
@@ -213,7 +228,7 @@ if ($tabelasDisponiveis) {
             p.prazo IS NULL,
             p.prazo ASC,
             p.atualizado_em DESC
-        LIMIT 200
+        LIMIT {$processosPorPagina} OFFSET {$offsetProcessos}
     ");
     $stmt->execute($params);
     $processos = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -413,6 +428,39 @@ if ($tabelasDisponiveis) {
                             </tbody>
                         </table>
                     </div>
+
+                    <?php if ($totalPaginasProcessos > 1): ?>
+                        <nav class="mt-4" aria-label="Paginação dos processos">
+                            <ul class="pagination justify-content-center">
+                                <?php
+                                $parametrosAnterior = $_GET;
+                                $parametrosAnterior['pagina'] = max(1, $paginaProcessos - 1);
+                                ?>
+                                <li class="page-item <?= $paginaProcessos <= 1 ? 'disabled' : '' ?>">
+                                    <a class="page-link" href="?<?= htmlspecialchars(http_build_query($parametrosAnterior)) ?>">Anterior</a>
+                                </li>
+
+                                <?php for ($numeroPagina = 1; $numeroPagina <= $totalPaginasProcessos; $numeroPagina++):
+                                    $parametrosPagina = $_GET;
+                                    $parametrosPagina['pagina'] = $numeroPagina;
+                                ?>
+                                    <li class="page-item <?= $numeroPagina === $paginaProcessos ? 'active' : '' ?>">
+                                        <a class="page-link" href="?<?= htmlspecialchars(http_build_query($parametrosPagina)) ?>">
+                                            <?= $numeroPagina ?>
+                                        </a>
+                                    </li>
+                                <?php endfor; ?>
+
+                                <?php
+                                $parametrosProxima = $_GET;
+                                $parametrosProxima['pagina'] = min($totalPaginasProcessos, $paginaProcessos + 1);
+                                ?>
+                                <li class="page-item <?= $paginaProcessos >= $totalPaginasProcessos ? 'disabled' : '' ?>">
+                                    <a class="page-link" href="?<?= htmlspecialchars(http_build_query($parametrosProxima)) ?>">Próxima</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    <?php endif; ?>
                 </section>
             <?php endif; ?>
         </div>

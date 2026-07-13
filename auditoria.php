@@ -15,7 +15,7 @@ $modulosFiltro = [];
 $totalRegistros = 0;
 $totalHoje = 0;
 $totalSeteDias = 0;
-$porPagina = 50;
+$porPagina = 15;
 $pagina = max(1, (int)($_GET['pagina'] ?? 1));
 $inicio = trim($_GET['inicio'] ?? date('Y-m-d', strtotime('-30 days')));
 $fim = trim($_GET['fim'] ?? date('Y-m-d'));
@@ -320,6 +320,16 @@ $acoesFiltro = [
                 <?php if ($totalPaginas > 1): ?>
                     <nav class="mt-4" aria-label="Paginação da auditoria">
                         <ul class="pagination justify-content-center">
+                            <?php
+                            $parametrosAnterior = $_GET;
+                            $parametrosAnterior['pagina'] = max(1, $pagina - 1);
+                            ?>
+                            <li class="page-item <?= $pagina <= 1 ? 'disabled' : '' ?>">
+                                <a class="page-link" href="?<?= htmlspecialchars(http_build_query($parametrosAnterior)) ?>">
+                                    Anterior
+                                </a>
+                            </li>
+
                             <?php for ($numeroPagina = 1; $numeroPagina <= $totalPaginas; $numeroPagina++):
                                 $parametrosPagina = $_GET;
                                 $parametrosPagina['pagina'] = $numeroPagina;
@@ -330,6 +340,16 @@ $acoesFiltro = [
                                     </a>
                                 </li>
                             <?php endfor; ?>
+
+                            <?php
+                            $parametrosProxima = $_GET;
+                            $parametrosProxima['pagina'] = min($totalPaginas, $pagina + 1);
+                            ?>
+                            <li class="page-item <?= $pagina >= $totalPaginas ? 'disabled' : '' ?>">
+                                <a class="page-link" href="?<?= htmlspecialchars(http_build_query($parametrosProxima)) ?>">
+                                    Próxima
+                                </a>
+                            </li>
                         </ul>
                     </nav>
                 <?php endif; ?>

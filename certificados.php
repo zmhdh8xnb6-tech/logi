@@ -175,11 +175,19 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                             <?php endforeach; ?>
 
+                            <tr id="certificadosVazio" class="d-none">
+                                <td colspan="8" class="text-center text-muted py-4">
+                                    Nenhum certificado encontrado.
+                                </td>
+                            </tr>
+
                         </tbody>
 
                     </table>
 
                 </div>
+
+                <div class="mt-3" id="paginacaoCertificados"></div>
 
             </div>
 
@@ -220,19 +228,91 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
-        document.getElementById('buscaCertificado').addEventListener('keyup', function() {
-            const valor = this.value.toLowerCase();
+        const certificadosPorPagina = 15;
+        let certificadosPaginaAtual = 1;
+        const buscaCertificado = document.getElementById('buscaCertificado');
+        const linhasCertificados = Array.from(document.querySelectorAll('.linha-cliente'));
+        const paginacaoCertificados = document.getElementById('paginacaoCertificados');
+        const certificadosVazio = document.getElementById('certificadosVazio');
 
-            document.querySelectorAll('.linha-cliente').forEach(function(linha) {
-                const codigo = linha.querySelector('.codigo-cliente').textContent.toLocaleLowerCase();
+        function certificadosFiltrados() {
+            const valor = buscaCertificado.value.trim().toLowerCase();
+
+            if (!valor) {
+                return linhasCertificados;
+            }
+
+            return linhasCertificados.filter(function(linha) {
+                const codigo = linha.querySelector('.codigo-cliente').textContent.toLowerCase();
                 const nome = linha.querySelector('.nome-cliente').textContent.toLowerCase();
                 const documento = linha.querySelector('.doc-cliente').textContent.toLowerCase();
 
-                const encontrou = nome.includes(valor) || documento.includes(valor) || codigo.includes(valor);
-
-                linha.style.display = encontrou ? '' : 'none';
+                return nome.includes(valor) || documento.includes(valor) || codigo.includes(valor);
             });
+        }
+
+        function adicionarPaginaCertificado(lista, rotulo, pagina, desabilitado, ativo) {
+            const item = document.createElement('li');
+            item.className = 'page-item' + (desabilitado ? ' disabled' : '') + (ativo ? ' active' : '');
+
+            const botao = document.createElement('button');
+            botao.type = 'button';
+            botao.className = 'page-link';
+            botao.textContent = rotulo;
+            botao.disabled = desabilitado;
+            botao.addEventListener('click', function() {
+                certificadosPaginaAtual = pagina;
+                renderizarCertificados();
+            });
+
+            item.appendChild(botao);
+            lista.appendChild(item);
+        }
+
+        function renderizarCertificados() {
+            const filtradas = certificadosFiltrados();
+            const totalPaginas = Math.max(1, Math.ceil(filtradas.length / certificadosPorPagina));
+
+            if (certificadosPaginaAtual > totalPaginas) {
+                certificadosPaginaAtual = totalPaginas;
+            }
+
+            const inicio = (certificadosPaginaAtual - 1) * certificadosPorPagina;
+            const visiveis = new Set(filtradas.slice(inicio, inicio + certificadosPorPagina));
+
+            linhasCertificados.forEach(function(linha) {
+                linha.classList.toggle('d-none', !visiveis.has(linha));
+            });
+
+            certificadosVazio.classList.toggle('d-none', filtradas.length > 0);
+            paginacaoCertificados.innerHTML = '';
+
+            if (filtradas.length <= certificadosPorPagina) {
+                return;
+            }
+
+            const nav = document.createElement('nav');
+            const lista = document.createElement('ul');
+            lista.className = 'pagination justify-content-center mt-3';
+
+            adicionarPaginaCertificado(lista, 'Anterior', Math.max(1, certificadosPaginaAtual - 1), certificadosPaginaAtual <= 1, false);
+
+            for (let pagina = 1; pagina <= totalPaginas; pagina++) {
+                adicionarPaginaCertificado(lista, String(pagina), pagina, false, pagina === certificadosPaginaAtual);
+            }
+
+            adicionarPaginaCertificado(lista, 'Próxima', Math.min(totalPaginas, certificadosPaginaAtual + 1), certificadosPaginaAtual >= totalPaginas, false);
+
+            nav.appendChild(lista);
+            paginacaoCertificados.appendChild(nav);
+        }
+
+        buscaCertificado.addEventListener('input', function() {
+            certificadosPaginaAtual = 1;
+            renderizarCertificados();
         });
+
+        renderizarCertificados();
     </script>
 
     <script>

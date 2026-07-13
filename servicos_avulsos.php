@@ -101,27 +101,104 @@ $cadastrosAvulsos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
+                            <tr id="servicosAvulsosVazio" class="d-none">
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    Nenhum serviço avulso encontrado.
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
+
+                <div class="mt-3" id="paginacaoServicosAvulsos"></div>
             </div>
         </div>
     </main>
 
     <script>
-        document.getElementById('buscaServicoAvulso').addEventListener('input', function() {
-            const busca = this.value.toLocaleLowerCase('pt-BR');
+        const servicosAvulsosPorPagina = 15;
+        let servicosAvulsosPaginaAtual = 1;
+        const buscaServicoAvulso = document.getElementById('buscaServicoAvulso');
+        const linhasServicosAvulsos = Array.from(document.querySelectorAll('.linha-servico-avulso'));
+        const paginacaoServicosAvulsos = document.getElementById('paginacaoServicosAvulsos');
+        const servicosAvulsosVazio = document.getElementById('servicosAvulsosVazio');
 
-            document.querySelectorAll('.linha-servico-avulso').forEach(function(linha) {
+        function servicosAvulsosFiltrados() {
+            const busca = buscaServicoAvulso.value.toLocaleLowerCase('pt-BR');
+
+            return linhasServicosAvulsos.filter(function(linha) {
                 const texto = [
                     linha.querySelector('.codigo-avulso').textContent,
                     linha.querySelector('.documento-avulso').textContent,
                     linha.querySelector('.nome-avulso').textContent
                 ].join(' ').toLocaleLowerCase('pt-BR');
 
-                linha.style.display = texto.includes(busca) ? '' : 'none';
+                return texto.includes(busca);
             });
+        }
+
+        function adicionarPaginaServicosAvulsos(lista, rotulo, pagina, desabilitado, ativo) {
+            const item = document.createElement('li');
+            item.className = 'page-item' + (desabilitado ? ' disabled' : '') + (ativo ? ' active' : '');
+
+            const botao = document.createElement('button');
+            botao.type = 'button';
+            botao.className = 'page-link';
+            botao.textContent = rotulo;
+            botao.disabled = desabilitado;
+            botao.addEventListener('click', function() {
+                servicosAvulsosPaginaAtual = pagina;
+                renderizarServicosAvulsos();
+            });
+
+            item.appendChild(botao);
+            lista.appendChild(item);
+        }
+
+        function renderizarServicosAvulsos() {
+            const filtrados = servicosAvulsosFiltrados();
+            const totalPaginas = Math.max(1, Math.ceil(filtrados.length / servicosAvulsosPorPagina));
+
+            if (servicosAvulsosPaginaAtual > totalPaginas) {
+                servicosAvulsosPaginaAtual = totalPaginas;
+            }
+
+            const inicio = (servicosAvulsosPaginaAtual - 1) * servicosAvulsosPorPagina;
+            const visiveis = new Set(filtrados.slice(inicio, inicio + servicosAvulsosPorPagina));
+
+            linhasServicosAvulsos.forEach(function(linha) {
+                linha.classList.toggle('d-none', !visiveis.has(linha));
+            });
+
+            servicosAvulsosVazio.classList.toggle('d-none', filtrados.length > 0);
+            paginacaoServicosAvulsos.innerHTML = '';
+
+            if (filtrados.length <= servicosAvulsosPorPagina) {
+                return;
+            }
+
+            const nav = document.createElement('nav');
+            const lista = document.createElement('ul');
+            lista.className = 'pagination justify-content-center mt-3';
+
+            adicionarPaginaServicosAvulsos(lista, 'Anterior', Math.max(1, servicosAvulsosPaginaAtual - 1), servicosAvulsosPaginaAtual <= 1, false);
+
+            for (let pagina = 1; pagina <= totalPaginas; pagina++) {
+                adicionarPaginaServicosAvulsos(lista, String(pagina), pagina, false, pagina === servicosAvulsosPaginaAtual);
+            }
+
+            adicionarPaginaServicosAvulsos(lista, 'Próxima', Math.min(totalPaginas, servicosAvulsosPaginaAtual + 1), servicosAvulsosPaginaAtual >= totalPaginas, false);
+
+            nav.appendChild(lista);
+            paginacaoServicosAvulsos.appendChild(nav);
+        }
+
+        document.getElementById('buscaServicoAvulso').addEventListener('input', function() {
+            servicosAvulsosPaginaAtual = 1;
+            renderizarServicosAvulsos();
         });
+
+        renderizarServicosAvulsos();
     </script>
 
 </body>

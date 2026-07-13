@@ -303,9 +303,14 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
+                            <tr id="alvarasDfVazio" class="d-none">
+                                <td colspan="7" class="text-center text-muted py-4">Nenhum cliente encontrado.</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
+
+                <div class="mt-3" id="paginacaoAlvarasDf"></div>
             </div>
         </div>
     </main>
@@ -489,6 +494,11 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
         const grupoOrgaosAlvara = document.getElementById('grupoOrgaosAlvara');
         const grupoConferenciaDfLegal = document.getElementById('grupoConferenciaDfLegal');
         const alertaModalAlvaras = document.getElementById('alertaModalAlvaras');
+        const alvarasDfPorPagina = 15;
+        const linhasAlvarasDf = Array.from(document.querySelectorAll('.linha-cliente-alvara'));
+        const paginacaoAlvarasDf = document.getElementById('paginacaoAlvarasDf');
+        const alvarasDfVazio = document.getElementById('alvarasDfVazio');
+        let alvarasDfPaginaAtual = 1;
         let linhaAlvaraAtual = null;
         let botaoAlvaraAtual = null;
 
@@ -787,11 +797,11 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
             }, 4000);
         }
 
-        function filtrarAlvaras() {
+        function alvarasDfFiltradas() {
             const busca = document.getElementById('buscaAlvaraDf').value.toLocaleLowerCase('pt-BR');
             const filtro = document.getElementById('filtroAlvaraDf').value;
 
-            document.querySelectorAll('.linha-cliente-alvara').forEach(function(linha) {
+            return linhasAlvarasDf.filter(function(linha) {
                 const texto = [
                     linha.querySelector('.codigo-cliente').textContent,
                     linha.querySelector('.documento-cliente').textContent,
@@ -800,8 +810,69 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                 const correspondeBusca = texto.includes(busca);
                 const correspondeFiltro = filtro === '' || linha.dataset.alvaraFiltro === filtro;
 
-                linha.style.display = correspondeBusca && correspondeFiltro ? '' : 'none';
+                return correspondeBusca && correspondeFiltro && linha.isConnected;
             });
+        }
+
+        function adicionarPaginaAlvarasDf(lista, rotulo, pagina, desabilitado, ativo) {
+            const item = document.createElement('li');
+            item.className = 'page-item' + (desabilitado ? ' disabled' : '') + (ativo ? ' active' : '');
+
+            const botao = document.createElement('button');
+            botao.type = 'button';
+            botao.className = 'page-link';
+            botao.textContent = rotulo;
+            botao.disabled = desabilitado;
+            botao.addEventListener('click', function() {
+                alvarasDfPaginaAtual = pagina;
+                renderizarAlvarasDf();
+            });
+
+            item.appendChild(botao);
+            lista.appendChild(item);
+        }
+
+        function renderizarAlvarasDf() {
+            const filtradas = alvarasDfFiltradas();
+            const totalPaginas = Math.max(1, Math.ceil(filtradas.length / alvarasDfPorPagina));
+
+            if (alvarasDfPaginaAtual > totalPaginas) {
+                alvarasDfPaginaAtual = totalPaginas;
+            }
+
+            const inicio = (alvarasDfPaginaAtual - 1) * alvarasDfPorPagina;
+            const visiveis = new Set(filtradas.slice(inicio, inicio + alvarasDfPorPagina));
+
+            linhasAlvarasDf.forEach(function(linha) {
+                linha.classList.toggle('d-none', !visiveis.has(linha));
+            });
+
+            alvarasDfVazio.classList.toggle('d-none', filtradas.length > 0);
+            paginacaoAlvarasDf.innerHTML = '';
+
+            if (filtradas.length <= alvarasDfPorPagina) {
+                return;
+            }
+
+            const nav = document.createElement('nav');
+            const lista = document.createElement('ul');
+            lista.className = 'pagination justify-content-center mt-3';
+
+            adicionarPaginaAlvarasDf(lista, 'Anterior', Math.max(1, alvarasDfPaginaAtual - 1), alvarasDfPaginaAtual <= 1, false);
+
+            for (let pagina = 1; pagina <= totalPaginas; pagina++) {
+                adicionarPaginaAlvarasDf(lista, String(pagina), pagina, false, pagina === alvarasDfPaginaAtual);
+            }
+
+            adicionarPaginaAlvarasDf(lista, 'Próxima', Math.min(totalPaginas, alvarasDfPaginaAtual + 1), alvarasDfPaginaAtual >= totalPaginas, false);
+
+            nav.appendChild(lista);
+            paginacaoAlvarasDf.appendChild(nav);
+        }
+
+        function filtrarAlvaras() {
+            alvarasDfPaginaAtual = 1;
+            renderizarAlvarasDf();
         }
 
         document.querySelectorAll('.btn-editar-alvara').forEach(function(botao) {
@@ -890,6 +961,7 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                     }
 
                     modalAlvarasDf.hide();
+                    renderizarAlvarasDf();
                     mostrarMensagemAlvaras(resposta.mensagem, true);
                 })
                 .catch(function() {
@@ -901,6 +973,8 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                     botaoSalvar.innerHTML = textoOriginal;
                 });
         });
+
+        renderizarAlvarasDf();
     </script>
 
 </body>

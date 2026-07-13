@@ -722,24 +722,112 @@ function renderizarModalDetalhesParcelamento(): void
             });
 
             const busca = document.getElementById('buscaParcelamento');
+            const linhasParcelamento = Array.from(document.querySelectorAll('.linha-parcelamento'));
+            const parcelamentosPorPagina = 15;
+            let parcelamentosPaginaAtual = 1;
+            let paginacaoParcelamentos = document.getElementById('paginacaoParcelamentos');
+
+            if (!paginacaoParcelamentos && linhasParcelamento.length > 0) {
+                const tabelaParcelamentos = document.querySelector('.parcelamento-box .table-responsive');
+
+                if (tabelaParcelamentos) {
+                    paginacaoParcelamentos = document.createElement('div');
+                    paginacaoParcelamentos.id = 'paginacaoParcelamentos';
+                    paginacaoParcelamentos.className = 'mt-3';
+                    tabelaParcelamentos.insertAdjacentElement('afterend', paginacaoParcelamentos);
+                }
+            }
+
+            function termoBuscaParcelamento() {
+                return busca ?
+                    busca.value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim() :
+                    '';
+            }
+
+            function linhasParcelamentoFiltradas() {
+                const termo = termoBuscaParcelamento();
+
+                if (!termo) {
+                    return linhasParcelamento;
+                }
+
+                return linhasParcelamento.filter(function(linha) {
+                    const texto = linha.textContent
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .toLowerCase();
+
+                    return texto.includes(termo);
+                });
+            }
+
+            function adicionarPaginaParcelamento(lista, rotulo, pagina, desabilitado, ativo) {
+                const item = document.createElement('li');
+                item.className = 'page-item' + (desabilitado ? ' disabled' : '') + (ativo ? ' active' : '');
+
+                const botao = document.createElement('button');
+                botao.type = 'button';
+                botao.className = 'page-link';
+                botao.textContent = rotulo;
+                botao.disabled = desabilitado;
+                botao.addEventListener('click', function() {
+                    parcelamentosPaginaAtual = pagina;
+                    renderizarParcelamentosPaginados();
+                });
+
+                item.appendChild(botao);
+                lista.appendChild(item);
+            }
+
+            function renderizarParcelamentosPaginados() {
+                const filtradas = linhasParcelamentoFiltradas();
+                const totalPaginas = Math.max(1, Math.ceil(filtradas.length / parcelamentosPorPagina));
+
+                if (parcelamentosPaginaAtual > totalPaginas) {
+                    parcelamentosPaginaAtual = totalPaginas;
+                }
+
+                const inicio = (parcelamentosPaginaAtual - 1) * parcelamentosPorPagina;
+                const visiveis = new Set(filtradas.slice(inicio, inicio + parcelamentosPorPagina));
+
+                linhasParcelamento.forEach(function(linha) {
+                    linha.classList.toggle('d-none', !visiveis.has(linha));
+                });
+
+                if (!paginacaoParcelamentos) {
+                    return;
+                }
+
+                paginacaoParcelamentos.innerHTML = '';
+
+                if (filtradas.length <= parcelamentosPorPagina) {
+                    return;
+                }
+
+                const nav = document.createElement('nav');
+                const lista = document.createElement('ul');
+                lista.className = 'pagination justify-content-center mt-3';
+
+                adicionarPaginaParcelamento(lista, 'Anterior', Math.max(1, parcelamentosPaginaAtual - 1), parcelamentosPaginaAtual <= 1, false);
+
+                for (let pagina = 1; pagina <= totalPaginas; pagina++) {
+                    adicionarPaginaParcelamento(lista, String(pagina), pagina, false, pagina === parcelamentosPaginaAtual);
+                }
+
+                adicionarPaginaParcelamento(lista, 'Próxima', Math.min(totalPaginas, parcelamentosPaginaAtual + 1), parcelamentosPaginaAtual >= totalPaginas, false);
+
+                nav.appendChild(lista);
+                paginacaoParcelamentos.appendChild(nav);
+            }
 
             if (busca) {
                 busca.addEventListener('input', function() {
-                    const termo = this.value
-                        .normalize('NFD')
-                        .replace(/[\u0300-\u036f]/g, '')
-                        .toLowerCase()
-                        .trim();
-
-                    document.querySelectorAll('.linha-parcelamento').forEach(function(linha) {
-                        const texto = linha.textContent
-                            .normalize('NFD')
-                            .replace(/[\u0300-\u036f]/g, '')
-                            .toLowerCase();
-                        linha.classList.toggle('d-none', !texto.includes(termo));
-                    });
+                    parcelamentosPaginaAtual = 1;
+                    renderizarParcelamentosPaginados();
                 });
             }
+
+            renderizarParcelamentosPaginados();
         })();
     </script>
 <?php

@@ -76,27 +76,102 @@ $clientesGoias = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
+                            <tr id="alvarasGoiasVazio" class="d-none">
+                                <td colspan="5" class="text-center text-muted py-4">Nenhum cliente encontrado.</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
+
+                <div class="mt-3" id="paginacaoAlvarasGoias"></div>
             </div>
         </div>
     </main>
 
     <script>
-        document.getElementById('buscaAlvaraGoias').addEventListener('input', function() {
-            const busca = this.value.toLocaleLowerCase('pt-BR');
+        const alvarasGoiasPorPagina = 15;
+        let alvarasGoiasPaginaAtual = 1;
+        const buscaAlvaraGoias = document.getElementById('buscaAlvaraGoias');
+        const linhasAlvarasGoias = Array.from(document.querySelectorAll('.linha-cliente-goias'));
+        const paginacaoAlvarasGoias = document.getElementById('paginacaoAlvarasGoias');
+        const alvarasGoiasVazio = document.getElementById('alvarasGoiasVazio');
 
-            document.querySelectorAll('.linha-cliente-goias').forEach(function(linha) {
+        function alvarasGoiasFiltradas() {
+            const busca = buscaAlvaraGoias.value.toLocaleLowerCase('pt-BR');
+
+            return linhasAlvarasGoias.filter(function(linha) {
                 const texto = [
                     linha.querySelector('.codigo-cliente').textContent,
                     linha.querySelector('.documento-cliente').textContent,
                     linha.querySelector('.nome-cliente').textContent
                 ].join(' ').toLocaleLowerCase('pt-BR');
 
-                linha.style.display = texto.includes(busca) ? '' : 'none';
+                return texto.includes(busca);
             });
+        }
+
+        function adicionarPaginaAlvarasGoias(lista, rotulo, pagina, desabilitado, ativo) {
+            const item = document.createElement('li');
+            item.className = 'page-item' + (desabilitado ? ' disabled' : '') + (ativo ? ' active' : '');
+
+            const botao = document.createElement('button');
+            botao.type = 'button';
+            botao.className = 'page-link';
+            botao.textContent = rotulo;
+            botao.disabled = desabilitado;
+            botao.addEventListener('click', function() {
+                alvarasGoiasPaginaAtual = pagina;
+                renderizarAlvarasGoias();
+            });
+
+            item.appendChild(botao);
+            lista.appendChild(item);
+        }
+
+        function renderizarAlvarasGoias() {
+            const filtradas = alvarasGoiasFiltradas();
+            const totalPaginas = Math.max(1, Math.ceil(filtradas.length / alvarasGoiasPorPagina));
+
+            if (alvarasGoiasPaginaAtual > totalPaginas) {
+                alvarasGoiasPaginaAtual = totalPaginas;
+            }
+
+            const inicio = (alvarasGoiasPaginaAtual - 1) * alvarasGoiasPorPagina;
+            const visiveis = new Set(filtradas.slice(inicio, inicio + alvarasGoiasPorPagina));
+
+            linhasAlvarasGoias.forEach(function(linha) {
+                linha.classList.toggle('d-none', !visiveis.has(linha));
+            });
+
+            alvarasGoiasVazio.classList.toggle('d-none', filtradas.length > 0);
+            paginacaoAlvarasGoias.innerHTML = '';
+
+            if (filtradas.length <= alvarasGoiasPorPagina) {
+                return;
+            }
+
+            const nav = document.createElement('nav');
+            const lista = document.createElement('ul');
+            lista.className = 'pagination justify-content-center mt-3';
+
+            adicionarPaginaAlvarasGoias(lista, 'Anterior', Math.max(1, alvarasGoiasPaginaAtual - 1), alvarasGoiasPaginaAtual <= 1, false);
+
+            for (let pagina = 1; pagina <= totalPaginas; pagina++) {
+                adicionarPaginaAlvarasGoias(lista, String(pagina), pagina, false, pagina === alvarasGoiasPaginaAtual);
+            }
+
+            adicionarPaginaAlvarasGoias(lista, 'Próxima', Math.min(totalPaginas, alvarasGoiasPaginaAtual + 1), alvarasGoiasPaginaAtual >= totalPaginas, false);
+
+            nav.appendChild(lista);
+            paginacaoAlvarasGoias.appendChild(nav);
+        }
+
+        document.getElementById('buscaAlvaraGoias').addEventListener('input', function() {
+            alvarasGoiasPaginaAtual = 1;
+            renderizarAlvarasGoias();
         });
+
+        renderizarAlvarasGoias();
     </script>
 
 </body>
