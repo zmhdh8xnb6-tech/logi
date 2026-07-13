@@ -1150,11 +1150,13 @@ if ($tabelasDisponiveis) {
         SELECT *
         FROM financeiro_contas
         WHERE usuario_id = ?
-          AND vencimento >= ?
-          AND vencimento < ?
-        ORDER BY status ASC, vencimento ASC, descricao ASC
+          AND (
+              (vencimento >= ? AND vencimento < ?)
+              OR (data_pagamento IS NOT NULL AND data_pagamento >= ? AND data_pagamento < ?)
+          )
+        ORDER BY status ASC, COALESCE(data_pagamento, vencimento) ASC, vencimento ASC, descricao ASC
     ");
-    $stmt->execute([$usuarioId, $inicioMes, $fimMes]);
+    $stmt->execute([$usuarioId, $inicioMes, $fimMes, $inicioMes, $fimMes]);
     $contas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     if ($metasDisponiveis) {
@@ -1202,14 +1204,17 @@ if ($tabelasDisponiveis) {
             && !empty($conta['data_pagamento'])
             && $conta['data_pagamento'] >= $inicioMes
             && $conta['data_pagamento'] < $fimMes;
+        $pendenteNoMesSelecionado = $conta['status'] !== 'pago'
+            && $conta['vencimento'] >= $inicioMes
+            && $conta['vencimento'] < $fimMes;
 
-        if ($conta['status'] !== 'pago' || $pagaNoMesSelecionado) {
+        if ($pagaNoMesSelecionado || $pendenteNoMesSelecionado) {
             $valorPrevistoConta = (float)$conta['valor_previsto'];
             $valorPagoConta = (float)($conta['valor_pago'] ?? 0);
 
-            if ($conta['status'] === 'pago' && $pagaNoMesSelecionado && $valorPagoConta > 0 && $valorPagoConta < $valorPrevistoConta) {
+            if ($pagaNoMesSelecionado) {
                 $totalPrevisto += $valorPagoConta;
-            } elseif ($conta['status'] !== 'pago' && $valorPagoConta > 0 && $valorPagoConta < $valorPrevistoConta) {
+            } elseif ($valorPagoConta > 0 && $valorPagoConta < $valorPrevistoConta) {
                 $totalPrevisto += $valorPrevistoConta - $valorPagoConta;
             } else {
                 $totalPrevisto += $valorPrevistoConta;
@@ -1230,9 +1235,17 @@ if ($tabelasDisponiveis) {
     $totalPagoAtual = (float)$stmt->fetchColumn();
 
     foreach ($contas as $conta) {
-        if ($conta['status'] === 'pago') {
+        $pagaNoMesSelecionado = $conta['status'] === 'pago'
+            && !empty($conta['data_pagamento'])
+            && $conta['data_pagamento'] >= $inicioMes
+            && $conta['data_pagamento'] < $fimMes;
+        $pendenteNoMesSelecionado = $conta['status'] !== 'pago'
+            && $conta['vencimento'] >= $inicioMes
+            && $conta['vencimento'] < $fimMes;
+
+        if ($pagaNoMesSelecionado) {
             $totalPago += (float)($conta['valor_pago'] ?? 0);
-        } else {
+        } elseif ($pendenteNoMesSelecionado) {
             $totalPendente += max(0, (float)$conta['valor_previsto'] - (float)($conta['valor_pago'] ?? 0));
         }
     }
