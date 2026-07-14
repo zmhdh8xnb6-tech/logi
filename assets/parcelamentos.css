@@ -36,7 +36,7 @@
 @media print {
     @page {
         size: A4 landscape;
-        margin: 10mm;
+        margin: 7mm;
     }
 
     html,
@@ -91,16 +91,17 @@
 
     .orgao-impressao {
         display: block !important;
-        margin: 0 0 10px;
-        padding-bottom: 7px;
+        margin: 0 0 6px;
+        padding-bottom: 5px;
         border-bottom: 2px solid #111827;
         color: #111827;
-        font-size: 12pt;
+        font-size: 11pt;
         font-weight: 700;
         text-align: right;
     }
 
     .table-responsive {
+        width: 100% !important;
         overflow: visible !important;
     }
 
@@ -109,25 +110,63 @@
     }
 
     .parcelamento-box table {
-        width: 100%;
+        width: 100% !important;
         margin: 0;
         border-collapse: collapse;
-        font-size: 8.5pt;
+        table-layout: fixed;
+        font-size: 7.8pt;
     }
 
     .parcelamento-box table th,
     .parcelamento-box table td {
-        padding: 7px 6px !important;
+        padding: 4px 5px !important;
         border: 1px solid #cbd5e1 !important;
         color: #111827 !important;
+        line-height: 1.15;
         vertical-align: middle;
+        word-break: normal;
+        overflow-wrap: anywhere;
     }
 
     .parcelamento-box table th {
         background: #e2e8f0 !important;
         font-weight: 700;
         text-transform: uppercase;
-        font-size: 7.5pt;
+        font-size: 6.8pt;
+    }
+
+    .parcelamento-box table th:nth-child(1),
+    .parcelamento-box table td:nth-child(1) {
+        width: 38%;
+    }
+
+    .parcelamento-box table th:nth-child(2),
+    .parcelamento-box table td:nth-child(2) {
+        width: 10%;
+    }
+
+    .parcelamento-box table th:nth-child(3),
+    .parcelamento-box table td:nth-child(3) {
+        width: 10%;
+    }
+
+    .parcelamento-box table th:nth-child(4),
+    .parcelamento-box table td:nth-child(4) {
+        width: 11%;
+    }
+
+    .parcelamento-box table th:nth-child(5),
+    .parcelamento-box table td:nth-child(5),
+    .parcelamento-box table th:nth-child(6),
+    .parcelamento-box table td:nth-child(6) {
+        width: 8%;
+        text-align: center;
+    }
+
+    .parcelamento-box table th:nth-child(7),
+    .parcelamento-box table td:nth-child(7) {
+        width: 9%;
+        text-align: center;
     }
 
     .parcelamento-box table tr {
