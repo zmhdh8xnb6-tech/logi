@@ -438,7 +438,8 @@ if (!function_exists('controleFormatarPrazo')) {
         const controleCampoVencimento = <?= json_encode($campoVencimento) ?>;
         const controlePossuiVencimento = <?= $mostrarVencimento ? 'true' : 'false' ?>;
         const controlePossuiConferencia = <?= $mostrarConferenciaDados ? 'true' : 'false' ?>;
-        const controleItensPorPagina = <?= (int)$itensPorPagina ?>;
+        let controleItensPorPagina = Number(localStorage.getItem('controleItensPorPagina') || <?= (int)$itensPorPagina ?>);
+        controleItensPorPagina = [15, 30, 60, 90].includes(controleItensPorPagina) ? controleItensPorPagina : 15;
         const controleLinhas = Array.from(document.querySelectorAll('.linha-controle'));
         const controleBusca = document.getElementById('controleBusca');
         const controlePaginacao = document.getElementById('controlePaginacao');
@@ -543,6 +544,26 @@ if (!function_exists('controleFormatarPrazo')) {
             controleVazio.classList.toggle('d-none', filtradas.length > 0);
             controlePaginacao.innerHTML = '';
 
+            const seletorLimite = document.createElement('div');
+            seletorLimite.className = 'd-flex justify-content-end mb-2';
+            seletorLimite.innerHTML = `
+                <select class="form-select form-select-sm w-auto" aria-label="Itens por página">
+                    <option value="15">Mostrar 15</option>
+                    <option value="30">Mostrar 30</option>
+                    <option value="60">Mostrar 60</option>
+                    <option value="90">Mostrar 90</option>
+                </select>
+            `;
+            const campoLimite = seletorLimite.querySelector('select');
+            campoLimite.value = String(controleItensPorPagina);
+            campoLimite.addEventListener('change', () => {
+                controleItensPorPagina = Number(campoLimite.value);
+                localStorage.setItem('controleItensPorPagina', String(controleItensPorPagina));
+                controlePaginaAtual = 1;
+                controleRenderizar();
+            });
+            controlePaginacao.appendChild(seletorLimite);
+
             if (filtradas.length <= controleItensPorPagina) {
                 return;
             }
@@ -571,9 +592,28 @@ if (!function_exists('controleFormatarPrazo')) {
 
             adicionarItem('Anterior', Math.max(1, controlePaginaAtual - 1), controlePaginaAtual <= 1, false);
 
+            const paginasVisiveis = [];
+            let ultimaPagina = 0;
+
             for (let pagina = 1; pagina <= totalPaginas; pagina++) {
-                adicionarItem(String(pagina), pagina, false, pagina === controlePaginaAtual);
+                if (pagina === 1 || pagina === totalPaginas || Math.abs(pagina - controlePaginaAtual) <= 2) {
+                    if (ultimaPagina && pagina - ultimaPagina > 1) {
+                        paginasVisiveis.push('...');
+                    }
+
+                    paginasVisiveis.push(pagina);
+                    ultimaPagina = pagina;
+                }
             }
+
+            paginasVisiveis.forEach((pagina) => {
+                if (pagina === '...') {
+                    adicionarItem('...', controlePaginaAtual, true, false);
+                    return;
+                }
+
+                adicionarItem(String(pagina), pagina, false, pagina === controlePaginaAtual);
+            });
 
             adicionarItem('Próxima', Math.min(totalPaginas, controlePaginaAtual + 1), controlePaginaAtual >= totalPaginas, false);
 

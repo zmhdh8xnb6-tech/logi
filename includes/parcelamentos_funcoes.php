@@ -723,8 +723,10 @@ function renderizarModalDetalhesParcelamento(): void
 
             const busca = document.getElementById('buscaParcelamento');
             const linhasParcelamento = Array.from(document.querySelectorAll('.linha-parcelamento'));
-            const parcelamentosPorPagina = 15;
+            let parcelamentosPorPagina = Number(localStorage.getItem('parcelamentosPorPagina') || 15);
+            parcelamentosPorPagina = [15, 30, 60, 90].includes(parcelamentosPorPagina) ? parcelamentosPorPagina : 15;
             let parcelamentosPaginaAtual = 1;
+            let impressaoParcelamentosAtiva = false;
             let paginacaoParcelamentos = document.getElementById('paginacaoParcelamentos');
 
             if (!paginacaoParcelamentos && linhasParcelamento.length > 0) {
@@ -781,6 +783,22 @@ function renderizarModalDetalhesParcelamento(): void
 
             function renderizarParcelamentosPaginados() {
                 const filtradas = linhasParcelamentoFiltradas();
+
+                if (impressaoParcelamentosAtiva) {
+                    const linhasFiltradas = new Set(filtradas);
+
+                    linhasParcelamento.forEach(function(linha) {
+                        linha.classList.toggle('d-none', !linhasFiltradas.has(linha));
+                    });
+
+                    if (paginacaoParcelamentos) {
+                        paginacaoParcelamentos.innerHTML = '';
+                        paginacaoParcelamentos.classList.add('d-none');
+                    }
+
+                    return;
+                }
+
                 const totalPaginas = Math.max(1, Math.ceil(filtradas.length / parcelamentosPorPagina));
 
                 if (parcelamentosPaginaAtual > totalPaginas) {
@@ -799,6 +817,27 @@ function renderizarModalDetalhesParcelamento(): void
                 }
 
                 paginacaoParcelamentos.innerHTML = '';
+                paginacaoParcelamentos.classList.remove('d-none');
+
+                const seletorLimite = document.createElement('div');
+                seletorLimite.className = 'd-flex justify-content-end mb-2';
+                seletorLimite.innerHTML = `
+                    <select class="form-select form-select-sm w-auto" aria-label="Itens por página">
+                        <option value="15">Mostrar 15</option>
+                        <option value="30">Mostrar 30</option>
+                        <option value="60">Mostrar 60</option>
+                        <option value="90">Mostrar 90</option>
+                    </select>
+                `;
+                const campoLimite = seletorLimite.querySelector('select');
+                campoLimite.value = String(parcelamentosPorPagina);
+                campoLimite.addEventListener('change', function() {
+                    parcelamentosPorPagina = Number(campoLimite.value);
+                    localStorage.setItem('parcelamentosPorPagina', String(parcelamentosPorPagina));
+                    parcelamentosPaginaAtual = 1;
+                    renderizarParcelamentosPaginados();
+                });
+                paginacaoParcelamentos.appendChild(seletorLimite);
 
                 if (filtradas.length <= parcelamentosPorPagina) {
                     return;
@@ -810,9 +849,28 @@ function renderizarModalDetalhesParcelamento(): void
 
                 adicionarPaginaParcelamento(lista, 'Anterior', Math.max(1, parcelamentosPaginaAtual - 1), parcelamentosPaginaAtual <= 1, false);
 
+                const paginasVisiveis = [];
+                let ultimaPagina = 0;
+
                 for (let pagina = 1; pagina <= totalPaginas; pagina++) {
-                    adicionarPaginaParcelamento(lista, String(pagina), pagina, false, pagina === parcelamentosPaginaAtual);
+                    if (pagina === 1 || pagina === totalPaginas || Math.abs(pagina - parcelamentosPaginaAtual) <= 2) {
+                        if (ultimaPagina && pagina - ultimaPagina > 1) {
+                            paginasVisiveis.push('...');
+                        }
+
+                        paginasVisiveis.push(pagina);
+                        ultimaPagina = pagina;
+                    }
                 }
+
+                paginasVisiveis.forEach(function(pagina) {
+                    if (pagina === '...') {
+                        adicionarPaginaParcelamento(lista, '...', parcelamentosPaginaAtual, true, false);
+                        return;
+                    }
+
+                    adicionarPaginaParcelamento(lista, String(pagina), pagina, false, pagina === parcelamentosPaginaAtual);
+                });
 
                 adicionarPaginaParcelamento(lista, 'Próxima', Math.min(totalPaginas, parcelamentosPaginaAtual + 1), parcelamentosPaginaAtual >= totalPaginas, false);
 
@@ -826,6 +884,18 @@ function renderizarModalDetalhesParcelamento(): void
                     renderizarParcelamentosPaginados();
                 });
             }
+
+            window.addEventListener('beforeprint', function() {
+                impressaoParcelamentosAtiva = true;
+                document.body.classList.add('impressao-parcelamentos');
+                renderizarParcelamentosPaginados();
+            });
+
+            window.addEventListener('afterprint', function() {
+                impressaoParcelamentosAtiva = false;
+                document.body.classList.remove('impressao-parcelamentos');
+                renderizarParcelamentosPaginados();
+            });
 
             renderizarParcelamentosPaginados();
         })();

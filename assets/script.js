@@ -4,8 +4,19 @@ let documentoDuplicado = false;
 let ultimaConsultaDocumento = '';
 
 $(document).ready(function () {
+    const limiteClientesSalvo = Number(localStorage.getItem('limiteClientes') || 15);
+    limitePorPagina = [15, 30, 60, 90].includes(limiteClientesSalvo) ? limiteClientesSalvo : 15;
+    $('#limiteClientes').val(String(limitePorPagina));
+
     aplicarMascaras();
     carregarClientes();
+
+    $('#limiteClientes').on('change', function () {
+        const novoLimite = Number(this.value);
+        limitePorPagina = [15, 30, 60, 90].includes(novoLimite) ? novoLimite : 15;
+        localStorage.setItem('limiteClientes', String(limitePorPagina));
+        carregarClientes(1);
+    });
 
     $('#cep').on('blur', function () {
         let cep = $(this).val().replace(/\D/g, '');
@@ -585,13 +596,32 @@ function renderizarPaginacao(total, pagina, limite) {
         </li>
     `;
 
+    const paginasVisiveis = [];
+    let ultimaPagina = 0;
+
     for (let i = 1; i <= totalPaginas; i++) {
+        if (i === 1 || i === totalPaginas || Math.abs(i - pagina) <= 2) {
+            if (ultimaPagina && i - ultimaPagina > 1) {
+                paginasVisiveis.push('...');
+            }
+
+            paginasVisiveis.push(i);
+            ultimaPagina = i;
+        }
+    }
+
+    paginasVisiveis.forEach(function (i) {
+        if (i === '...') {
+            html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            return;
+        }
+
         html += `
             <li class="page-item ${i === pagina ? 'active' : ''}">
                 <button class="page-link" onclick="carregarClientes(${i})">${i}</button>
             </li>
         `;
-    }
+    });
 
     html += `
         <li class="page-item ${pagina >= totalPaginas ? 'disabled' : ''}">

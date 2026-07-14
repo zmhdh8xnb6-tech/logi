@@ -40,7 +40,7 @@ exigirPermissao('clientes');
 
             <div class="clientes-box">
                 <div class="row g-2 mb-3">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <input
                             type="text"
                             id="buscaCliente"
@@ -48,7 +48,7 @@ exigirPermissao('clientes');
                             placeholder="Buscar por código, nome, CPF/CNPJ ou e-mail...">
                     </div>
 
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <select id="filtroUf" class="form-select">
                             <option value="">Todas as UFs</option>
                             <option value="DF">DF</option>
@@ -60,6 +60,15 @@ exigirPermissao('clientes');
                         <button type="button" class="btn btn-outline-secondary" id="btnImprimirClientes">
                             <i class="bi bi-printer"></i> Imprimir lista
                         </button>
+                    </div>
+
+                    <div class="col-md-3">
+                        <select id="limiteClientes" class="form-select">
+                            <option value="15">Mostrar 15</option>
+                            <option value="30">Mostrar 30</option>
+                            <option value="60">Mostrar 60</option>
+                            <option value="90">Mostrar 90</option>
+                        </select>
                     </div>
                 </div>
 

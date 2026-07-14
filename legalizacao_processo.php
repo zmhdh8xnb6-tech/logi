@@ -321,7 +321,9 @@ $stmt = $pdo->prepare("
 $stmt->execute([$processoId]);
 $checklist = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$historicoPorPagina = 15;
+$opcoesHistoricoPorPagina = [15, 30, 60, 90];
+$historicoPorPagina = (int)($_GET['por_pagina'] ?? 15);
+$historicoPorPagina = in_array($historicoPorPagina, $opcoesHistoricoPorPagina, true) ? $historicoPorPagina : 15;
 $paginaHistorico = max(1, (int)($_GET['historico_pagina'] ?? 1));
 $offsetHistorico = ($paginaHistorico - 1) * $historicoPorPagina;
 
@@ -615,19 +617,46 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
 
                 <?php if ($totalPaginasHistorico > 1): ?>
                     <nav class="mt-3 legalizacao-historico-paginacao" aria-label="Paginação do histórico">
+                        <form method="get" class="d-flex justify-content-end mb-2">
+                            <input type="hidden" name="id" value="<?= $processoId ?>">
+                            <select name="por_pagina" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+                                <?php foreach ($opcoesHistoricoPorPagina as $opcao): ?>
+                                    <option value="<?= $opcao ?>" <?= $historicoPorPagina === $opcao ? 'selected' : '' ?>>
+                                        Mostrar <?= $opcao ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </form>
                         <ul class="pagination justify-content-center mt-3">
                             <li class="page-item <?= $paginaHistorico <= 1 ? 'disabled' : '' ?>">
-                                <a class="page-link" data-historico-link href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= max(1, $paginaHistorico - 1) ?>">Anterior</a>
+                                <a class="page-link" data-historico-link href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= max(1, $paginaHistorico - 1) ?>&por_pagina=<?= $historicoPorPagina ?>">Anterior</a>
                             </li>
-                            <?php for ($pagina = 1; $pagina <= $totalPaginasHistorico; $pagina++): ?>
+                            <?php
+                            $ultimaPaginaExibida = 0;
+                            for ($pagina = 1; $pagina <= $totalPaginasHistorico; $pagina++):
+                                if (
+                                    $pagina !== 1
+                                    && $pagina !== $totalPaginasHistorico
+                                    && abs($pagina - $paginaHistorico) > 2
+                                ) {
+                                    continue;
+                                }
+
+                                if ($ultimaPaginaExibida > 0 && $pagina - $ultimaPaginaExibida > 1): ?>
+                                    <li class="page-item disabled">
+                                        <span class="page-link">...</span>
+                                    </li>
+                                <?php endif;
+                                $ultimaPaginaExibida = $pagina;
+                                ?>
                                 <li class="page-item <?= $pagina === $paginaHistorico ? 'active' : '' ?>">
-                                    <a class="page-link" data-historico-link href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= $pagina ?>">
+                                    <a class="page-link" data-historico-link href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= $pagina ?>&por_pagina=<?= $historicoPorPagina ?>">
                                         <?= $pagina ?>
                                     </a>
                                 </li>
                             <?php endfor; ?>
                             <li class="page-item <?= $paginaHistorico >= $totalPaginasHistorico ? 'disabled' : '' ?>">
-                                <a class="page-link" data-historico-link href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= min($totalPaginasHistorico, $paginaHistorico + 1) ?>">Próxima</a>
+                                <a class="page-link" data-historico-link href="legalizacao_processo.php?id=<?= $processoId ?>&historico_pagina=<?= min($totalPaginasHistorico, $paginaHistorico + 1) ?>&por_pagina=<?= $historicoPorPagina ?>">Próxima</a>
                             </li>
                         </ul>
                     </nav>

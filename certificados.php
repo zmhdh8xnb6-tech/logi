@@ -228,7 +228,8 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
-        const certificadosPorPagina = 15;
+        let certificadosPorPagina = Number(localStorage.getItem('certificadosPorPagina') || 15);
+        certificadosPorPagina = [15, 30, 60, 90].includes(certificadosPorPagina) ? certificadosPorPagina : 15;
         let certificadosPaginaAtual = 1;
         const buscaCertificado = document.getElementById('buscaCertificado');
         const linhasCertificados = Array.from(document.querySelectorAll('.linha-cliente'));
@@ -287,6 +288,26 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
             certificadosVazio.classList.toggle('d-none', filtradas.length > 0);
             paginacaoCertificados.innerHTML = '';
 
+            const seletorLimite = document.createElement('div');
+            seletorLimite.className = 'd-flex justify-content-end mb-2';
+            seletorLimite.innerHTML = `
+                <select class="form-select form-select-sm w-auto" aria-label="Itens por página">
+                    <option value="15">Mostrar 15</option>
+                    <option value="30">Mostrar 30</option>
+                    <option value="60">Mostrar 60</option>
+                    <option value="90">Mostrar 90</option>
+                </select>
+            `;
+            const campoLimite = seletorLimite.querySelector('select');
+            campoLimite.value = String(certificadosPorPagina);
+            campoLimite.addEventListener('change', function() {
+                certificadosPorPagina = Number(campoLimite.value);
+                localStorage.setItem('certificadosPorPagina', String(certificadosPorPagina));
+                certificadosPaginaAtual = 1;
+                renderizarCertificados();
+            });
+            paginacaoCertificados.appendChild(seletorLimite);
+
             if (filtradas.length <= certificadosPorPagina) {
                 return;
             }
@@ -297,9 +318,28 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             adicionarPaginaCertificado(lista, 'Anterior', Math.max(1, certificadosPaginaAtual - 1), certificadosPaginaAtual <= 1, false);
 
+            const paginasVisiveis = [];
+            let ultimaPagina = 0;
+
             for (let pagina = 1; pagina <= totalPaginas; pagina++) {
-                adicionarPaginaCertificado(lista, String(pagina), pagina, false, pagina === certificadosPaginaAtual);
+                if (pagina === 1 || pagina === totalPaginas || Math.abs(pagina - certificadosPaginaAtual) <= 2) {
+                    if (ultimaPagina && pagina - ultimaPagina > 1) {
+                        paginasVisiveis.push('...');
+                    }
+
+                    paginasVisiveis.push(pagina);
+                    ultimaPagina = pagina;
+                }
             }
+
+            paginasVisiveis.forEach(function(pagina) {
+                if (pagina === '...') {
+                    adicionarPaginaCertificado(lista, '...', certificadosPaginaAtual, true, false);
+                    return;
+                }
+
+                adicionarPaginaCertificado(lista, String(pagina), pagina, false, pagina === certificadosPaginaAtual);
+            });
 
             adicionarPaginaCertificado(lista, 'Próxima', Math.min(totalPaginas, certificadosPaginaAtual + 1), certificadosPaginaAtual >= totalPaginas, false);
 

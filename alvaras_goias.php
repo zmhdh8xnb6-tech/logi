@@ -89,7 +89,8 @@ $clientesGoias = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </main>
 
     <script>
-        const alvarasGoiasPorPagina = 15;
+        let alvarasGoiasPorPagina = Number(localStorage.getItem('alvarasGoiasPorPagina') || 15);
+        alvarasGoiasPorPagina = [15, 30, 60, 90].includes(alvarasGoiasPorPagina) ? alvarasGoiasPorPagina : 15;
         let alvarasGoiasPaginaAtual = 1;
         const buscaAlvaraGoias = document.getElementById('buscaAlvaraGoias');
         const linhasAlvarasGoias = Array.from(document.querySelectorAll('.linha-cliente-goias'));
@@ -146,6 +147,26 @@ $clientesGoias = $stmt->fetchAll(PDO::FETCH_ASSOC);
             alvarasGoiasVazio.classList.toggle('d-none', filtradas.length > 0);
             paginacaoAlvarasGoias.innerHTML = '';
 
+            const seletorLimite = document.createElement('div');
+            seletorLimite.className = 'd-flex justify-content-end mb-2';
+            seletorLimite.innerHTML = `
+                <select class="form-select form-select-sm w-auto" aria-label="Itens por página">
+                    <option value="15">Mostrar 15</option>
+                    <option value="30">Mostrar 30</option>
+                    <option value="60">Mostrar 60</option>
+                    <option value="90">Mostrar 90</option>
+                </select>
+            `;
+            const campoLimite = seletorLimite.querySelector('select');
+            campoLimite.value = String(alvarasGoiasPorPagina);
+            campoLimite.addEventListener('change', function() {
+                alvarasGoiasPorPagina = Number(campoLimite.value);
+                localStorage.setItem('alvarasGoiasPorPagina', String(alvarasGoiasPorPagina));
+                alvarasGoiasPaginaAtual = 1;
+                renderizarAlvarasGoias();
+            });
+            paginacaoAlvarasGoias.appendChild(seletorLimite);
+
             if (filtradas.length <= alvarasGoiasPorPagina) {
                 return;
             }
@@ -156,9 +177,28 @@ $clientesGoias = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             adicionarPaginaAlvarasGoias(lista, 'Anterior', Math.max(1, alvarasGoiasPaginaAtual - 1), alvarasGoiasPaginaAtual <= 1, false);
 
+            const paginasVisiveis = [];
+            let ultimaPagina = 0;
+
             for (let pagina = 1; pagina <= totalPaginas; pagina++) {
-                adicionarPaginaAlvarasGoias(lista, String(pagina), pagina, false, pagina === alvarasGoiasPaginaAtual);
+                if (pagina === 1 || pagina === totalPaginas || Math.abs(pagina - alvarasGoiasPaginaAtual) <= 2) {
+                    if (ultimaPagina && pagina - ultimaPagina > 1) {
+                        paginasVisiveis.push('...');
+                    }
+
+                    paginasVisiveis.push(pagina);
+                    ultimaPagina = pagina;
+                }
             }
+
+            paginasVisiveis.forEach(function(pagina) {
+                if (pagina === '...') {
+                    adicionarPaginaAlvarasGoias(lista, '...', alvarasGoiasPaginaAtual, true, false);
+                    return;
+                }
+
+                adicionarPaginaAlvarasGoias(lista, String(pagina), pagina, false, pagina === alvarasGoiasPaginaAtual);
+            });
 
             adicionarPaginaAlvarasGoias(lista, 'Próxima', Math.min(totalPaginas, alvarasGoiasPaginaAtual + 1), alvarasGoiasPaginaAtual >= totalPaginas, false);
 

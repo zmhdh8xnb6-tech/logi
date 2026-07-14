@@ -167,7 +167,9 @@ $filtroTipo = $_GET['tipo'] ?? '';
 $filtroStatus = $_GET['status'] ?? '';
 $filtroResponsavel = (int)($_GET['responsavel'] ?? 0);
 $processos = [];
-$processosPorPagina = 15;
+$opcoesPorPagina = [15, 30, 60, 90];
+$processosPorPagina = (int)($_GET['por_pagina'] ?? 15);
+$processosPorPagina = in_array($processosPorPagina, $opcoesPorPagina, true) ? $processosPorPagina : 15;
 $paginaProcessos = max(1, (int)($_GET['pagina'] ?? 1));
 $totalProcessos = 0;
 $totalPaginasProcessos = 1;
@@ -358,6 +360,13 @@ if ($tabelasDisponiveis) {
                         <button type="submit" class="btn btn-primary">
                             <i class="bi bi-funnel"></i> Filtrar
                         </button>
+                        <select class="form-select" name="por_pagina" onchange="this.form.submit()">
+                            <?php foreach ($opcoesPorPagina as $opcao): ?>
+                                <option value="<?= $opcao ?>" <?= $processosPorPagina === $opcao ? 'selected' : '' ?>>
+                                    Mostrar <?= $opcao ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                     </form>
 
                     <div class="table-responsive">
@@ -440,10 +449,27 @@ if ($tabelasDisponiveis) {
                                     <a class="page-link" href="?<?= htmlspecialchars(http_build_query($parametrosAnterior)) ?>">Anterior</a>
                                 </li>
 
-                                <?php for ($numeroPagina = 1; $numeroPagina <= $totalPaginasProcessos; $numeroPagina++):
+                                <?php
+                                $ultimaPaginaExibida = 0;
+                                for ($numeroPagina = 1; $numeroPagina <= $totalPaginasProcessos; $numeroPagina++):
+                                    if (
+                                        $numeroPagina !== 1
+                                        && $numeroPagina !== $totalPaginasProcessos
+                                        && abs($numeroPagina - $paginaProcessos) > 2
+                                    ) {
+                                        continue;
+                                    }
+
+                                    if ($ultimaPaginaExibida > 0 && $numeroPagina - $ultimaPaginaExibida > 1): ?>
+                                        <li class="page-item disabled">
+                                            <span class="page-link">...</span>
+                                        </li>
+                                    <?php endif;
+
                                     $parametrosPagina = $_GET;
                                     $parametrosPagina['pagina'] = $numeroPagina;
-                                ?>
+                                    $ultimaPaginaExibida = $numeroPagina;
+                                    ?>
                                     <li class="page-item <?= $numeroPagina === $paginaProcessos ? 'active' : '' ?>">
                                         <a class="page-link" href="?<?= htmlspecialchars(http_build_query($parametrosPagina)) ?>">
                                             <?= $numeroPagina ?>

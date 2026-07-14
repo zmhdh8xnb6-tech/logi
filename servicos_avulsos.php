@@ -116,7 +116,8 @@ $cadastrosAvulsos = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </main>
 
     <script>
-        const servicosAvulsosPorPagina = 15;
+        let servicosAvulsosPorPagina = Number(localStorage.getItem('servicosAvulsosPorPagina') || 15);
+        servicosAvulsosPorPagina = [15, 30, 60, 90].includes(servicosAvulsosPorPagina) ? servicosAvulsosPorPagina : 15;
         let servicosAvulsosPaginaAtual = 1;
         const buscaServicoAvulso = document.getElementById('buscaServicoAvulso');
         const linhasServicosAvulsos = Array.from(document.querySelectorAll('.linha-servico-avulso'));
@@ -173,6 +174,26 @@ $cadastrosAvulsos = $stmt->fetchAll(PDO::FETCH_ASSOC);
             servicosAvulsosVazio.classList.toggle('d-none', filtrados.length > 0);
             paginacaoServicosAvulsos.innerHTML = '';
 
+            const seletorLimite = document.createElement('div');
+            seletorLimite.className = 'd-flex justify-content-end mb-2';
+            seletorLimite.innerHTML = `
+                <select class="form-select form-select-sm w-auto" aria-label="Itens por página">
+                    <option value="15">Mostrar 15</option>
+                    <option value="30">Mostrar 30</option>
+                    <option value="60">Mostrar 60</option>
+                    <option value="90">Mostrar 90</option>
+                </select>
+            `;
+            const campoLimite = seletorLimite.querySelector('select');
+            campoLimite.value = String(servicosAvulsosPorPagina);
+            campoLimite.addEventListener('change', function() {
+                servicosAvulsosPorPagina = Number(campoLimite.value);
+                localStorage.setItem('servicosAvulsosPorPagina', String(servicosAvulsosPorPagina));
+                servicosAvulsosPaginaAtual = 1;
+                renderizarServicosAvulsos();
+            });
+            paginacaoServicosAvulsos.appendChild(seletorLimite);
+
             if (filtrados.length <= servicosAvulsosPorPagina) {
                 return;
             }
@@ -183,9 +204,28 @@ $cadastrosAvulsos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             adicionarPaginaServicosAvulsos(lista, 'Anterior', Math.max(1, servicosAvulsosPaginaAtual - 1), servicosAvulsosPaginaAtual <= 1, false);
 
+            const paginasVisiveis = [];
+            let ultimaPagina = 0;
+
             for (let pagina = 1; pagina <= totalPaginas; pagina++) {
-                adicionarPaginaServicosAvulsos(lista, String(pagina), pagina, false, pagina === servicosAvulsosPaginaAtual);
+                if (pagina === 1 || pagina === totalPaginas || Math.abs(pagina - servicosAvulsosPaginaAtual) <= 2) {
+                    if (ultimaPagina && pagina - ultimaPagina > 1) {
+                        paginasVisiveis.push('...');
+                    }
+
+                    paginasVisiveis.push(pagina);
+                    ultimaPagina = pagina;
+                }
             }
+
+            paginasVisiveis.forEach(function(pagina) {
+                if (pagina === '...') {
+                    adicionarPaginaServicosAvulsos(lista, '...', servicosAvulsosPaginaAtual, true, false);
+                    return;
+                }
+
+                adicionarPaginaServicosAvulsos(lista, String(pagina), pagina, false, pagina === servicosAvulsosPaginaAtual);
+            });
 
             adicionarPaginaServicosAvulsos(lista, 'Próxima', Math.min(totalPaginas, servicosAvulsosPaginaAtual + 1), servicosAvulsosPaginaAtual >= totalPaginas, false);
 

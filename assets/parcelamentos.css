@@ -53,6 +53,14 @@
     .container-fluid> :not(.parcelamento-box),
     .cabecalho-lista,
     .busca-parcelamentos,
+    #paginacaoParcelamentos,
+    .pagination,
+    .page-item,
+    .page-link,
+    .modal,
+    .modal-backdrop,
+    button,
+    .btn,
     .coluna-acoes,
     .coluna-acoes * {
         display: none !important;
@@ -96,6 +104,10 @@
         overflow: visible !important;
     }
 
+    .linha-parcelamento {
+        display: table-row;
+    }
+
     .parcelamento-box table {
         width: 100%;
         margin: 0;
@@ -120,6 +132,7 @@
 
     .parcelamento-box table tr {
         break-inside: avoid;
+        page-break-inside: avoid;
     }
 
     .parcelamento-box thead {

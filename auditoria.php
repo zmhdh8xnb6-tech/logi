@@ -15,7 +15,9 @@ $modulosFiltro = [];
 $totalRegistros = 0;
 $totalHoje = 0;
 $totalSeteDias = 0;
-$porPagina = 15;
+$opcoesPorPagina = [15, 30, 60, 90];
+$porPagina = (int)($_GET['por_pagina'] ?? 15);
+$porPagina = in_array($porPagina, $opcoesPorPagina, true) ? $porPagina : 15;
 $pagina = max(1, (int)($_GET['pagina'] ?? 1));
 $inicio = trim($_GET['inicio'] ?? date('Y-m-d', strtotime('-30 days')));
 $fim = trim($_GET['fim'] ?? date('Y-m-d'));
@@ -319,6 +321,18 @@ $acoesFiltro = [
 
                 <?php if ($totalPaginas > 1): ?>
                     <nav class="mt-4" aria-label="Paginação da auditoria">
+                        <form method="get" class="d-flex justify-content-end mb-2">
+                            <?php foreach ($_GET as $chave => $valor): ?>
+                                <?php if (!in_array($chave, ['por_pagina', 'pagina'], true)): ?>
+                                    <input type="hidden" name="<?= htmlspecialchars($chave) ?>" value="<?= htmlspecialchars((string)$valor) ?>">
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                            <select name="por_pagina" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+                                <?php foreach ($opcoesPorPagina as $opcao): ?>
+                                    <option value="<?= $opcao ?>" <?= $porPagina === $opcao ? 'selected' : '' ?>>Mostrar <?= $opcao ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </form>
                         <ul class="pagination justify-content-center">
                             <?php
                             $parametrosAnterior = $_GET;
@@ -330,10 +344,27 @@ $acoesFiltro = [
                                 </a>
                             </li>
 
-                            <?php for ($numeroPagina = 1; $numeroPagina <= $totalPaginas; $numeroPagina++):
+                            <?php
+                            $ultimaPaginaExibida = 0;
+                            for ($numeroPagina = 1; $numeroPagina <= $totalPaginas; $numeroPagina++):
+                                if (
+                                    $numeroPagina !== 1
+                                    && $numeroPagina !== $totalPaginas
+                                    && abs($numeroPagina - $pagina) > 2
+                                ) {
+                                    continue;
+                                }
+
+                                if ($ultimaPaginaExibida > 0 && $numeroPagina - $ultimaPaginaExibida > 1): ?>
+                                    <li class="page-item disabled">
+                                        <span class="page-link">...</span>
+                                    </li>
+                                <?php endif;
+
                                 $parametrosPagina = $_GET;
                                 $parametrosPagina['pagina'] = $numeroPagina;
-                            ?>
+                                $ultimaPaginaExibida = $numeroPagina;
+                                ?>
                                 <li class="page-item <?= $numeroPagina === $pagina ? 'active' : '' ?>">
                                     <a class="page-link" href="?<?= htmlspecialchars(http_build_query($parametrosPagina)) ?>">
                                         <?= $numeroPagina ?>
