@@ -728,6 +728,10 @@ function renderizarModalDetalhesParcelamento(): void
             let parcelamentosPaginaAtual = 1;
             let impressaoParcelamentosAtiva = false;
             let paginacaoParcelamentos = document.getElementById('paginacaoParcelamentos');
+            const cabecalhoImpressaoParcelamentos = document.querySelector('.orgao-impressao');
+            const textoOriginalCabecalhoImpressao = cabecalhoImpressaoParcelamentos ?
+                cabecalhoImpressaoParcelamentos.textContent.trim() :
+                '';
 
             if (!paginacaoParcelamentos && linhasParcelamento.length > 0) {
                 const tabelaParcelamentos = document.querySelector('.parcelamento-box .table-responsive');
@@ -761,6 +765,41 @@ function renderizarModalDetalhesParcelamento(): void
 
                     return texto.includes(termo);
                 });
+            }
+
+            function formatarDataHoraImpressao() {
+                const agora = new Date();
+
+                return agora.toLocaleDateString('pt-BR') + ' às ' + agora.toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            }
+
+            function atualizarCabecalhoImpressao() {
+                if (!cabecalhoImpressaoParcelamentos) {
+                    return;
+                }
+
+                const total = linhasParcelamentoFiltradas().length;
+                const orgao = textoOriginalCabecalhoImpressao.replace(/^Órgão:\s*/i, '');
+
+                cabecalhoImpressaoParcelamentos.innerHTML = `
+                    <div>
+                        <strong>Relatório de Parcelamentos</strong>
+                        <span>Controle de parcelamentos dos clientes</span>
+                    </div>
+                    <div>
+                        <strong>Órgão: ${orgao}</strong>
+                        <span>Emitido em ${formatarDataHoraImpressao()} · Total: ${total}</span>
+                    </div>
+                `;
+            }
+
+            function restaurarCabecalhoImpressao() {
+                if (cabecalhoImpressaoParcelamentos) {
+                    cabecalhoImpressaoParcelamentos.textContent = textoOriginalCabecalhoImpressao;
+                }
             }
 
             function adicionarPaginaParcelamento(lista, rotulo, pagina, desabilitado, ativo) {
@@ -888,12 +927,14 @@ function renderizarModalDetalhesParcelamento(): void
             window.addEventListener('beforeprint', function() {
                 impressaoParcelamentosAtiva = true;
                 document.body.classList.add('impressao-parcelamentos');
+                atualizarCabecalhoImpressao();
                 renderizarParcelamentosPaginados();
             });
 
             window.addEventListener('afterprint', function() {
                 impressaoParcelamentosAtiva = false;
                 document.body.classList.remove('impressao-parcelamentos');
+                restaurarCabecalhoImpressao();
                 renderizarParcelamentosPaginados();
             });
 
