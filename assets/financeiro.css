@@ -513,48 +513,48 @@
 }
 
 .financeiro-cartao-item.fatura-paga {
-    border-color: #bbf7d0;
-    background: #f0fdf4;
+    border-color: #22c55e;
+    background: #dcfce7;
 }
 
 .financeiro-cartao-item.fatura-paga:hover {
-    border-color: #86efac;
-    background: #dcfce7;
+    border-color: #16a34a;
+    background: #bbf7d0;
 }
 
 .financeiro-cartao-item.fatura-paga.ativo {
-    border-color: #4ade80;
-    background: #dcfce7;
+    border-color: #15803d;
+    background: #bbf7d0;
 }
 
 .financeiro-cartao-item.fatura-parcial {
-    border-color: #fde68a;
-    background: #fffbeb;
-}
-
-.financeiro-cartao-item.fatura-parcial:hover {
-    border-color: #facc15;
-    background: #fef3c7;
-}
-
-.financeiro-cartao-item.fatura-parcial.ativo {
     border-color: #f59e0b;
     background: #fef3c7;
 }
 
+.financeiro-cartao-item.fatura-parcial:hover {
+    border-color: #d97706;
+    background: #fde68a;
+}
+
+.financeiro-cartao-item.fatura-parcial.ativo {
+    border-color: #b45309;
+    background: #fde68a;
+}
+
 .financeiro-cartao-item.fatura-atrasada {
-    border-color: #fecaca;
-    background: #fef2f2;
+    border-color: #ef4444;
+    background: #fee2e2;
 }
 
 .financeiro-cartao-item.fatura-atrasada:hover {
-    border-color: #fca5a5;
-    background: #fee2e2;
+    border-color: #dc2626;
+    background: #fecaca;
 }
 
 .financeiro-cartao-item.fatura-atrasada.ativo {
-    border-color: #ef4444;
-    background: #fee2e2;
+    border-color: #b91c1c;
+    background: #fecaca;
 }
 
 .financeiro-cartao-item.cancelado {
