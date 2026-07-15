@@ -472,3 +472,35 @@ $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
     </div>
 </div>
 </div>
+
+<div class="modal fade" id="modalPreencherCnpj" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Dados encontrados pelo CNPJ</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">
+                    Encontramos dados desse CNPJ. Deseja preencher o cadastro automaticamente?
+                </p>
+
+                <div class="border rounded p-3 bg-light">
+                    <div class="fw-semibold" id="cnpjConsultaRazao">-</div>
+                    <div class="text-muted small" id="cnpjConsultaDocumento">-</div>
+                    <div class="text-muted small mt-2" id="cnpjConsultaEndereco">-</div>
+                </div>
+
+                <div class="form-text mt-2">
+                    Confira os dados antes de salvar, porque informações públicas podem estar desatualizadas.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Não preencher</button>
+                <button type="button" class="btn btn-primary" id="btnPreencherDadosCnpj">
+                    Preencher cadastro
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

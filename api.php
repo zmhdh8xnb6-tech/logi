@@ -171,6 +171,50 @@ function atualizarPendenciaControleDados(PDO $pdo, int $clienteId, string $colun
     $stmt->execute([$pendente ? 1 : 0, $clienteId]);
 }
 
+function consultarJsonExterno(string $url): array
+{
+    $resposta = false;
+
+    if (function_exists('curl_init')) {
+        $curl = curl_init($url);
+        curl_setopt_array($curl, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            CURLOPT_USERAGENT => 'Logi/1.0',
+        ]);
+
+        $resposta = curl_exec($curl);
+        $status = (int)curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        curl_close($curl);
+
+        if ($resposta === false || $status < 200 || $status >= 300) {
+            return [];
+        }
+    } else {
+        $contexto = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'timeout' => 10,
+                'header' => "Accept: application/json\r\nUser-Agent: Logi/1.0\r\n",
+            ],
+        ]);
+
+        $resposta = @file_get_contents($url, false, $contexto);
+
+        if ($resposta === false) {
+            return [];
+        }
+    }
+
+    $dados = json_decode($resposta, true);
+
+    return is_array($dados) ? $dados : [];
+}
+
 $action = $_GET['action'] ?? '';
 
 if ($action === 'read') {
@@ -266,6 +310,49 @@ if ($action === 'check_documento') {
     echo json_encode([
         'duplicado' => (bool)$cliente,
         'cliente' => $cliente ?: null,
+    ]);
+    exit;
+}
+
+if ($action === 'consultar_cnpj') {
+    $cnpj = preg_replace('/\D/', '', $_GET['cnpj'] ?? '');
+
+    header('Content-Type: application/json; charset=utf-8');
+
+    if (strlen($cnpj) !== 14) {
+        echo json_encode(['ok' => false, 'mensagem' => 'CNPJ inválido.']);
+        exit;
+    }
+
+    $dados = consultarJsonExterno('https://brasilapi.com.br/api/cnpj/v1/' . $cnpj);
+
+    if ($dados === [] || isset($dados['message']) || isset($dados['errors'])) {
+        echo json_encode(['ok' => false, 'mensagem' => 'CNPJ não encontrado.']);
+        exit;
+    }
+
+    $telefone = trim((string)($dados['ddd_telefone_1'] ?? $dados['telefone'] ?? ''));
+    $logradouro = trim(implode(' ', array_filter([
+        $dados['descricao_tipo_de_logradouro'] ?? '',
+        $dados['logradouro'] ?? '',
+    ])));
+
+    echo json_encode([
+        'ok' => true,
+        'dados' => [
+            'documento' => $cnpj,
+            'nome' => $dados['razao_social'] ?? '',
+            'nome_fantasia' => $dados['nome_fantasia'] ?? '',
+            'email' => $dados['email'] ?? '',
+            'telefone' => $telefone,
+            'cep' => $dados['cep'] ?? '',
+            'endereco' => $logradouro,
+            'numero_endereco' => $dados['numero'] ?? '',
+            'complemento' => $dados['complemento'] ?? '',
+            'bairro' => $dados['bairro'] ?? '',
+            'cidade' => $dados['municipio'] ?? '',
+            'uf' => strtoupper($dados['uf'] ?? ''),
+        ],
     ]);
     exit;
 }

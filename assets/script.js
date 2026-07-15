@@ -2,6 +2,8 @@ let paginaAtual = 1;
 let limitePorPagina = 15;
 let documentoDuplicado = false;
 let ultimaConsultaDocumento = '';
+let ultimoCnpjConsultado = '';
+let dadosCnpjEncontrado = null;
 
 $(document).ready(function () {
     const limiteClientesSalvo = Number(localStorage.getItem('limiteClientes') || 15);
@@ -70,7 +72,11 @@ $(document).ready(function () {
             return;
         }
 
-        verificarDocumentoDuplicado(documentoFormatado);
+        verificarDocumentoDuplicado(documentoFormatado).done(function (resposta) {
+            if (!resposta.duplicado && documento.length === 14) {
+                consultarCnpjParaPreenchimento(documento);
+            }
+        });
     });
 
     $('#clienteForm').on('submit', function (e) {
@@ -237,6 +243,10 @@ $(document).ready(function () {
 
     $(document).on('input', '#nome_fantasia', function () {
         this.value = this.value.toUpperCase();
+    });
+
+    $('#btnPreencherDadosCnpj').on('click', function () {
+        preencherCadastroComCnpj();
     });
 
     $('#documento').on('input', function () {
@@ -919,12 +929,12 @@ function verificarDocumentoDuplicado(documentoFormatado) {
     const id = $('#id').val() || '';
 
     if (documentoFormatado === '' || documentoFormatado === ultimaConsultaDocumento) {
-        return;
+        return $.Deferred().resolve({ duplicado: documentoDuplicado }).promise();
     }
 
     ultimaConsultaDocumento = documentoFormatado;
 
-    $.getJSON('api.php?action=check_documento', {
+    return $.getJSON('api.php?action=check_documento', {
         documento: documentoFormatado,
         id: id
     }).done(function (resposta) {
@@ -945,7 +955,97 @@ function verificarDocumentoDuplicado(documentoFormatado) {
             documentoDuplicado = false;
             $('#documento').removeClass('is-invalid');
         }
+    }).fail(function () {
+        documentoDuplicado = false;
     });
+}
+
+function formatarCnpj(valor) {
+    const cnpj = String(valor || '').replace(/\D/g, '');
+
+    if (cnpj.length !== 14) {
+        return valor || '';
+    }
+
+    return cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+}
+
+function formatarCep(valor) {
+    const cep = String(valor || '').replace(/\D/g, '');
+
+    if (cep.length !== 8) {
+        return valor || '';
+    }
+
+    return cep.replace(/^(\d{5})(\d{3})$/, '$1-$2');
+}
+
+function consultarCnpjParaPreenchimento(cnpj) {
+    if (!window.location.pathname.includes('cliente_novo.php')) {
+        return;
+    }
+
+    if (cnpj === ultimoCnpjConsultado) {
+        return;
+    }
+
+    ultimoCnpjConsultado = cnpj;
+
+    $('#documento').removeClass('is-invalid');
+
+    $.getJSON('api.php?action=consultar_cnpj', { cnpj: cnpj })
+        .done(function (resposta) {
+            if (!resposta.ok || !resposta.dados) {
+                return;
+            }
+
+            dadosCnpjEncontrado = resposta.dados;
+            $('#cnpjConsultaRazao').text(dadosCnpjEncontrado.nome || 'Razão social não informada');
+            $('#cnpjConsultaDocumento').text(formatarCnpj(dadosCnpjEncontrado.documento));
+            $('#cnpjConsultaEndereco').text([
+                dadosCnpjEncontrado.endereco,
+                dadosCnpjEncontrado.numero_endereco,
+                dadosCnpjEncontrado.bairro,
+                dadosCnpjEncontrado.cidade,
+                dadosCnpjEncontrado.uf
+            ].filter(Boolean).join(' - ') || 'Endereço não informado');
+
+            const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modalPreencherCnpj'));
+            modal.show();
+        });
+}
+
+function preencherCampoSeExistir(seletor, valor) {
+    const campo = $(seletor);
+
+    if (!campo.length || valor === undefined || valor === null || String(valor).trim() === '') {
+        return;
+    }
+
+    campo.val(valor).trigger('input').trigger('change');
+    campo.removeClass('is-invalid');
+}
+
+function preencherCadastroComCnpj() {
+    if (!dadosCnpjEncontrado) {
+        return;
+    }
+
+    preencherCampoSeExistir('#documento', formatarCnpj(dadosCnpjEncontrado.documento));
+    preencherCampoSeExistir('#nome', dadosCnpjEncontrado.nome);
+    preencherCampoSeExistir('#nome_fantasia', dadosCnpjEncontrado.nome_fantasia);
+    preencherCampoSeExistir('#email', dadosCnpjEncontrado.email);
+    preencherCampoSeExistir('#telefone', dadosCnpjEncontrado.telefone);
+    preencherCampoSeExistir('#cep', formatarCep(dadosCnpjEncontrado.cep));
+    preencherCampoSeExistir('#endereco', dadosCnpjEncontrado.endereco);
+    preencherCampoSeExistir('#numero_endereco', dadosCnpjEncontrado.numero_endereco);
+    preencherCampoSeExistir('#complemento', dadosCnpjEncontrado.complemento);
+    preencherCampoSeExistir('#bairro', dadosCnpjEncontrado.bairro);
+    preencherCampoSeExistir('#cidade', dadosCnpjEncontrado.cidade);
+    preencherCampoSeExistir('#uf', String(dadosCnpjEncontrado.uf || '').toUpperCase());
+
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalPreencherCnpj')).hide();
+    validarCampoInscricaoEstadual();
 }
 
 function validarEmail(email) {
