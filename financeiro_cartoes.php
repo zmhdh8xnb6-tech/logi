@@ -803,12 +803,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $valorPagoInformado = $_POST['valor_pago'] ?? '';
         $valorPago = financeiroValorEntrada($valorPagoInformado);
         $mesFatura = financeiroMesValido($_POST['mes_fatura'] ?? null);
+        $parcelarFatura = ($_POST['parcelar_fatura'] ?? '') === '1';
+        $parcelasFatura = $parcelarFatura ? (int)($_POST['parcelas_fatura'] ?? 1) : 1;
 
         if (
             $cartaoId <= 0
             || $dataPagamento === ''
             || !financeiroValorValido($valorPagoInformado)
-            || $valorPago <= 0
+            || (!$parcelarFatura && $valorPago <= 0)
+            || ($parcelarFatura && ($valorPago < 0 || $parcelasFatura < 2 || $parcelasFatura > 48))
             || !preg_match('/^\d{4}-\d{2}$/', $_POST['mes_fatura'] ?? '')
         ) {
             financeiroRedirecionar($urlRetorno, 'Informe o valor, o mês da fatura e a data de pagamento.', 'danger');
@@ -821,7 +824,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $cartaoId,
                 $mesFatura,
                 $valorPago,
-                $dataPagamento
+                $dataPagamento,
+                $parcelasFatura
             );
         } catch (Throwable $e) {
             financeiroRedirecionar($urlRetorno, 'Não foi possível registrar o pagamento da fatura.', 'danger');
@@ -841,6 +845,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             [
                 'valor_pago' => $resultadoPagamento['valor_pago'],
                 'restante' => $resultadoPagamento['restante'],
+                'fatura_parcelada' => $resultadoPagamento['fatura_parcelada'],
+                'parcelas_fatura' => $resultadoPagamento['parcelas_fatura'],
                 'proxima_competencia' => $resultadoPagamento['proxima_competencia'],
                 'data_pagamento' => $dataPagamento,
             ]
@@ -849,7 +855,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             urlCartoes($cartaoId, $mes),
             $resultadoPagamento['pagamento_total']
                 ? 'Fatura paga e limite liberado.'
-                : 'Pagamento parcial registrado. O saldo restante foi lançado na próxima fatura.'
+                : ($resultadoPagamento['fatura_parcelada']
+                    ? 'Fatura parcelada e lançada nas próximas competências.'
+                    : 'Pagamento parcial registrado. O saldo restante foi lançado na próxima fatura.')
         );
     }
 
@@ -915,7 +923,7 @@ if ($tabelasDisponiveis) {
 
     financeiroSincronizarFaturasCartoes($pdo, $usuarioId);
     $alertasFinanceiros = financeiroListarAlertasVencimento($pdo, $usuarioId, 10);
-    $selectFaturaPagaMes = ', 0 AS fatura_paga_mes, 0 AS fatura_parcial_mes, 0 AS fatura_atrasada_mes';
+    $selectFaturaPagaMes = ', 0 AS fatura_paga_mes, 0 AS fatura_parcial_mes, 0 AS fatura_atrasada_mes, 0 AS fatura_parcelada_mes';
     $parametrosCartoes = [$inicioMes, $fimMes];
 
     if ($temContaFaturaCartao) {
@@ -964,10 +972,33 @@ if ($tabelasDisponiveis) {
                   AND fc.competencia_cartao = ?
                 ORDER BY fc.id DESC
                 LIMIT 1
-            ), 0) AS fatura_atrasada_mes";
+            ), 0) AS fatura_atrasada_mes,
+            COALESCE((
+                SELECT CASE
+                    WHEN COUNT(*) > 0
+                    THEN 1
+                    ELSE 0
+                END
+                FROM financeiro_cartao_lancamentos fl
+                WHERE fl.usuario_id = c.usuario_id
+                  AND fl.cartao_id = c.id
+                  AND (
+                      (
+                          COALESCE(fl.competencia_fatura, DATE_FORMAT(fl.data_compra, '%Y-%m-01')) >= ?
+                          AND COALESCE(fl.competencia_fatura, DATE_FORMAT(fl.data_compra, '%Y-%m-01')) < ?
+                      )
+                      OR fl.descricao = ?
+                  )
+                  AND (
+                      fl.descricao LIKE 'Fatura parcelada %'
+                  )
+            ), 0) AS fatura_parcelada_mes";
         $parametrosCartoes[] = $mes;
         $parametrosCartoes[] = $mes;
         $parametrosCartoes[] = $mes;
+        $parametrosCartoes[] = $inicioMes;
+        $parametrosCartoes[] = $fimMes;
+        $parametrosCartoes[] = 'Fatura parcelada ' . date('m/Y', strtotime($inicioMes));
     }
 
     $parametrosCartoes[] = $usuarioId;
@@ -1239,12 +1270,14 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 <?php
                                 $classeFaturaCartao = '';
 
-                                if ((int)($cartao['fatura_paga_mes'] ?? 0) === 1) {
-                                    $classeFaturaCartao = ' fatura-paga';
+                                if ((int)($cartao['fatura_atrasada_mes'] ?? 0) === 1) {
+                                    $classeFaturaCartao = ' fatura-atrasada';
+                                } elseif ((int)($cartao['fatura_parcelada_mes'] ?? 0) === 1) {
+                                    $classeFaturaCartao = ' fatura-parcelada';
                                 } elseif ((int)($cartao['fatura_parcial_mes'] ?? 0) === 1) {
                                     $classeFaturaCartao = ' fatura-parcial';
-                                } elseif ((int)($cartao['fatura_atrasada_mes'] ?? 0) === 1) {
-                                    $classeFaturaCartao = ' fatura-atrasada';
+                                } elseif ((int)($cartao['fatura_paga_mes'] ?? 0) === 1) {
+                                    $classeFaturaCartao = ' fatura-paga';
                                 }
                                 ?>
                                 <a
@@ -1793,7 +1826,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 <div class="alert alert-info py-2">
                                     Valor da fatura:
                                     <strong id="pagarFaturaValorTexto"><?= financeiroMoeda((float)$cartaoSelecionado['fatura_mes']) ?></strong>.
-                                    Se informar um valor menor, o restante irá para a próxima fatura como saldo anterior.
+                                    Se informar um valor menor, o restante poderá ir para a próxima fatura ou ser parcelado.
                                 </div>
                                 <input type="hidden" name="mes_fatura" id="pagarFaturaMes" value="<?= htmlspecialchars($mes) ?>">
                                 <div class="row">
@@ -1813,6 +1846,33 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                         <label for="dataPagamentoFatura" class="form-label">Data do pagamento</label>
                                         <input type="date" class="form-control financeiro-calendario" name="data_pagamento" id="dataPagamentoFatura" value="<?= date('Y-m-d') ?>" required>
                                         <div class="invalid-feedback">Informe a data do pagamento.</div>
+                                    </div>
+                                </div>
+                                <div class="border rounded-3 p-3">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" role="switch" name="parcelar_fatura" value="1" id="parcelarFatura">
+                                        <label class="form-check-label" for="parcelarFatura">
+                                            Parcelar saldo restante da fatura
+                                        </label>
+                                    </div>
+                                    <div class="row d-none" id="camposParcelarFatura">
+                                        <div class="col-md-6 mb-3 mb-md-0">
+                                            <label for="parcelasFatura" class="form-label">Quantidade de parcelas</label>
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                name="parcelas_fatura"
+                                                id="parcelasFatura"
+                                                min="2"
+                                                max="48"
+                                                value="2">
+                                            <div class="invalid-feedback">Informe pelo menos 2 parcelas.</div>
+                                        </div>
+                                        <div class="col-md-6 d-flex align-items-end">
+                                            <div class="text-muted small" id="resumoParcelamentoFatura">
+                                                O saldo restante será dividido nas próximas faturas.
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1937,8 +1997,61 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                     document.getElementById('pagarFaturaValorTexto').textContent = 'R$ ' + valor;
                     document.getElementById('valorPagamentoFatura').value = valor;
                     document.getElementById('dataPagamentoFatura').value = dataPadraoCompra;
+                    const parcelarFatura = document.getElementById('parcelarFatura');
+                    if (parcelarFatura) {
+                        parcelarFatura.checked = false;
+                        atualizarCamposParcelamentoFatura();
+                    }
                 });
             });
+
+            function valorMoedaParaNumero(valor) {
+                const limpo = String(valor || '')
+                    .replace(/[R$\s]/g, '')
+                    .replace(/\./g, '')
+                    .replace(',', '.');
+                const numero = Number(limpo);
+
+                return Number.isFinite(numero) ? numero : 0;
+            }
+
+            function numeroParaMoeda(valor) {
+                return valor.toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL'
+                });
+            }
+
+            function atualizarCamposParcelamentoFatura() {
+                const parcelarFatura = document.getElementById('parcelarFatura');
+                const camposParcelarFatura = document.getElementById('camposParcelarFatura');
+                const parcelasFatura = document.getElementById('parcelasFatura');
+                const resumo = document.getElementById('resumoParcelamentoFatura');
+                const valorTotal = valorMoedaParaNumero((document.getElementById('pagarFaturaValorTexto')?.textContent || '').replace('R$', ''));
+                const valorPago = valorMoedaParaNumero(document.getElementById('valorPagamentoFatura')?.value);
+                const parcelas = Math.max(2, Number(parcelasFatura?.value || 2));
+                const restante = Math.max(0, valorTotal - valorPago);
+
+                if (!parcelarFatura || !camposParcelarFatura) {
+                    return;
+                }
+
+                camposParcelarFatura.classList.toggle('d-none', !parcelarFatura.checked);
+
+                if (parcelasFatura) {
+                    parcelasFatura.required = parcelarFatura.checked;
+                }
+
+                if (resumo) {
+                    resumo.textContent = restante > 0 ?
+                        'Saldo de ' + numeroParaMoeda(restante) + ' em ' + parcelas + 'x de aproximadamente ' + numeroParaMoeda(restante / parcelas) + '.' :
+                        'Informe um valor menor que a fatura para gerar parcelas futuras.';
+                }
+            }
+
+            document.getElementById('parcelarFatura')?.addEventListener('change', atualizarCamposParcelamentoFatura);
+            document.getElementById('parcelasFatura')?.addEventListener('input', atualizarCamposParcelamentoFatura);
+            document.getElementById('valorPagamentoFatura')?.addEventListener('input', atualizarCamposParcelamentoFatura);
 
             const filtroBuscaCompras = document.getElementById('filtroBuscaCompras');
             const filtroStatusCompras = document.getElementById('filtroStatusCompras');

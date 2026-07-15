@@ -654,7 +654,8 @@ function financeiroRegistrarPagamentoFaturaCartao(
     int $cartaoId,
     string $mesFatura,
     float $valorPago,
-    string $dataPagamento
+    string $dataPagamento,
+    int $parcelasFatura = 1
 ): array {
     $mesFatura = financeiroMesValido($mesFatura);
     $inicioMesFatura = $mesFatura . '-01';
@@ -662,7 +663,9 @@ function financeiroRegistrarPagamentoFaturaCartao(
     $proximaCompetencia = date('Y-m-01', strtotime($inicioMesFatura . ' +1 month'));
     $competenciaAtual = date('Y-m', strtotime($inicioMesFatura));
 
-    if ($usuarioId <= 0 || $cartaoId <= 0 || $valorPago <= 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataPagamento)) {
+    $parcelasFatura = max(1, min(48, $parcelasFatura));
+
+    if ($usuarioId <= 0 || $cartaoId <= 0 || $valorPago < 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataPagamento)) {
         throw new RuntimeException('Dados inválidos para pagamento da fatura.');
     }
 
@@ -705,8 +708,14 @@ function financeiroRegistrarPagamentoFaturaCartao(
 
     $valorPago = min(round($valorPago, 2), $valorTotal);
     $restante = round($valorTotal - $valorPago, 2);
+    if ($valorPago <= 0 && $parcelasFatura <= 1) {
+        throw new RuntimeException('Informe o valor pago ou parcele a fatura.');
+    }
+
     $pagamentoTotal = $restante <= 0.009;
+    $faturaParcelada = !$pagamentoTotal && $parcelasFatura > 1;
     $descricaoSaldo = 'Saldo anterior da fatura ' . date('m/Y', strtotime($inicioMesFatura));
+    $descricaoParcelamento = 'Fatura parcelada ' . date('m/Y', strtotime($inicioMesFatura));
     $categoriaId = null;
 
     if (financeiroTabelasDisponiveis($pdo, ['financeiro_categorias'])) {
@@ -743,7 +752,67 @@ function financeiroRegistrarPagamentoFaturaCartao(
             $fimMesFatura,
         ]);
 
-        if (!$pagamentoTotal) {
+        if (!$pagamentoTotal && $faturaParcelada) {
+            $grupoParcelamento = 'fatura_' . $cartaoId . '_' . str_replace('-', '', $mesFatura) . '_' . uniqid();
+            $valorBaseParcela = floor(($restante / $parcelasFatura) * 100) / 100;
+            $totalDistribuido = 0.0;
+
+            $stmtLimparParcelamento = $pdo->prepare("
+                DELETE FROM financeiro_cartao_lancamentos
+                WHERE usuario_id = ?
+                  AND cartao_id = ?
+                  AND descricao LIKE ?
+                  AND COALESCE(competencia_fatura, DATE_FORMAT(data_compra, '%Y-%m-01')) > ?
+            ");
+            $stmtLimparParcelamento->execute([$usuarioId, $cartaoId, $descricaoParcelamento . '%', $inicioMesFatura]);
+
+            $stmtLimparSaldoAnterior = $pdo->prepare("
+                DELETE FROM financeiro_cartao_lancamentos
+                WHERE usuario_id = ?
+                  AND cartao_id = ?
+                  AND descricao = ?
+                  AND competencia_fatura = ?
+            ");
+            $stmtLimparSaldoAnterior->execute([$usuarioId, $cartaoId, $descricaoSaldo, $proximaCompetencia]);
+
+            $stmtSaldo = $pdo->prepare("
+                INSERT INTO financeiro_cartao_lancamentos (
+                    usuario_id,
+                    cartao_id,
+                    data_compra,
+                    competencia_fatura,
+                    descricao,
+                    valor,
+                    status,
+                    categoria_id,
+                    grupo_parcelamento,
+                    parcela_numero,
+                    parcelas_total
+                )
+                VALUES (?, ?, ?, ?, ?, ?, 'aberto', ?, ?, ?, ?)
+            ");
+
+            for ($parcela = 1; $parcela <= $parcelasFatura; $parcela++) {
+                $competenciaParcela = date('Y-m-01', strtotime($inicioMesFatura . ' +' . $parcela . ' months'));
+                $valorParcela = $parcela === $parcelasFatura
+                    ? round($restante - $totalDistribuido, 2)
+                    : $valorBaseParcela;
+                $totalDistribuido = round($totalDistribuido + $valorParcela, 2);
+
+                $stmtSaldo->execute([
+                    $usuarioId,
+                    $cartaoId,
+                    $dataPagamento,
+                    $competenciaParcela,
+                    $descricaoParcelamento,
+                    $valorParcela,
+                    $categoriaId,
+                    $grupoParcelamento,
+                    $parcela,
+                    $parcelasFatura,
+                ]);
+            }
+        } elseif (!$pagamentoTotal) {
             $stmtSaldoExistente = $pdo->prepare("
                 SELECT id
                 FROM financeiro_cartao_lancamentos
@@ -828,6 +897,8 @@ function financeiroRegistrarPagamentoFaturaCartao(
         'valor_pago' => $valorPago,
         'restante' => $pagamentoTotal ? 0.0 : $restante,
         'pagamento_total' => $pagamentoTotal,
+        'fatura_parcelada' => $faturaParcelada,
+        'parcelas_fatura' => $faturaParcelada ? $parcelasFatura : 1,
         'parcelas_em_aberto' => (int)$faturaAntes['quantidade'],
         'proxima_competencia' => date('Y-m', strtotime($proximaCompetencia)),
     ];
