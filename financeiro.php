@@ -1199,8 +1199,9 @@ if ($tabelasDisponiveis) {
             FROM financeiro_meta_movimentos
             WHERE usuario_id = ?
               AND data_movimento < ?
+              AND data_movimento <= ?
         ");
-        $stmt->execute([$usuarioId, $inicioMes]);
+        $stmt->execute([$usuarioId, $inicioMes, $hoje]);
         $totalMovimentoMetasAnterior = (float)$stmt->fetchColumn();
     }
 
@@ -1211,8 +1212,9 @@ if ($tabelasDisponiveis) {
         FROM financeiro_recebimentos
         WHERE usuario_id = ?
           AND data_recebimento < ?
+          AND data_recebimento <= ?
     ");
-    $stmt->execute([$usuarioId, $inicioMes]);
+    $stmt->execute([$usuarioId, $inicioMes, $hoje]);
     $totalRecebidoAnterior = (float)$stmt->fetchColumn();
 
     foreach ($recebimentos as $recebimento) {
@@ -1263,8 +1265,9 @@ if ($tabelasDisponiveis) {
           AND status = 'pago'
           AND data_pagamento IS NOT NULL
           AND data_pagamento < ?
+          AND data_pagamento <= ?
     ");
-    $stmt->execute([$usuarioId, $inicioMes]);
+    $stmt->execute([$usuarioId, $inicioMes, $hoje]);
     $totalPagoAnterior = (float)$stmt->fetchColumn();
 
     foreach ($contas as $conta) {
