@@ -331,7 +331,23 @@ if ($action === 'consultar_cnpj') {
         exit;
     }
 
+    $dadosComplementares = consultarJsonExterno('https://publica.cnpj.ws/cnpj/' . $cnpj);
+    $estabelecimento = is_array($dadosComplementares['estabelecimento'] ?? null)
+        ? $dadosComplementares['estabelecimento']
+        : [];
+
+    $email = trim((string)($dados['email'] ?? ''));
+    if ($email === '') {
+        $email = trim((string)($estabelecimento['email'] ?? ''));
+    }
+
     $telefone = trim((string)($dados['ddd_telefone_1'] ?? $dados['telefone'] ?? ''));
+    if ($telefone === '') {
+        $ddd = trim((string)($estabelecimento['ddd1'] ?? ''));
+        $numeroTelefone = trim((string)($estabelecimento['telefone1'] ?? ''));
+        $telefone = trim($ddd . ' ' . $numeroTelefone);
+    }
+
     $logradouro = trim(implode(' ', array_filter([
         $dados['descricao_tipo_de_logradouro'] ?? '',
         $dados['logradouro'] ?? '',
@@ -343,7 +359,7 @@ if ($action === 'consultar_cnpj') {
             'documento' => $cnpj,
             'nome' => $dados['razao_social'] ?? '',
             'nome_fantasia' => $dados['nome_fantasia'] ?? '',
-            'email' => $dados['email'] ?? '',
+            'email' => $email,
             'telefone' => $telefone,
             'cep' => $dados['cep'] ?? '',
             'endereco' => $logradouro,

@@ -40,6 +40,13 @@
             <span>Início</span>
         </a>
 
+        <?php if (usuarioPode('tarefas')): ?>
+            <a href="tarefas.php" class="sidebar-link" data-label="Tarefas">
+                <i class="bi bi-check2-square"></i>
+                <span>Tarefas</span>
+            </a>
+        <?php endif; ?>
+
         <?php if (usuarioPode('pendencias')): ?>
             <a href="pendencias.php" class="sidebar-link" data-label="Pendências">
                 <i class="bi bi-exclamation-triangle"></i>

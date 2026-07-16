@@ -94,6 +94,10 @@
     --card-accent: #ef4444;
 }
 
+.card-tarefas {
+    --card-accent: #06b6d4;
+}
+
 .card-parcelamentos {
     --card-accent: #f59e0b;
 }

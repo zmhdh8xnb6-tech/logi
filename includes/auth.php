@@ -4,6 +4,7 @@ if (!function_exists('modulosSistema')) {
     {
         return [
             'clientes' => 'Clientes',
+            'tarefas' => 'Minhas Tarefas',
             'pendencias' => 'Pendências',
             'parcelamentos' => 'Parcelamentos',
             'certificados' => 'Certificado Digital',
