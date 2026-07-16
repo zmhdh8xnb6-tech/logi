@@ -22,10 +22,6 @@
     padding: 18px;
 }
 
-.tarefas-resumo-card.atencao {
-    border-left-color: #dc2626;
-}
-
 .tarefas-resumo-card span {
     display: block;
     margin-bottom: 8px;
@@ -105,10 +101,6 @@
     background: #f8fdff;
 }
 
-.tarefa-item.atrasada {
-    border-left-color: #dc2626;
-}
-
 .tarefa-item.concluida {
     border-left-color: #198754;
     background: #f8fafc;
@@ -149,11 +141,6 @@
     display: block;
     margin-top: 5px;
     color: #64748b;
-}
-
-.tarefa-item.atrasada .tarefa-corpo small {
-    color: #dc2626;
-    font-weight: 700;
 }
 
 .tarefa-acoes {

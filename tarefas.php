@@ -5,11 +5,10 @@ exigirPermissao('tarefas');
 
 $usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
 $hoje = date('Y-m-d');
-$amanha = date('Y-m-d', strtotime('+1 day'));
 $mensagem = $_GET['msg'] ?? '';
 $tipoMensagem = $_GET['tipo'] ?? 'success';
 $aba = $_GET['aba'] ?? 'hoje';
-$abasPermitidas = ['hoje', 'amanha', 'importantes', 'atrasadas', 'concluidas', 'todas'];
+$abasPermitidas = ['hoje', 'importantes', 'concluidas', 'todas'];
 $aba = in_array($aba, $abasPermitidas, true) ? $aba : 'hoje';
 
 function tarefasTabelaExiste(PDO $pdo): bool
@@ -184,9 +183,7 @@ $tabelaDisponivel = tarefasTabelaExiste($pdo);
 $tarefas = [];
 $resumo = [
     'hoje' => 0,
-    'amanha' => 0,
     'importantes' => 0,
-    'atrasadas' => 0,
     'concluidas' => 0,
     'todas' => 0,
 ];
@@ -195,15 +192,13 @@ if ($tabelaDisponivel) {
     $stmt = $pdo->prepare("
         SELECT
             SUM(CASE WHEN concluida = 0 AND data_tarefa = ? THEN 1 ELSE 0 END) AS hoje,
-            SUM(CASE WHEN concluida = 0 AND data_tarefa = ? THEN 1 ELSE 0 END) AS amanha,
             SUM(CASE WHEN concluida = 0 AND importante = 1 THEN 1 ELSE 0 END) AS importantes,
-            SUM(CASE WHEN concluida = 0 AND data_tarefa < ? THEN 1 ELSE 0 END) AS atrasadas,
             SUM(CASE WHEN concluida = 1 THEN 1 ELSE 0 END) AS concluidas,
             SUM(CASE WHEN concluida = 0 THEN 1 ELSE 0 END) AS todas
         FROM tarefas
         WHERE usuario_id = ?
     ");
-    $stmt->execute([$hoje, $amanha, $hoje, $usuarioId]);
+    $stmt->execute([$hoje, $usuarioId]);
     $resumo = array_map('intval', $stmt->fetch(PDO::FETCH_ASSOC) ?: $resumo);
 
     $filtroSql = 'usuario_id = ?';
@@ -212,14 +207,8 @@ if ($tabelaDisponivel) {
     if ($aba === 'hoje') {
         $filtroSql .= ' AND concluida = 0 AND data_tarefa = ?';
         $parametros[] = $hoje;
-    } elseif ($aba === 'amanha') {
-        $filtroSql .= ' AND concluida = 0 AND data_tarefa = ?';
-        $parametros[] = $amanha;
     } elseif ($aba === 'importantes') {
         $filtroSql .= ' AND concluida = 0 AND importante = 1';
-    } elseif ($aba === 'atrasadas') {
-        $filtroSql .= ' AND concluida = 0 AND data_tarefa < ?';
-        $parametros[] = $hoje;
     } elseif ($aba === 'concluidas') {
         $filtroSql .= ' AND concluida = 1';
     } else {
@@ -238,9 +227,7 @@ if ($tabelaDisponivel) {
 
 $abas = [
     'hoje' => ['Hoje', $resumo['hoje']],
-    'amanha' => ['Amanhã', $resumo['amanha']],
     'importantes' => ['Importante', $resumo['importantes']],
-    'atrasadas' => ['Atrasadas', $resumo['atrasadas']],
     'concluidas' => ['Concluídas', $resumo['concluidas']],
     'todas' => ['Todas', $resumo['todas']],
 ];
@@ -299,9 +286,9 @@ $abas = [
                         <span>Concluídas</span>
                         <strong><?= (int)$resumo['concluidas'] ?></strong>
                     </div>
-                    <div class="tarefas-resumo-card <?= (int)$resumo['atrasadas'] > 0 ? 'atencao' : '' ?>">
-                        <span>Atrasadas</span>
-                        <strong><?= (int)$resumo['atrasadas'] ?></strong>
+                    <div class="tarefas-resumo-card">
+                        <span>Importantes</span>
+                        <strong><?= (int)$resumo['importantes'] ?></strong>
                     </div>
                 </section>
 
@@ -323,9 +310,8 @@ $abas = [
                         <?php foreach ($tarefas as $tarefa): ?>
                             <?php
                             $concluida = (int)$tarefa['concluida'] === 1;
-                            $atrasada = !$concluida && $tarefa['data_tarefa'] < $hoje;
                             ?>
-                            <article class="tarefa-item <?= $concluida ? 'concluida' : '' ?> <?= $atrasada ? 'atrasada' : '' ?>">
+                            <article class="tarefa-item <?= $concluida ? 'concluida' : '' ?>">
                                 <form method="post" class="tarefa-check">
                                     <input type="hidden" name="acao" value="<?= $concluida ? 'reabrir' : 'concluir' ?>">
                                     <input type="hidden" name="id" value="<?= (int)$tarefa['id'] ?>">
@@ -349,8 +335,6 @@ $abas = [
                                         <?= date('d/m/Y', strtotime($tarefa['data_tarefa'])) ?>
                                         <?php if ($concluida && !empty($tarefa['concluida_em'])): ?>
                                             · Concluído às <?= date('H:i', strtotime($tarefa['concluida_em'])) ?>
-                                        <?php elseif ($atrasada): ?>
-                                            · Atrasada
                                         <?php endif; ?>
                                     </small>
                                 </div>

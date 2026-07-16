@@ -6,7 +6,6 @@ exigirLogin();
 $resumoTarefas = [
     'pendentes' => 0,
     'concluidas_hoje' => 0,
-    'atrasadas' => 0,
 ];
 
 if (usuarioPode('tarefas')) {
@@ -20,19 +19,17 @@ if (usuarioPode('tarefas')) {
             $stmt = $pdo->prepare("
                 SELECT
                     SUM(CASE WHEN concluida = 0 THEN 1 ELSE 0 END) AS pendentes,
-                    SUM(CASE WHEN concluida = 1 AND DATE(concluida_em) = ? THEN 1 ELSE 0 END) AS concluidas_hoje,
-                    SUM(CASE WHEN concluida = 0 AND data_tarefa < ? THEN 1 ELSE 0 END) AS atrasadas
+                    SUM(CASE WHEN concluida = 1 AND DATE(concluida_em) = ? THEN 1 ELSE 0 END) AS concluidas_hoje
                 FROM tarefas
                 WHERE usuario_id = ?
             ");
-            $stmt->execute([$hoje, $hoje, $usuarioId]);
+            $stmt->execute([$hoje, $usuarioId]);
             $resumoTarefas = array_map('intval', $stmt->fetch(PDO::FETCH_ASSOC) ?: $resumoTarefas);
         }
     } catch (Throwable $e) {
         $resumoTarefas = [
             'pendentes' => 0,
             'concluidas_hoje' => 0,
-            'atrasadas' => 0,
         ];
     }
 }
@@ -73,11 +70,6 @@ if (usuarioPode('tarefas')) {
                                 Pendentes: <?= (int)$resumoTarefas['pendentes'] ?>
                                 · Concluídas hoje: <?= (int)$resumoTarefas['concluidas_hoje'] ?>
                             </p>
-                            <?php if ((int)$resumoTarefas['atrasadas'] > 0): ?>
-                                <small class="text-danger fw-semibold">
-                                    <?= (int)$resumoTarefas['atrasadas'] ?> atrasada<?= (int)$resumoTarefas['atrasadas'] === 1 ? '' : 's' ?>
-                                </small>
-                            <?php endif; ?>
                         </div>
                     </div>
                 <?php endif; ?>
