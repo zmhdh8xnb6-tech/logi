@@ -10,6 +10,11 @@ $tipoMensagem = $_GET['tipo'] ?? 'success';
 $aba = $_GET['aba'] ?? 'hoje';
 $abasPermitidas = ['hoje', 'importantes', 'concluidas', 'todas'];
 $aba = in_array($aba, $abasPermitidas, true) ? $aba : 'hoje';
+$busca = trim($_REQUEST['busca'] ?? '');
+$limitesPermitidos = [15, 30, 60, 90];
+$limite = (int)($_REQUEST['limite'] ?? 15);
+$limite = in_array($limite, $limitesPermitidos, true) ? $limite : 15;
+$pagina = max(1, (int)($_REQUEST['pagina'] ?? 1));
 
 function tarefasTabelaExiste(PDO $pdo): bool
 {
@@ -31,12 +36,31 @@ function tarefasTabelaExiste(PDO $pdo): bool
 
 function tarefasRedirecionar(string $mensagem, string $tipo = 'success', string $aba = 'hoje'): void
 {
-    header('Location: tarefas.php?' . http_build_query([
+    global $busca, $limite, $pagina;
+
+    $parametros = [
         'msg' => $mensagem,
         'tipo' => $tipo,
         'aba' => $aba,
-    ]));
+        'limite' => $limite,
+        'pagina' => $pagina,
+    ];
+
+    if ($busca !== '') {
+        $parametros['busca'] = $busca;
+    }
+
+    header('Location: tarefas.php?' . http_build_query($parametros));
     exit;
+}
+
+function tarefasUrl(array $parametros): string
+{
+    $parametros = array_filter($parametros, static function ($valor): bool {
+        return $valor !== '' && $valor !== null;
+    });
+
+    return 'tarefas.php?' . http_build_query($parametros);
 }
 
 $sqlTarefas = <<<SQL
@@ -181,6 +205,8 @@ if (tarefasTabelaExiste($pdo) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $tabelaDisponivel = tarefasTabelaExiste($pdo);
 $tarefas = [];
+$totalTarefas = 0;
+$totalPaginas = 1;
 $resumo = [
     'hoje' => 0,
     'importantes' => 0,
@@ -215,11 +241,30 @@ if ($tabelaDisponivel) {
         $filtroSql .= ' AND concluida = 0';
     }
 
+    if ($busca !== '') {
+        $filtroSql .= ' AND (titulo LIKE ? OR descricao LIKE ?)';
+        $termoBusca = '%' . $busca . '%';
+        $parametros[] = $termoBusca;
+        $parametros[] = $termoBusca;
+    }
+
+    $stmtTotal = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM tarefas
+        WHERE {$filtroSql}
+    ");
+    $stmtTotal->execute($parametros);
+    $totalTarefas = (int)$stmtTotal->fetchColumn();
+    $totalPaginas = max(1, (int)ceil($totalTarefas / $limite));
+    $pagina = min($pagina, $totalPaginas);
+    $offset = ($pagina - 1) * $limite;
+
     $stmt = $pdo->prepare("
         SELECT *
         FROM tarefas
         WHERE {$filtroSql}
         ORDER BY concluida ASC, importante DESC, data_tarefa ASC, criado_em ASC
+        LIMIT {$limite} OFFSET {$offset}
     ");
     $stmt->execute($parametros);
     $tarefas = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -293,9 +338,38 @@ $abas = [
                 </section>
 
                 <section class="tarefas-painel">
+                    <form method="get" class="row g-2 mb-3 tarefas-filtros" id="formFiltroTarefas">
+                        <input type="hidden" name="aba" value="<?= htmlspecialchars($aba) ?>">
+                        <input type="hidden" name="pagina" id="tarefasPaginaFiltro" value="<?= (int)$pagina ?>">
+                        <div class="col-md-8">
+                            <input
+                                type="text"
+                                name="busca"
+                                id="buscaTarefa"
+                                class="form-control"
+                                value="<?= htmlspecialchars($busca) ?>"
+                                autocomplete="off"
+                                placeholder="Buscar por tarefa ou observação...">
+                        </div>
+                        <div class="col-md-4">
+                            <select name="limite" class="form-select" id="limiteTarefas">
+                                <?php foreach ($limitesPermitidos as $opcaoLimite): ?>
+                                    <option value="<?= (int)$opcaoLimite ?>" <?= $limite === $opcaoLimite ? 'selected' : '' ?>>
+                                        Mostrar <?= (int)$opcaoLimite ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </form>
+
                     <div class="tarefas-abas">
                         <?php foreach ($abas as $chave => [$rotulo, $total]): ?>
-                            <a href="tarefas.php?aba=<?= htmlspecialchars($chave) ?>" class="<?= $aba === $chave ? 'ativo' : '' ?>">
+                            <a href="<?= htmlspecialchars(tarefasUrl([
+                                            'aba' => $chave,
+                                            'busca' => $busca,
+                                            'limite' => $limite,
+                                            'pagina' => 1,
+                                        ])) ?>" class="<?= $aba === $chave ? 'ativo' : '' ?>">
                                 <?= htmlspecialchars($rotulo) ?>
                                 <span><?= (int)$total ?></span>
                             </a>
@@ -304,7 +378,7 @@ $abas = [
 
                     <div class="tarefas-lista">
                         <?php if ($tarefas === []): ?>
-                            <div class="tarefas-vazio">Nenhuma tarefa nesta lista.</div>
+                            <div class="tarefas-vazio">Nenhuma tarefa encontrada nesta lista.</div>
                         <?php endif; ?>
 
                         <?php foreach ($tarefas as $tarefa): ?>
@@ -312,14 +386,32 @@ $abas = [
                             $concluida = (int)$tarefa['concluida'] === 1;
                             ?>
                             <article class="tarefa-item <?= $concluida ? 'concluida' : '' ?>">
-                                <form method="post" class="tarefa-check">
-                                    <input type="hidden" name="acao" value="<?= $concluida ? 'reabrir' : 'concluir' ?>">
-                                    <input type="hidden" name="id" value="<?= (int)$tarefa['id'] ?>">
-                                    <input type="hidden" name="aba" value="<?= htmlspecialchars($aba) ?>">
-                                    <button type="submit" title="<?= $concluida ? 'Reabrir tarefa' : 'Concluir tarefa' ?>">
-                                        <i class="bi <?= $concluida ? 'bi-check-square-fill' : 'bi-square' ?>"></i>
-                                    </button>
-                                </form>
+                                <?php if ($concluida): ?>
+                                    <form method="post" class="tarefa-check">
+                                        <input type="hidden" name="acao" value="reabrir">
+                                        <input type="hidden" name="id" value="<?= (int)$tarefa['id'] ?>">
+                                        <input type="hidden" name="aba" value="<?= htmlspecialchars($aba) ?>">
+                                        <input type="hidden" name="busca" value="<?= htmlspecialchars($busca) ?>">
+                                        <input type="hidden" name="limite" value="<?= (int)$limite ?>">
+                                        <input type="hidden" name="pagina" value="<?= (int)$pagina ?>">
+                                        <button type="submit" title="Reabrir tarefa">
+                                            <i class="bi bi-check-square-fill"></i>
+                                        </button>
+                                    </form>
+                                <?php else: ?>
+                                    <div class="tarefa-check">
+                                        <button
+                                            type="button"
+                                            class="btn-concluir-tarefa"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#modalConcluirTarefa"
+                                            data-id="<?= (int)$tarefa['id'] ?>"
+                                            data-titulo="<?= htmlspecialchars($tarefa['titulo']) ?>"
+                                            title="Concluir tarefa">
+                                            <i class="bi bi-square"></i>
+                                        </button>
+                                    </div>
+                                <?php endif; ?>
 
                                 <div class="tarefa-corpo">
                                     <div class="tarefa-titulo">
@@ -372,10 +464,64 @@ $abas = [
                         <form method="post" class="text-end mt-3">
                             <input type="hidden" name="acao" value="limpar_concluidas">
                             <input type="hidden" name="aba" value="<?= htmlspecialchars($aba) ?>">
+                            <input type="hidden" name="busca" value="<?= htmlspecialchars($busca) ?>">
+                            <input type="hidden" name="limite" value="<?= (int)$limite ?>">
+                            <input type="hidden" name="pagina" value="<?= (int)$pagina ?>">
                             <button type="submit" class="btn btn-outline-secondary">
                                 <i class="bi bi-eraser"></i> Limpar concluídas
                             </button>
                         </form>
+                    <?php endif; ?>
+
+                    <?php if ($totalPaginas > 1): ?>
+                        <nav aria-label="Paginação de tarefas">
+                            <ul class="pagination justify-content-center mt-3 mb-0">
+                                <li class="page-item <?= $pagina <= 1 ? 'disabled' : '' ?>">
+                                    <a class="page-link" href="<?= htmlspecialchars(tarefasUrl([
+                                                                    'aba' => $aba,
+                                                                    'busca' => $busca,
+                                                                    'limite' => $limite,
+                                                                    'pagina' => max(1, $pagina - 1),
+                                                                ])) ?>">Anterior</a>
+                                </li>
+
+                                <?php
+                                $ultimaPaginaMostrada = 0;
+                                for ($i = 1; $i <= $totalPaginas; $i++):
+                                    $mostrarPagina = $i === 1 || $i === $totalPaginas || abs($i - $pagina) <= 2;
+
+                                    if (!$mostrarPagina) {
+                                        continue;
+                                    }
+
+                                    if ($ultimaPaginaMostrada && $i - $ultimaPaginaMostrada > 1):
+                                ?>
+                                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                                    <?php endif; ?>
+
+                                    <li class="page-item <?= $i === $pagina ? 'active' : '' ?>">
+                                        <a class="page-link" href="<?= htmlspecialchars(tarefasUrl([
+                                                                        'aba' => $aba,
+                                                                        'busca' => $busca,
+                                                                        'limite' => $limite,
+                                                                        'pagina' => $i,
+                                                                    ])) ?>"><?= (int)$i ?></a>
+                                    </li>
+                                <?php
+                                    $ultimaPaginaMostrada = $i;
+                                endfor;
+                                ?>
+
+                                <li class="page-item <?= $pagina >= $totalPaginas ? 'disabled' : '' ?>">
+                                    <a class="page-link" href="<?= htmlspecialchars(tarefasUrl([
+                                                                    'aba' => $aba,
+                                                                    'busca' => $busca,
+                                                                    'limite' => $limite,
+                                                                    'pagina' => min($totalPaginas, $pagina + 1),
+                                                                ])) ?>">Próxima</a>
+                                </li>
+                            </ul>
+                        </nav>
                     <?php endif; ?>
                 </section>
             <?php endif; ?>
@@ -390,6 +536,9 @@ $abas = [
                         <input type="hidden" name="acao" value="salvar">
                         <input type="hidden" name="id" id="tarefaId">
                         <input type="hidden" name="aba" value="<?= htmlspecialchars($aba) ?>">
+                        <input type="hidden" name="busca" value="<?= htmlspecialchars($busca) ?>">
+                        <input type="hidden" name="limite" value="<?= (int)$limite ?>">
+                        <input type="hidden" name="pagina" value="<?= (int)$pagina ?>">
                         <div class="modal-header">
                             <h5 class="modal-title" id="modalTarefaTitulo">Nova tarefa</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
@@ -430,6 +579,9 @@ $abas = [
                         <input type="hidden" name="acao" value="excluir">
                         <input type="hidden" name="id" id="excluirTarefaId">
                         <input type="hidden" name="aba" value="<?= htmlspecialchars($aba) ?>">
+                        <input type="hidden" name="busca" value="<?= htmlspecialchars($busca) ?>">
+                        <input type="hidden" name="limite" value="<?= (int)$limite ?>">
+                        <input type="hidden" name="pagina" value="<?= (int)$pagina ?>">
                         <div class="modal-header">
                             <h5 class="modal-title">Excluir tarefa</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
@@ -440,6 +592,34 @@ $abas = [
                         <div class="modal-footer">
                             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                             <button type="submit" class="btn btn-danger">Excluir</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="modalConcluirTarefa" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form method="post">
+                        <input type="hidden" name="acao" value="concluir">
+                        <input type="hidden" name="id" id="concluirTarefaId">
+                        <input type="hidden" name="aba" value="<?= htmlspecialchars($aba) ?>">
+                        <input type="hidden" name="busca" value="<?= htmlspecialchars($busca) ?>">
+                        <input type="hidden" name="limite" value="<?= (int)$limite ?>">
+                        <input type="hidden" name="pagina" value="<?= (int)$pagina ?>">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Concluir tarefa</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                        <div class="modal-body">
+                            Tem certeza que deseja concluir <strong id="concluirTarefaTitulo"></strong>?
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-check2"></i> Concluir
+                            </button>
                         </div>
                     </form>
                 </div>
@@ -475,6 +655,37 @@ $abas = [
                 const botao = event.relatedTarget;
                 document.getElementById('excluirTarefaId').value = botao?.dataset.id || '';
                 document.getElementById('excluirTarefaTitulo').textContent = botao?.dataset.titulo || 'esta tarefa';
+            });
+
+            document.getElementById('modalConcluirTarefa')?.addEventListener('show.bs.modal', function(event) {
+                const botao = event.relatedTarget;
+                document.getElementById('concluirTarefaId').value = botao?.dataset.id || '';
+                document.getElementById('concluirTarefaTitulo').textContent = botao?.dataset.titulo || 'esta tarefa';
+            });
+
+            const formFiltroTarefas = document.getElementById('formFiltroTarefas');
+            const buscaTarefa = document.getElementById('buscaTarefa');
+            const limiteTarefas = document.getElementById('limiteTarefas');
+            const tarefasPaginaFiltro = document.getElementById('tarefasPaginaFiltro');
+            let timerBuscaTarefa = null;
+
+            buscaTarefa?.addEventListener('input', function() {
+                clearTimeout(timerBuscaTarefa);
+                timerBuscaTarefa = setTimeout(function() {
+                    if (tarefasPaginaFiltro) {
+                        tarefasPaginaFiltro.value = '1';
+                    }
+
+                    formFiltroTarefas?.submit();
+                }, 450);
+            });
+
+            limiteTarefas?.addEventListener('change', function() {
+                if (tarefasPaginaFiltro) {
+                    tarefasPaginaFiltro.value = '1';
+                }
+
+                formFiltroTarefas?.submit();
             });
         </script>
     <?php endif; ?>
