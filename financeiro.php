@@ -2337,6 +2337,21 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
             const mesSelecionado = <?= json_encode($mes) ?>;
             const dataHoje = <?= json_encode(date('Y-m-d')) ?>;
 
+            function definirDataFinanceiro(id, valor) {
+                const campo = document.getElementById(id);
+
+                if (!campo) {
+                    return;
+                }
+
+                if (window.definirDataCalendario) {
+                    window.definirDataCalendario(campo, valor);
+                    return;
+                }
+
+                campo.value = valor || '';
+            }
+
             function escaparHtml(valor) {
                 const mapa = {
                     '&': '&amp;',
@@ -2629,7 +2644,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 document.getElementById('metaId').value = '';
                 document.getElementById('metaDescricao').value = '';
                 document.getElementById('metaValorAlvo').value = '';
-                document.getElementById('metaPrazo').value = '';
+                definirDataFinanceiro('metaPrazo', '');
                 document.getElementById('metaValorMensal').value = '';
             });
 
@@ -2639,7 +2654,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     document.getElementById('metaId').value = this.dataset.id;
                     document.getElementById('metaDescricao').value = this.dataset.descricao;
                     document.getElementById('metaValorAlvo').value = this.dataset.valorAlvo;
-                    document.getElementById('metaPrazo').value = this.dataset.prazo;
+                    definirDataFinanceiro('metaPrazo', this.dataset.prazo);
                     document.getElementById('metaValorMensal').value = this.dataset.valorMensal;
                 });
             });
@@ -2654,7 +2669,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     document.getElementById('movimentoMetaTipo').value = this.dataset.tipo;
                     document.getElementById('movimentoMetaDescricao').textContent = this.dataset.descricao;
                     document.getElementById('movimentoMetaValor').value = '';
-                    document.getElementById('movimentoMetaData').value = dataHoje;
+                    definirDataFinanceiro('movimentoMetaData', dataHoje);
                     document.getElementById('movimentoMetaObservacao').value = '';
                     document.getElementById('btnSalvarMovimentoMeta').className = deposito ?
                         'btn btn-success' :
@@ -2671,12 +2686,12 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 document.getElementById('recebimentoRecorrenciaId').value = '';
                 document.getElementById('grupoTipoRecebimento').classList.remove('d-none');
                 document.getElementById('recebimentoTipo').value = 'unico';
-                document.getElementById('recebimentoData').value = mesSelecionado + '-01';
+                definirDataFinanceiro('recebimentoData', mesSelecionado + '-01');
                 document.getElementById('recebimentoDescricao').value = '';
                 document.getElementById('recebimentoOrigem').value = '';
                 document.getElementById('recebimentoValor').value = '';
                 document.getElementById('recebimentoCategoria').value = '';
-                document.getElementById('recebimentoFimRecorrencia').value = '';
+                definirDataFinanceiro('recebimentoFimRecorrencia', '');
                 atualizarCamposRecorrenciaRecebimento();
             });
 
@@ -2688,12 +2703,12 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     document.getElementById('recebimentoTipo').value = 'unico';
                     document.getElementById('grupoTipoRecebimento').classList.add('d-none');
                     document.getElementById('camposRecorrenciaRecebimento').classList.add('d-none');
-                    document.getElementById('recebimentoData').value = this.dataset.data;
+                    definirDataFinanceiro('recebimentoData', this.dataset.data);
                     document.getElementById('recebimentoDescricao').value = this.dataset.descricao;
                     document.getElementById('recebimentoOrigem').value = this.dataset.recebidoDe;
                     document.getElementById('recebimentoValor').value = this.dataset.valor;
                     document.getElementById('recebimentoCategoria').value = this.dataset.categoria || '';
-                    document.getElementById('recebimentoFimRecorrencia').value = '';
+                    definirDataFinanceiro('recebimentoFimRecorrencia', '');
                 });
             });
 
@@ -2704,12 +2719,12 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     document.getElementById('recebimentoRecorrenciaId').value = this.dataset.recorrenciaId;
                     document.getElementById('grupoTipoRecebimento').classList.remove('d-none');
                     document.getElementById('recebimentoTipo').value = 'recorrente';
-                    document.getElementById('recebimentoData').value = this.dataset.data;
+                    definirDataFinanceiro('recebimentoData', this.dataset.data);
                     document.getElementById('recebimentoDescricao').value = this.dataset.descricao;
                     document.getElementById('recebimentoOrigem').value = this.dataset.recebidoDe;
                     document.getElementById('recebimentoValor').value = this.dataset.valor;
                     document.getElementById('recebimentoCategoria').value = this.dataset.categoria || '';
-                    document.getElementById('recebimentoFimRecorrencia').value = this.dataset.fim;
+                    definirDataFinanceiro('recebimentoFimRecorrencia', this.dataset.fim);
                     atualizarCamposRecorrenciaRecebimento();
                 });
             });
@@ -2730,10 +2745,10 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 document.getElementById('contaDescricao').value = '';
                 document.getElementById('contaValor').value = '';
                 document.getElementById('contaCategoria').value = '';
-                document.getElementById('contaVencimento').value = mesSelecionado + '-01';
+                definirDataFinanceiro('contaVencimento', mesSelecionado + '-01');
                 document.getElementById('contaParcelaInicial').value = '1';
                 document.getElementById('contaParcelasTotal').value = '';
-                document.getElementById('contaFimRecorrencia').value = '';
+                definirDataFinanceiro('contaFimRecorrencia', '');
                 atualizarCamposParcelamentoConta();
             });
 
@@ -2749,8 +2764,8 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     document.getElementById('contaDescricao').value = this.dataset.descricao;
                     document.getElementById('contaValor').value = this.dataset.valor;
                     document.getElementById('contaCategoria').value = this.dataset.categoria || '';
-                    document.getElementById('contaVencimento').value = this.dataset.vencimento;
-                    document.getElementById('contaFimRecorrencia').value = '';
+                    definirDataFinanceiro('contaVencimento', this.dataset.vencimento);
+                    definirDataFinanceiro('contaFimRecorrencia', '');
                 });
             });
 
@@ -2764,8 +2779,8 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     document.getElementById('contaDescricao').value = this.dataset.descricao;
                     document.getElementById('contaValor').value = this.dataset.valor;
                     document.getElementById('contaCategoria').value = this.dataset.categoria || '';
-                    document.getElementById('contaVencimento').value = this.dataset.vencimento;
-                    document.getElementById('contaFimRecorrencia').value = this.dataset.fim;
+                    definirDataFinanceiro('contaVencimento', this.dataset.vencimento);
+                    definirDataFinanceiro('contaFimRecorrencia', this.dataset.fim);
                     atualizarCamposParcelamentoConta();
                 });
             });
@@ -2799,7 +2814,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     document.getElementById('pagarContaId').value = this.dataset.id;
                     document.getElementById('pagarContaDescricao').textContent = this.dataset.descricao;
                     document.getElementById('pagarContaValor').value = this.dataset.valor;
-                    document.getElementById('pagarContaData').value = dataHoje;
+                    definirDataFinanceiro('pagarContaData', dataHoje);
                     document.getElementById('avisoPagamentoParcialFatura')?.classList.toggle(
                         'd-none',
                         this.dataset.tipo !== 'Fatura'

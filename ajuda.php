@@ -126,13 +126,18 @@ $topicos = [
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendi</button>
+                    <button type="button" class="btn btn-primary" id="btnTutorialManualEntendi" data-bs-dismiss="modal">Entendi</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('btnTutorialManualEntendi')?.addEventListener('click', function() {
+            localStorage.setItem('logiTutorialInicialVisto', '1');
+        });
+    </script>
 </body>
 
 </html>

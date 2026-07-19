@@ -1,0 +1,232 @@
+(function () {
+    function dispararAlteracao(campo) {
+        campo.dispatchEvent(new Event('input', { bubbles: true }));
+        campo.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function descritorPropriedade(elemento, propriedade) {
+        let prototipo = Object.getPrototypeOf(elemento);
+
+        while (prototipo) {
+            const descritor = Object.getOwnPropertyDescriptor(prototipo, propriedade);
+
+            if (descritor) {
+                return descritor;
+            }
+
+            prototipo = Object.getPrototypeOf(prototipo);
+        }
+
+        return null;
+    }
+
+    function instalarSincronia(campo, instancia) {
+        const descritorDisabled = descritorPropriedade(campo, 'disabled');
+        const descritorRequired = descritorPropriedade(campo, 'required');
+        const descritorValue = descritorPropriedade(campo, 'value');
+        const focoOriginal = campo.focus.bind(campo);
+        let atualizandoValor = false;
+
+        function sincronizar() {
+            if (!instancia.altInput) {
+                return;
+            }
+
+            instancia.altInput.disabled = campo.disabled;
+            instancia.altInput.required = campo.required;
+            instancia.altInput.classList.toggle('is-invalid', campo.classList.contains('is-invalid'));
+            instancia.altInput.classList.toggle('is-valid', campo.classList.contains('is-valid'));
+        }
+
+        if (descritorDisabled && descritorRequired && descritorValue && campo.dataset.calendarioSincronizado !== '1') {
+            Object.defineProperty(campo, 'disabled', {
+                configurable: true,
+                get: function () {
+                    return descritorDisabled.get.call(this);
+                },
+                set: function (valor) {
+                    descritorDisabled.set.call(this, valor);
+                    sincronizar();
+                }
+            });
+
+            Object.defineProperty(campo, 'required', {
+                configurable: true,
+                get: function () {
+                    return descritorRequired.get.call(this);
+                },
+                set: function (valor) {
+                    descritorRequired.set.call(this, valor);
+                    sincronizar();
+                }
+            });
+
+            Object.defineProperty(campo, 'value', {
+                configurable: true,
+                get: function () {
+                    return descritorValue.get.call(this);
+                },
+                set: function (valor) {
+                    descritorValue.set.call(this, valor);
+
+                    if (!atualizandoValor) {
+                        atualizandoValor = true;
+
+                        try {
+                            if (valor) {
+                                instancia.setDate(valor, false, instancia.config.dateFormat);
+                            } else {
+                                instancia.clear(false);
+                            }
+                        } finally {
+                            atualizandoValor = false;
+                        }
+                    }
+
+                    sincronizar();
+                }
+            });
+
+            campo.dataset.calendarioSincronizado = '1';
+        }
+
+        campo.focus = function () {
+            sincronizar();
+
+            if (instancia.altInput && !campo.disabled) {
+                instancia.altInput.focus();
+                instancia.open();
+                return;
+            }
+
+            focoOriginal();
+        };
+        campo._sincronizarCalendario = sincronizar;
+        campo._focarCalendario = campo.focus;
+
+        new MutationObserver(sincronizar).observe(campo, {
+            attributes: true,
+            attributeFilter: ['class', 'disabled', 'required']
+        });
+
+        sincronizar();
+    }
+
+    function iniciarCalendarios(contexto) {
+        if (!window.flatpickr) {
+            return;
+        }
+
+        if (window.flatpickr.l10ns && window.flatpickr.l10ns.pt) {
+            window.flatpickr.localize(window.flatpickr.l10ns.pt);
+        }
+
+        const raiz = contexto || document;
+        const seletor = [
+            'input[type="date"]:not([data-calendario-nativo]):not([data-no-flatpickr])',
+            'input[type="month"]:not([data-calendario-nativo]):not([data-no-flatpickr])'
+        ].join(',');
+
+        raiz.querySelectorAll(seletor).forEach(function (campo) {
+            if (campo._flatpickr || campo.dataset.calendarioAplicado === '1') {
+                return;
+            }
+
+            const tipoOriginal = campo.type;
+            const config = {
+                altInput: true,
+                allowInput: true,
+                disableMobile: true,
+                locale: 'pt',
+                onChange: function () {
+                    dispararAlteracao(campo);
+                }
+            };
+
+            if (tipoOriginal === 'month') {
+                if (!window.monthSelectPlugin) {
+                    return;
+                }
+
+                config.altFormat = 'F/Y';
+                config.dateFormat = 'Y-m';
+                config.plugins = [
+                    new window.monthSelectPlugin({
+                        shorthand: false,
+                        dateFormat: 'Y-m',
+                        altFormat: 'F/Y'
+                    })
+                ];
+            } else {
+                config.altFormat = 'd/m/Y';
+                config.dateFormat = 'Y-m-d';
+            }
+
+            campo.dataset.calendarioAplicado = '1';
+            const instancia = window.flatpickr(campo, config);
+            instalarSincronia(campo, instancia);
+        });
+    }
+
+    window.inicializarCalendarios = iniciarCalendarios;
+
+    window.sincronizarCalendarioCampo = function (campoOuId) {
+        const campo = typeof campoOuId === 'string'
+            ? document.getElementById(campoOuId)
+            : campoOuId;
+
+        if (!campo) {
+            return;
+        }
+
+        if (!campo._flatpickr && window.inicializarCalendarios) {
+            window.inicializarCalendarios(document);
+        }
+
+        if (campo._sincronizarCalendario) {
+            campo._sincronizarCalendario();
+        }
+    };
+
+    window.focarCalendarioCampo = function (campoOuId) {
+        const campo = typeof campoOuId === 'string'
+            ? document.getElementById(campoOuId)
+            : campoOuId;
+
+        if (!campo) {
+            return;
+        }
+
+        window.sincronizarCalendarioCampo(campo);
+
+        setTimeout(function () {
+            if (campo._focarCalendario) {
+                campo._focarCalendario();
+                return;
+            }
+
+            campo.focus();
+        }, 0);
+    };
+
+    window.definirDataCalendario = function (campoOuId, valor) {
+        const campo = typeof campoOuId === 'string'
+            ? document.getElementById(campoOuId)
+            : campoOuId;
+
+        if (!campo) {
+            return;
+        }
+
+        if (campo._flatpickr) {
+            campo._flatpickr.setDate(valor || null, false);
+            return;
+        }
+
+        campo.value = valor || '';
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
+        iniciarCalendarios(document);
+    });
+})();

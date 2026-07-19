@@ -275,7 +275,7 @@ if (usuarioPode('parcelamentos')) {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Ver depois</button>
-                        <a href="ajuda.php" class="btn btn-primary">Abrir manual</a>
+                        <a href="ajuda.php" class="btn btn-primary" id="btnAbrirManualInicial">Abrir manual</a>
                     </div>
                 </div>
             </div>
@@ -289,8 +289,13 @@ if (usuarioPode('parcelamentos')) {
                 }
 
                 const modal = document.getElementById('modalTutorialInicial');
+                const btnAbrirManualInicial = document.getElementById('btnAbrirManualInicial');
                 const instancia = bootstrap.Modal.getOrCreateInstance(modal);
                 instancia.show();
+
+                btnAbrirManualInicial?.addEventListener('click', function() {
+                    localStorage.setItem('logiTutorialInicialVisto', '1');
+                });
 
                 modal.addEventListener('hidden.bs.modal', function() {
                     localStorage.setItem('logiTutorialInicialVisto', '1');

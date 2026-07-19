@@ -98,13 +98,6 @@
     cursor: pointer;
 }
 
-.financeiro-calendario::-webkit-calendar-picker-indicator {
-    padding: 5px;
-    border-radius: 4px;
-    background-color: #eaf2fb;
-    cursor: pointer;
-}
-
 .financeiro-filtros .form-label {
     margin-bottom: 5px;
     font-size: .82rem;

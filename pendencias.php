@@ -908,17 +908,35 @@ $limiteGraficoPendencias = 15;
         const grupoPendenciaConferenciaDfLegal = document.getElementById('grupoPendenciaConferenciaDfLegal');
         const alertaPendenciaAlvara = document.getElementById('alertaPendenciaAlvara');
 
+        function sincronizarCampoDataPendencia(campo) {
+            if (window.sincronizarCalendarioCampo) {
+                window.sincronizarCalendarioCampo(campo);
+            }
+        }
+
+        function focarCampoDataPendencia(campo) {
+            sincronizarCampoDataPendencia(campo);
+
+            if (window.focarCalendarioCampo) {
+                window.focarCalendarioCampo(campo);
+                return;
+            }
+
+            campo.focus();
+        }
+
         function atualizarVencimentoOrgaoPendencia(campoSituacao, darFoco = false) {
             const campoData = document.getElementById(campoSituacao.dataset.vencimento);
             const possuiVencimento = campoSituacao.value === 'com_vencimento';
 
             campoData.disabled = !possuiVencimento;
             campoData.classList.remove('is-invalid');
+            sincronizarCampoDataPendencia(campoData);
 
             if (!possuiVencimento) {
                 campoData.value = '';
             } else if (darFoco) {
-                campoData.focus();
+                focarCampoDataPendencia(campoData);
             }
         }
 
@@ -934,6 +952,7 @@ $limiteGraficoPendencias = 15;
                 campo.disabled = !possui;
                 const campoData = document.getElementById(campo.dataset.vencimento);
                 campoData.disabled = !possui || campo.value !== 'com_vencimento';
+                sincronizarCampoDataPendencia(campoData);
             });
         }
 
@@ -987,6 +1006,7 @@ $limiteGraficoPendencias = 15;
 
                     campo.classList.toggle('is-invalid', situacaoInvalida);
                     campoData.classList.toggle('is-invalid', dataInvalida);
+                    sincronizarCampoDataPendencia(campoData);
 
                     if (situacaoInvalida || dataInvalida) {
                         valido = false;
@@ -1092,23 +1112,27 @@ $limiteGraficoPendencias = 15;
             if (modo === 'certificado') {
                 grupoVencimento.classList.remove('d-none');
                 vencimento.disabled = false;
+                sincronizarCampoDataPendencia(vencimento);
                 return;
             }
 
             if (campoVencimento === '') {
                 grupoVencimento.classList.add('d-none');
                 vencimento.value = '';
+                sincronizarCampoDataPendencia(vencimento);
                 return;
             }
 
             grupoVencimento.classList.remove('d-none');
             vencimento.disabled = status !== 'possui';
+            sincronizarCampoDataPendencia(vencimento);
 
             if (status === 'possui' && darFoco) {
-                vencimento.focus();
+                focarCampoDataPendencia(vencimento);
             } else if (status !== 'possui') {
                 vencimento.value = '';
                 vencimento.classList.remove('is-invalid');
+                sincronizarCampoDataPendencia(vencimento);
             }
         }
 
@@ -1263,8 +1287,10 @@ $limiteGraficoPendencias = 15;
                 }
 
                 if (campoVencimento !== '' && status === 'possui' && vencimento === '') {
-                    document.getElementById('modalPendenciaVencimento').classList.add('is-invalid');
-                    document.getElementById('modalPendenciaVencimento').focus();
+                    const campoData = document.getElementById('modalPendenciaVencimento');
+                    campoData.classList.add('is-invalid');
+                    sincronizarCampoDataPendencia(campoData);
+                    focarCampoDataPendencia(campoData);
                     return;
                 }
             }
@@ -1305,8 +1331,10 @@ $limiteGraficoPendencias = 15;
                             document.getElementById('textoAjudaModalPendencia').textContent = 'Salvo, mas essa informação ainda continua como pendência.';
                         }
                     } else if (resp.trim() === 'vencimento_obrigatorio') {
-                        document.getElementById('modalPendenciaVencimento').classList.add('is-invalid');
-                        document.getElementById('modalPendenciaVencimento').focus();
+                        const campoData = document.getElementById('modalPendenciaVencimento');
+                        campoData.classList.add('is-invalid');
+                        sincronizarCampoDataPendencia(campoData);
+                        focarCampoDataPendencia(campoData);
                     } else {
                         this.innerHTML = 'Erro';
                     }
