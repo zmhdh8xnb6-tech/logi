@@ -73,6 +73,231 @@ function parcelamentosTemColuna(PDO $pdo, string $coluna): bool
     return $cache[$coluna];
 }
 
+function parcelamentosImpressoesTabelaExiste(PDO $pdo): bool
+{
+    static $existe = null;
+
+    if ($existe !== null) {
+        return $existe;
+    }
+
+    try {
+        $stmt = $pdo->query("SHOW TABLES LIKE 'parcelamentos_impressoes'");
+        $existe = (bool)$stmt->fetchColumn();
+    } catch (Throwable $e) {
+        $existe = false;
+    }
+
+    return $existe;
+}
+
+function competenciaAtualParcelamentos(): string
+{
+    return date('Y-m');
+}
+
+function competenciaInicioControleImpressaoParcelamentos(): string
+{
+    return '2026-07';
+}
+
+function rotuloCompetenciaParcelamentos(?string $competencia = null): string
+{
+    $competencia = $competencia ?: competenciaAtualParcelamentos();
+    $data = DateTime::createFromFormat('Y-m-d', $competencia . '-01');
+
+    return $data ? $data->format('m/Y') : date('m/Y');
+}
+
+function parcelamentosImpressaoRegistrada(PDO $pdo, string $orgao, ?string $competencia = null): bool
+{
+    if (!parcelamentosImpressoesTabelaExiste($pdo)) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM parcelamentos_impressoes
+        WHERE orgao = ?
+          AND competencia = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$orgao, $competencia ?: competenciaAtualParcelamentos()]);
+
+    return (bool)$stmt->fetchColumn();
+}
+
+function registrarImpressaoParcelamentos(PDO $pdo, string $orgao, int $usuarioId, ?string $competencia = null): bool
+{
+    if (!parcelamentosImpressoesTabelaExiste($pdo)) {
+        return false;
+    }
+
+    $competencia = $competencia ?: competenciaAtualParcelamentos();
+
+    $stmt = $pdo->prepare("
+        INSERT INTO parcelamentos_impressoes (orgao, competencia, usuario_id, impresso_em)
+        VALUES (?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE
+            usuario_id = VALUES(usuario_id),
+            impresso_em = NOW()
+    ");
+    $stmt->execute([$orgao, $competencia, $usuarioId]);
+
+    registrarAuditoria(
+        $pdo,
+        'Parcelamentos',
+        'imprimir',
+        'parcelamento',
+        null,
+        'Registrou impressão dos parcelamentos de ' . $orgao . ' em ' . rotuloCompetenciaParcelamentos($competencia),
+        null,
+        ['orgao' => $orgao, 'competencia' => $competencia]
+    );
+
+    return true;
+}
+
+function contarParcelamentosAtivosPorOrgao(PDO $pdo, string $orgao): int
+{
+    $temLiquidadoEm = parcelamentosTemColuna($pdo, 'liquidado_em');
+    $filtroSituacao = $temLiquidadoEm
+        ? 'p.cancelado_em IS NULL AND p.liquidado_em IS NULL'
+        : 'p.cancelado_em IS NULL';
+
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM parcelamentos p
+        WHERE p.orgao = ?
+          AND {$filtroSituacao}
+    ");
+    $stmt->execute([$orgao]);
+
+    return (int)$stmt->fetchColumn();
+}
+
+function primeiraCompetenciaParcelamentoAtivo(PDO $pdo, string $orgao): ?string
+{
+    $temLiquidadoEm = parcelamentosTemColuna($pdo, 'liquidado_em');
+    $filtroSituacao = $temLiquidadoEm
+        ? 'p.cancelado_em IS NULL AND p.liquidado_em IS NULL'
+        : 'p.cancelado_em IS NULL';
+
+    $stmt = $pdo->prepare("
+        SELECT MIN(COALESCE(p.data_primeira_parcela, DATE(p.criado_em), CURDATE()))
+        FROM parcelamentos p
+        WHERE p.orgao = ?
+          AND {$filtroSituacao}
+    ");
+    $stmt->execute([$orgao]);
+    $data = $stmt->fetchColumn();
+
+    if (!$data) {
+        return null;
+    }
+
+    return date('Y-m', strtotime((string)$data));
+}
+
+function competenciasParcelamentosPendentesImpressao(PDO $pdo, string $orgao): array
+{
+    $primeiraCompetencia = primeiraCompetenciaParcelamentoAtivo($pdo, $orgao);
+
+    if ($primeiraCompetencia === null) {
+        return [];
+    }
+
+    $primeiraCompetencia = max($primeiraCompetencia, competenciaInicioControleImpressaoParcelamentos());
+    $inicio = DateTime::createFromFormat('Y-m-d', $primeiraCompetencia . '-01');
+    $fim = DateTime::createFromFormat('Y-m-d', competenciaAtualParcelamentos() . '-01');
+
+    if (!$inicio || !$fim) {
+        return [];
+    }
+
+    $pendentes = [];
+
+    while ($inicio <= $fim) {
+        $competencia = $inicio->format('Y-m');
+
+        if (!parcelamentosImpressaoRegistrada($pdo, $orgao, $competencia)) {
+            $pendentes[] = $competencia;
+        }
+
+        $inicio->modify('+1 month');
+    }
+
+    return $pendentes;
+}
+
+function avisosParcelamentosImpressao(PDO $pdo): array
+{
+    if (!parcelamentosImpressoesTabelaExiste($pdo)) {
+        return [];
+    }
+
+    $avisos = [];
+
+    foreach (orgaosParcelamento() as $orgao => $url) {
+        $totalAtivos = contarParcelamentosAtivosPorOrgao($pdo, $orgao);
+        $competenciasPendentes = $totalAtivos > 0
+            ? competenciasParcelamentosPendentesImpressao($pdo, $orgao)
+            : [];
+
+        if ($totalAtivos <= 0 || $competenciasPendentes === []) {
+            continue;
+        }
+
+        $avisos[] = [
+            'tipo' => 'parcelamentos_impressao',
+            'titulo' => 'Impressão de parcelamentos pendente',
+            'texto' => $orgao . ' possui ' . $totalAtivos . ' parcelamento' . ($totalAtivos === 1 ? '' : 's') . ' ativo' . ($totalAtivos === 1 ? '' : 's') . ' com impressão pendente em ' . implode(', ', array_map('rotuloCompetenciaParcelamentos', $competenciasPendentes)) . '.',
+            'url' => $url,
+            'quantidade' => count($competenciasPendentes),
+        ];
+    }
+
+    return $avisos;
+}
+
+function renderizarBotaoImpressaoParcelamentos(string $orgao): void
+{
+?>
+    <button
+        type="button"
+        class="btn btn-sm btn-outline-secondary btn-imprimir-parcelamentos"
+        data-orgao="<?= htmlspecialchars($orgao) ?>"
+        title="Imprimir dados">
+        <i class="bi bi-printer"></i> Imprimir
+    </button>
+<?php
+}
+
+function renderizarScriptImpressaoParcelamentos(): void
+{
+?>
+    <script>
+        document.querySelectorAll('.btn-imprimir-parcelamentos').forEach(function(botao) {
+            botao.addEventListener('click', function() {
+                const orgao = botao.dataset.orgao || '';
+                const dados = new URLSearchParams();
+                dados.append('orgao', orgao);
+
+                fetch('registrar_impressao_parcelamentos.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: dados.toString()
+                }).finally(function() {
+                    window.print();
+                });
+            });
+        });
+    </script>
+<?php
+}
+
 function atualizarParcelamentosLiquidados(PDO $pdo, string $orgao): array
 {
     if (!parcelamentosTemColuna($pdo, 'liquidado_em')) {

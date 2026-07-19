@@ -40,6 +40,11 @@
             <span>Início</span>
         </a>
 
+        <a href="ajuda.php" class="sidebar-link" data-label="Ajuda">
+            <i class="bi bi-question-circle"></i>
+            <span>Ajuda</span>
+        </a>
+
         <?php if (usuarioPode('tarefas')): ?>
             <a href="tarefas.php" class="sidebar-link" data-label="Tarefas">
                 <i class="bi bi-check2-square"></i>

@@ -1,5 +1,6 @@
 <?php
 require 'config.php';
+require_once 'includes/parcelamentos_funcoes.php';
 
 exigirLogin();
 
@@ -7,6 +8,7 @@ $resumoTarefas = [
     'pendentes' => 0,
     'concluidas_hoje' => 0,
 ];
+$avisosSistema = [];
 
 if (usuarioPode('tarefas')) {
     try {
@@ -31,6 +33,14 @@ if (usuarioPode('tarefas')) {
             'pendentes' => 0,
             'concluidas_hoje' => 0,
         ];
+    }
+}
+
+if (usuarioPode('parcelamentos')) {
+    try {
+        $avisosSistema = array_merge($avisosSistema, avisosParcelamentosImpressao($pdo));
+    } catch (Throwable $e) {
+        $avisosSistema = $avisosSistema;
     }
 }
 ?>
@@ -58,6 +68,47 @@ if (usuarioPode('tarefas')) {
                 <h3>Bem-vindo ao sistema Logi 👋</h3>
                 <p class="text-muted">Escolha o serviço que deseja acessar</p>
             </div>
+
+            <?php if ($avisosSistema): ?>
+                <section class="avisos-home mb-4">
+                    <div class="avisos-home-cabecalho">
+                        <div>
+                            <h5 class="mb-1">
+                                <i class="bi bi-bell"></i>
+                                <?= count($avisosSistema) ?> aviso<?= count($avisosSistema) === 1 ? '' : 's' ?> importante<?= count($avisosSistema) === 1 ? '' : 's' ?>
+                            </h5>
+                            <p class="mb-0">Rotinas que precisam de atenção antes de seguir o mês.</p>
+                        </div>
+                        <button
+                            class="btn btn-sm btn-outline-warning avisos-home-toggle"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#avisosHomeDetalhes"
+                            aria-expanded="false"
+                            aria-controls="avisosHomeDetalhes">
+                            Ver detalhes
+                        </button>
+                    </div>
+
+                    <div class="collapse" id="avisosHomeDetalhes">
+                        <div class="avisos-home-lista">
+                            <?php foreach ($avisosSistema as $aviso): ?>
+                                <a href="<?= htmlspecialchars($aviso['url']) ?>" class="aviso-home-item">
+                                    <i class="bi bi-printer"></i>
+                                    <div>
+                                        <strong><?= htmlspecialchars($aviso['titulo']) ?></strong>
+                                        <small><?= htmlspecialchars($aviso['texto']) ?></small>
+                                    </div>
+                                    <span class="badge bg-warning text-dark">
+                                        <?= (int)($aviso['quantidade'] ?? 1) ?>
+                                    </span>
+                                    <i class="bi bi-chevron-right"></i>
+                                </a>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </section>
+            <?php endif; ?>
 
             <div class="row g-4">
 
@@ -209,6 +260,46 @@ if (usuarioPode('tarefas')) {
         </div>
 
     </main>
+
+    <?php if (usuarioLogado()): ?>
+        <div class="modal fade" id="modalTutorialInicial" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Bem-vindo ao Logi</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-2">Separei um manual rápido para explicar onde ficam as principais rotinas do sistema.</p>
+                        <p class="text-muted mb-0">Você pode abrir esse tutorial novamente pelo menu em <strong>Ajuda</strong>.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Ver depois</button>
+                        <a href="ajuda.php" class="btn btn-primary">Abrir manual</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                if (localStorage.getItem('logiTutorialInicialVisto') === '1') {
+                    return;
+                }
+
+                const modal = document.getElementById('modalTutorialInicial');
+                const instancia = bootstrap.Modal.getOrCreateInstance(modal);
+                instancia.show();
+
+                modal.addEventListener('hidden.bs.modal', function() {
+                    localStorage.setItem('logiTutorialInicialVisto', '1');
+                }, {
+                    once: true
+                });
+            });
+        </script>
+    <?php endif; ?>
 
 </body>
 

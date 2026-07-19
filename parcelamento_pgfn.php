@@ -76,9 +76,7 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'PGFN');
                         <a href="parcliquidados_pgfn.php" class="btn btn-sm btn-outline-success">
                             <i class="bi bi-check-circle"></i> Liquidados
                         </a>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()" title="Imprimir dados">
-                            <i class="bi bi-printer"></i> Imprimir
-                        </button>
+                        <?php renderizarBotaoImpressaoParcelamentos('PGFN'); ?>
                     </div>
                 </div>
 
@@ -119,6 +117,7 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'PGFN');
     <?php renderizarAvisoLiquidacoesAutomaticas('PGFN'); ?>
     <?php renderizarModalQuitarParcelamento(); ?>
     <?php renderizarModalDetalhesParcelamento(); ?>
+    <?php renderizarScriptImpressaoParcelamentos(); ?>
 
     <script>
         setTimeout(function() {

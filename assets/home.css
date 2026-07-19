@@ -146,6 +146,88 @@
     --card-accent: #dc2626;
 }
 
+.card-ajuda {
+    --card-accent: #0ea5e9;
+}
+
+.avisos-home {
+    overflow: hidden;
+    border: 1px solid #facc15;
+    border-radius: 7px;
+    background: #fff;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.avisos-home-cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    background: #fff8e8;
+}
+
+.avisos-home-cabecalho h5 {
+    color: #7a4b00;
+    font-weight: 800;
+}
+
+.avisos-home-cabecalho p {
+    color: #805b22;
+    font-size: .86rem;
+}
+
+.avisos-home-toggle {
+    flex: 0 0 auto;
+}
+
+.avisos-home .collapse.show {
+    border-top: 1px solid #f6ddb0;
+}
+
+.avisos-home-lista {
+    display: grid;
+}
+
+.aviso-home-item {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 12px;
+    min-height: 62px;
+    padding: 10px 18px;
+    color: #172033;
+    text-decoration: none;
+    transition: background-color .18s ease;
+}
+
+.aviso-home-item:hover {
+    background: #f3f7fb;
+}
+
+.aviso-home-item+.aviso-home-item {
+    border-top: 1px solid #edf0f3;
+}
+
+.aviso-home-item>i:first-child {
+    color: #b45309;
+    font-size: 1.2rem;
+}
+
+.aviso-home-item strong,
+.aviso-home-item small {
+    display: block;
+}
+
+.aviso-home-item strong {
+    margin-bottom: 2px;
+    font-weight: 800;
+}
+
+.aviso-home-item small {
+    color: #715c18;
+}
+
 @media (max-width: 768px) {
     .container-home {
         margin: 20px auto;
@@ -175,5 +257,13 @@
     .card-servico p {
         margin-bottom: 0;
         font-size: .9rem;
+    }
+
+    .avisos-home-cabecalho {
+        flex-direction: column;
+    }
+
+    .aviso-home-item {
+        align-items: flex-start;
     }
 }
