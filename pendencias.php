@@ -1074,29 +1074,37 @@ $limiteGraficoPendencias = 15;
             if (!valido) {
                 alertaPendenciaAlvara.textContent = 'Preencha os campos obrigatórios destacados em vermelho.';
                 alertaPendenciaAlvara.classList.remove('d-none');
-                primeiroInvalido?.focus();
+                if (primeiroInvalido) {
+                    primeiroInvalido.focus();
+                }
             }
 
             return valido;
         }
 
-        document.getElementById('btnDispensarTodosPendenciaAlvara').addEventListener('click', function() {
-            document.querySelectorAll('.pendencia-orgao-situacao').forEach(function(campo) {
-                campo.value = 'dispensado';
-                campo.classList.remove('is-invalid');
-                atualizarVencimentoOrgaoPendencia(campo);
+        const btnDispensarTodosPendenciaAlvara = document.getElementById('btnDispensarTodosPendenciaAlvara');
+        if (btnDispensarTodosPendenciaAlvara) {
+            btnDispensarTodosPendenciaAlvara.addEventListener('click', function() {
+                document.querySelectorAll('.pendencia-orgao-situacao').forEach(function(campo) {
+                    campo.value = 'dispensado';
+                    campo.classList.remove('is-invalid');
+                    atualizarVencimentoOrgaoPendencia(campo);
+                });
+                alertaPendenciaAlvara.classList.add('d-none');
             });
-            alertaPendenciaAlvara.classList.add('d-none');
-        });
+        }
 
-        document.getElementById('modalResolverPendencia').addEventListener('show.bs.modal', function(event) {
-            const botao = event.relatedTarget;
+        const modalResolverPendencia = document.getElementById('modalResolverPendencia');
+        if (modalResolverPendencia) {
+            modalResolverPendencia.addEventListener('show.bs.modal', function(event) {
+                const botao = event.relatedTarget;
 
-            document.getElementById('clienteIdPendenciaResolver').value = botao.dataset.clienteId;
-            document.getElementById('tipoPendenciaResolver').value = botao.dataset.tipo;
-            document.getElementById('clientePendenciaResolver').textContent = botao.dataset.cliente;
-            document.getElementById('descricaoPendenciaResolver').textContent = botao.dataset.descricao;
-        });
+                document.getElementById('clienteIdPendenciaResolver').value = botao.dataset.clienteId;
+                document.getElementById('tipoPendenciaResolver').value = botao.dataset.tipo;
+                document.getElementById('clientePendenciaResolver').textContent = botao.dataset.cliente;
+                document.getElementById('descricaoPendenciaResolver').textContent = botao.dataset.descricao;
+            });
+        }
 
         function atualizarResumoPendencia(linha) {
             const tipo = linha.dataset.tipo;
@@ -1130,11 +1138,13 @@ $limiteGraficoPendencias = 15;
             });
         }
 
+        let renderizarPendenciasLista = function() {};
+
         function removerLinhaPendencia(botao) {
             const linha = botao.closest('.linha-pendencia');
             atualizarResumoPendencia(linha);
             linha.remove();
-            renderizarPendencias();
+            renderizarPendenciasLista();
             window.dispatchEvent(new Event('pendencias:atualizar'));
 
             if (document.querySelectorAll('.linha-pendencia').length === 0) {
@@ -1322,9 +1332,12 @@ $limiteGraficoPendencias = 15;
                 });
         });
 
-        document.getElementById('modalPendenciaStatus').addEventListener('change', function() {
-            atualizarVencimentoPendencia(true);
-        });
+        const modalPendenciaStatus = document.getElementById('modalPendenciaStatus');
+        if (modalPendenciaStatus) {
+            modalPendenciaStatus.addEventListener('change', function() {
+                atualizarVencimentoPendencia(true);
+            });
+        }
 
         function salvarModalPendencia() {
             if (salvandoModalPendencia) {
@@ -1450,143 +1463,153 @@ $limiteGraficoPendencias = 15;
         pendenciasPorPagina = [15, 30, 60, 90].includes(pendenciasPorPagina) ? pendenciasPorPagina : 15;
         let pendenciasPaginaAtual = 1;
         let imprimindoPendencias = false;
-        campoLimitePendencias.value = String(pendenciasPorPagina);
 
-        function normalizarPendencias(texto) {
-            return String(texto || '')
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .toLowerCase()
-                .trim();
-        }
+        if (campoBuscaPendencia && campoTipoPendencia && campoLimitePendencias && grupoLimitePendencias && paginacaoPendencias) {
+            campoLimitePendencias.value = String(pendenciasPorPagina);
 
-        function pendenciasFiltradas() {
-            const busca = normalizarPendencias(campoBuscaPendencia.value);
-            const tipo = campoTipoPendencia.value;
+            function normalizarPendencias(texto) {
+                return String(texto || '')
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .toLowerCase()
+                    .trim();
+            }
 
-            return linhasPendencia.filter(function(linha) {
-                if (!linha.isConnected) {
-                    return false;
+            function pendenciasFiltradas() {
+                const busca = normalizarPendencias(campoBuscaPendencia.value);
+                const tipo = campoTipoPendencia.value;
+
+                return linhasPendencia.filter(function(linha) {
+                    if (!linha.isConnected) {
+                        return false;
+                    }
+
+                    const texto = normalizarPendencias(linha.textContent);
+                    const tipoLinha = linha.dataset.tipo;
+                    return texto.includes(busca) && (tipo === '' || tipoLinha === tipo);
+                });
+            }
+
+            function adicionarPaginaPendencia(lista, rotulo, pagina, desabilitado, ativo) {
+                const item = document.createElement('li');
+                item.className = 'page-item' + (desabilitado ? ' disabled' : '') + (ativo ? ' active' : '');
+
+                const botao = document.createElement('button');
+                botao.type = 'button';
+                botao.className = 'page-link';
+                botao.textContent = rotulo;
+                botao.disabled = desabilitado;
+                botao.addEventListener('click', function() {
+                    pendenciasPaginaAtual = pagina;
+                    renderizarPendencias();
+                });
+
+                item.appendChild(botao);
+                lista.appendChild(item);
+            }
+
+            function renderizarPendencias() {
+                const filtradas = pendenciasFiltradas();
+                const filtradasSet = new Set(filtradas);
+
+                if (imprimindoPendencias) {
+                    linhasPendencia.forEach(function(linha) {
+                        linha.classList.toggle('d-none', !filtradasSet.has(linha));
+                    });
+                    return;
                 }
 
-                const texto = normalizarPendencias(linha.textContent);
-                const tipoLinha = linha.dataset.tipo;
-                return texto.includes(busca) && (tipo === '' || tipoLinha === tipo);
-            });
-        }
+                const totalPaginas = Math.max(1, Math.ceil(filtradas.length / pendenciasPorPagina));
 
-        function adicionarPaginaPendencia(lista, rotulo, pagina, desabilitado, ativo) {
-            const item = document.createElement('li');
-            item.className = 'page-item' + (desabilitado ? ' disabled' : '') + (ativo ? ' active' : '');
+                if (pendenciasPaginaAtual > totalPaginas) {
+                    pendenciasPaginaAtual = totalPaginas;
+                }
 
-            const botao = document.createElement('button');
-            botao.type = 'button';
-            botao.className = 'page-link';
-            botao.textContent = rotulo;
-            botao.disabled = desabilitado;
-            botao.addEventListener('click', function() {
-                pendenciasPaginaAtual = pagina;
+                const inicio = (pendenciasPaginaAtual - 1) * pendenciasPorPagina;
+                const visiveis = new Set(filtradas.slice(inicio, inicio + pendenciasPorPagina));
+
+                linhasPendencia.forEach(function(linha) {
+                    linha.classList.toggle('d-none', !visiveis.has(linha));
+                });
+
+                if (linhaPendenciasFiltradasVazio) {
+                    linhaPendenciasFiltradasVazio.classList.toggle('d-none', filtradas.length > 0);
+                }
+                grupoLimitePendencias.classList.toggle('d-none', filtradas.length <= pendenciasPorPagina);
+                paginacaoPendencias.innerHTML = '';
+                paginacaoPendencias.classList.toggle('d-none', filtradas.length <= pendenciasPorPagina);
+
+                if (filtradas.length <= pendenciasPorPagina) {
+                    return;
+                }
+
+                const nav = document.createElement('nav');
+                const lista = document.createElement('ul');
+                lista.className = 'pagination justify-content-center mb-0';
+
+                adicionarPaginaPendencia(lista, 'Anterior', Math.max(1, pendenciasPaginaAtual - 1), pendenciasPaginaAtual <= 1, false);
+
+                let ultimaPagina = 0;
+                for (let pagina = 1; pagina <= totalPaginas; pagina++) {
+                    if (pagina !== 1 && pagina !== totalPaginas && Math.abs(pagina - pendenciasPaginaAtual) > 2) {
+                        continue;
+                    }
+
+                    if (ultimaPagina > 0 && pagina - ultimaPagina > 1) {
+                        adicionarPaginaPendencia(lista, '...', pendenciasPaginaAtual, true, false);
+                    }
+
+                    adicionarPaginaPendencia(lista, String(pagina), pagina, false, pagina === pendenciasPaginaAtual);
+                    ultimaPagina = pagina;
+                }
+
+                adicionarPaginaPendencia(lista, 'Próxima', Math.min(totalPaginas, pendenciasPaginaAtual + 1), pendenciasPaginaAtual >= totalPaginas, false);
+
+                nav.appendChild(lista);
+                paginacaoPendencias.appendChild(nav);
+            }
+
+            renderizarPendenciasLista = renderizarPendencias;
+
+            campoBuscaPendencia.addEventListener('input', function() {
+                pendenciasPaginaAtual = 1;
                 renderizarPendencias();
             });
 
-            item.appendChild(botao);
-            lista.appendChild(item);
-        }
-
-        function renderizarPendencias() {
-            const filtradas = pendenciasFiltradas();
-            const filtradasSet = new Set(filtradas);
-
-            if (imprimindoPendencias) {
-                linhasPendencia.forEach(function(linha) {
-                    linha.classList.toggle('d-none', !filtradasSet.has(linha));
-                });
-                return;
-            }
-
-            const totalPaginas = Math.max(1, Math.ceil(filtradas.length / pendenciasPorPagina));
-
-            if (pendenciasPaginaAtual > totalPaginas) {
-                pendenciasPaginaAtual = totalPaginas;
-            }
-
-            const inicio = (pendenciasPaginaAtual - 1) * pendenciasPorPagina;
-            const visiveis = new Set(filtradas.slice(inicio, inicio + pendenciasPorPagina));
-
-            linhasPendencia.forEach(function(linha) {
-                linha.classList.toggle('d-none', !visiveis.has(linha));
+            campoTipoPendencia.addEventListener('change', function() {
+                pendenciasPaginaAtual = 1;
+                renderizarPendencias();
             });
 
-            linhaPendenciasFiltradasVazio?.classList.toggle('d-none', filtradas.length > 0);
-            grupoLimitePendencias.classList.toggle('d-none', filtradas.length <= pendenciasPorPagina);
-            paginacaoPendencias.innerHTML = '';
-            paginacaoPendencias.classList.toggle('d-none', filtradas.length <= pendenciasPorPagina);
+            campoLimitePendencias.addEventListener('change', function() {
+                pendenciasPorPagina = Number(this.value);
+                localStorage.setItem('pendenciasPorPagina', String(pendenciasPorPagina));
+                pendenciasPaginaAtual = 1;
+                renderizarPendencias();
+            });
 
-            if (filtradas.length <= pendenciasPorPagina) {
-                return;
+            const btnImprimirPendencias = document.getElementById('btnImprimirPendencias');
+            if (btnImprimirPendencias) {
+                btnImprimirPendencias.addEventListener('click', function() {
+                    const filtro = document.getElementById('filtroTipoPendencia');
+                    document.getElementById('tipoPendenciaImpressao').textContent =
+                        filtro.value === '' ? 'Todos os tipos' : 'Tipo: ' + filtro.value;
+                    window.print();
+                });
             }
 
-            const nav = document.createElement('nav');
-            const lista = document.createElement('ul');
-            lista.className = 'pagination justify-content-center mb-0';
+            window.addEventListener('beforeprint', function() {
+                imprimindoPendencias = true;
+                renderizarPendencias();
+            });
 
-            adicionarPaginaPendencia(lista, 'Anterior', Math.max(1, pendenciasPaginaAtual - 1), pendenciasPaginaAtual <= 1, false);
+            window.addEventListener('afterprint', function() {
+                imprimindoPendencias = false;
+                renderizarPendencias();
+            });
 
-            let ultimaPagina = 0;
-            for (let pagina = 1; pagina <= totalPaginas; pagina++) {
-                if (pagina !== 1 && pagina !== totalPaginas && Math.abs(pagina - pendenciasPaginaAtual) > 2) {
-                    continue;
-                }
-
-                if (ultimaPagina > 0 && pagina - ultimaPagina > 1) {
-                    adicionarPaginaPendencia(lista, '...', pendenciasPaginaAtual, true, false);
-                }
-
-                adicionarPaginaPendencia(lista, String(pagina), pagina, false, pagina === pendenciasPaginaAtual);
-                ultimaPagina = pagina;
-            }
-
-            adicionarPaginaPendencia(lista, 'Próxima', Math.min(totalPaginas, pendenciasPaginaAtual + 1), pendenciasPaginaAtual >= totalPaginas, false);
-
-            nav.appendChild(lista);
-            paginacaoPendencias.appendChild(nav);
+            renderizarPendencias();
         }
-
-        campoBuscaPendencia.addEventListener('input', function() {
-            pendenciasPaginaAtual = 1;
-            renderizarPendencias();
-        });
-
-        campoTipoPendencia.addEventListener('change', function() {
-            pendenciasPaginaAtual = 1;
-            renderizarPendencias();
-        });
-
-        campoLimitePendencias.addEventListener('change', function() {
-            pendenciasPorPagina = Number(this.value);
-            localStorage.setItem('pendenciasPorPagina', String(pendenciasPorPagina));
-            pendenciasPaginaAtual = 1;
-            renderizarPendencias();
-        });
-
-        document.getElementById('btnImprimirPendencias').addEventListener('click', function() {
-            const filtro = document.getElementById('filtroTipoPendencia');
-            document.getElementById('tipoPendenciaImpressao').textContent =
-                filtro.value === '' ? 'Todos os tipos' : 'Tipo: ' + filtro.value;
-            window.print();
-        });
-
-        window.addEventListener('beforeprint', function() {
-            imprimindoPendencias = true;
-            renderizarPendencias();
-        });
-
-        window.addEventListener('afterprint', function() {
-            imprimindoPendencias = false;
-            renderizarPendencias();
-        });
-
-        renderizarPendencias();
 
         setTimeout(function() {
             document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {
