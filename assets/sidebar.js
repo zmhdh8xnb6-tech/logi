@@ -69,7 +69,9 @@ if (notificationCenter) {
     const userId = notificationCenter.dataset.userId;
     const storagePrefix = `logi_pendencias_${userId}`;
     const intervaloAviso = 4 * 60 * 60 * 1000;
+    const intervaloConsulta = 30000;
     let timerToast = null;
+    let consultandoPendencias = false;
 
     function textoPendencias(total) {
         return total === 1 ? '1 pendência' : `${total} pendências`;
@@ -133,8 +135,15 @@ if (notificationCenter) {
     }
 
     async function consultarPendencias() {
+        if (consultandoPendencias) {
+            return;
+        }
+
+        consultandoPendencias = true;
+
         try {
-            const resposta = await fetch(notificationCenter.dataset.apiUrl, {
+            const separador = notificationCenter.dataset.apiUrl.includes('?') ? '&' : '?';
+            const resposta = await fetch(notificationCenter.dataset.apiUrl + separador + '_=' + Date.now(), {
                 credentials: 'same-origin',
                 cache: 'no-store',
             });
@@ -163,6 +172,8 @@ if (notificationCenter) {
         } catch (erro) {
             notificationPanelTitle.textContent = 'Não foi possível atualizar.';
             notificationPanelText.textContent = 'Tente novamente em alguns instantes.';
+        } finally {
+            consultandoPendencias = false;
         }
     }
 
@@ -195,8 +206,15 @@ if (notificationCenter) {
         }
     });
     window.addEventListener('focus', consultarPendencias);
+    window.addEventListener('pageshow', consultarPendencias);
+    window.addEventListener('online', consultarPendencias);
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) {
+            consultarPendencias();
+        }
+    });
     window.addEventListener('pendencias:atualizar', consultarPendencias);
 
     consultarPendencias();
-    setInterval(consultarPendencias, 60000);
+    setInterval(consultarPendencias, intervaloConsulta);
 }

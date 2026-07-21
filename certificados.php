@@ -495,18 +495,6 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 salvarModalCertificado();
             }
         });
-
-        campoModalCertificadoVencimento.addEventListener('change', function() {
-            if (!modalEditarCertificado.classList.contains('show')) {
-                return;
-            }
-
-            if (this.value === vencimentoCertificadoInicial) {
-                return;
-            }
-
-            salvarModalCertificado();
-        });
     </script>
 
 </body>

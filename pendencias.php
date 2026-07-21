@@ -4,7 +4,6 @@ require 'config.php';
 exigirPermissao('pendencias');
 
 $hoje = date('Y-m-d');
-$limiteAlerta = date('Y-m-d', strtotime('+30 days'));
 
 function adicionarPendencia(array &$pendencias, array &$resumo, array $cliente, string $tipo, string $descricao, string $status, string $nivel = 'danger', ?string $resolver = null, ?string $resolverUrl = null, array $resolverModal = []): void
 {
@@ -208,8 +207,6 @@ foreach ($clientes as $cliente) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado digital não informado', 'Não possui', 'danger', null, null, modalCertificado($cliente));
     } elseif ($controlaCertificado && $cliente['vencimento_certificado'] < $hoje) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado digital vencido em ' . dataBr($cliente['vencimento_certificado']), 'Vencido', 'danger', null, null, modalCertificado($cliente));
-    } elseif ($controlaCertificado && $cliente['vencimento_certificado'] <= $limiteAlerta) {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado vence em ' . dataBr($cliente['vencimento_certificado']), 'A vencer', 'warning', null, null, modalCertificado($cliente));
     }
 
     if (!$clienteContabil) {
@@ -243,8 +240,6 @@ foreach ($clientes as $cliente) {
                 adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', $procuracao['nome'] . ' sem vencimento', 'Sem data', 'danger', null, null, $modalProcuracao);
             } elseif ($vencimento < $hoje) {
                 adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', $procuracao['nome'] . ' vencida em ' . dataBr($vencimento), 'Vencida', 'danger', null, null, $modalProcuracao);
-            } elseif ($vencimento <= $limiteAlerta) {
-                adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', $procuracao['nome'] . ' vence em ' . dataBr($vencimento), 'A vencer', 'warning', null, null, $modalProcuracao);
             }
         }
     }
@@ -367,7 +362,7 @@ try {
         INNER JOIN clientes c ON c.id = ca.cliente_id
         WHERE ca.situacao = 'com_vencimento'
           AND ca.vencimento IS NOT NULL
-          AND ca.vencimento <= " . $pdo->quote($limiteAlerta) . "
+          AND ca.vencimento < " . $pdo->quote($hoje) . "
           AND c.cliente_contabil = 1
           " . clientesFiltroAtivos($pdo, 'c') . "
           " . empresaFiltroClienteDireto($pdo, 'c') . "
@@ -375,8 +370,8 @@ try {
     ");
 
     foreach ($stmtAlvaras->fetchAll(PDO::FETCH_ASSOC) as $alvaraCliente) {
-        $nivel = $alvaraCliente['vencimento'] < $hoje ? 'danger' : 'warning';
-        $status = $alvaraCliente['vencimento'] < $hoje ? 'Vencido' : 'A vencer';
+        $nivel = 'danger';
+        $status = 'Vencido';
         $clienteCompleto = $clientesPorId[(int)$alvaraCliente['cliente_id']] ?? $alvaraCliente;
 
         adicionarPendencia(
@@ -1236,24 +1231,23 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
             }
         }
 
-        function vencimentoForaDoPrazoDePendencia(vencimento) {
+        function vencimentoNaoEstaVencido(vencimento) {
             if (!vencimento) {
                 return false;
             }
 
             const hoje = new Date();
             hoje.setHours(0, 0, 0, 0);
-            hoje.setDate(hoje.getDate() + 30);
 
             const partes = vencimento.split('-');
             const data = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
 
-            return data > hoje;
+            return data >= hoje;
         }
 
         function pendenciaFoiResolvida(modo, status, vencimento, campoVencimento) {
             if (modo === 'certificado') {
-                return vencimentoForaDoPrazoDePendencia(vencimento);
+                return vencimentoNaoEstaVencido(vencimento);
             }
 
             if (['nao', 'nao_possui', 'nao_cadastrado', ''].includes(status)) {
@@ -1269,7 +1263,7 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
             }
 
             if (campoVencimento !== '' && status === 'possui') {
-                return vencimentoForaDoPrazoDePendencia(vencimento);
+                return vencimentoNaoEstaVencido(vencimento);
             }
 
             return true;
@@ -1470,18 +1464,6 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
             }
 
             evento.preventDefault();
-            salvarModalPendencia();
-        });
-
-        campoModalPendenciaVencimento.addEventListener('change', function() {
-            if (!modalEditarPendenciaEl.classList.contains('show')) {
-                return;
-            }
-
-            if (this.value === vencimentoModalPendenciaInicial) {
-                return;
-            }
-
             salvarModalPendencia();
         });
 

@@ -173,6 +173,13 @@ body {
     padding: 14px 8px;
 }
 
+.clientes-box .coluna-documento-cliente,
+#clientesTable th:nth-child(2),
+#clientesTable td:nth-child(2) {
+    white-space: nowrap;
+    min-width: 150px;
+}
+
 .clientes-box table tbody tr:nth-child(odd) td {
     --bs-table-bg: #ffffff;
     background-color: #ffffff;

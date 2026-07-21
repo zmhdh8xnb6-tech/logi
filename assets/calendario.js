@@ -32,10 +32,22 @@
                 return;
             }
 
+            const botao = campo._botaoCalendario || null;
+            const wrapper = campo._calendarioWrapper || null;
+
             instancia.altInput.disabled = campo.disabled;
             instancia.altInput.required = campo.required;
             instancia.altInput.classList.toggle('is-invalid', campo.classList.contains('is-invalid'));
             instancia.altInput.classList.toggle('is-valid', campo.classList.contains('is-valid'));
+
+            if (botao) {
+                botao.disabled = campo.disabled;
+            }
+
+            if (wrapper) {
+                wrapper.classList.toggle('calendario-campo-disabled', campo.disabled);
+                wrapper.classList.toggle('calendario-campo-invalid', campo.classList.contains('is-invalid'));
+            }
         }
 
         if (descritorDisabled && descritorRequired && descritorValue && campo.dataset.calendarioSincronizado !== '1') {
@@ -95,7 +107,6 @@
 
             if (instancia.altInput && !campo.disabled) {
                 instancia.altInput.focus();
-                instancia.open();
                 return;
             }
 
@@ -110,6 +121,43 @@
         });
 
         sincronizar();
+    }
+
+    function instalarBotaoCalendario(campo, instancia) {
+        if (!instancia.altInput || campo.dataset.calendarioBotao === '1') {
+            return;
+        }
+
+        const input = instancia.altInput;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'calendario-campo';
+
+        input.parentNode.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+
+        const botao = document.createElement('button');
+        botao.type = 'button';
+        botao.className = 'calendario-botao';
+        botao.setAttribute('aria-label', 'Abrir calendário');
+        botao.title = 'Abrir calendário';
+        botao.innerHTML = '<i class="bi bi-calendar3"></i>';
+
+        botao.addEventListener('click', function (evento) {
+            evento.preventDefault();
+            evento.stopPropagation();
+
+            if (campo.disabled) {
+                return;
+            }
+
+            input.focus();
+            instancia.open();
+        });
+
+        wrapper.appendChild(botao);
+        campo._botaoCalendario = botao;
+        campo._calendarioWrapper = wrapper;
+        campo.dataset.calendarioBotao = '1';
     }
 
     function iniciarCalendarios(contexto) {
@@ -137,6 +185,7 @@
                 altInput: true,
                 allowInput: true,
                 disableMobile: true,
+                clickOpens: false,
                 locale: 'pt',
                 onChange: function () {
                     dispararAlteracao(campo);
@@ -164,6 +213,7 @@
 
             campo.dataset.calendarioAplicado = '1';
             const instancia = window.flatpickr(campo, config);
+            instalarBotaoCalendario(campo, instancia);
             instalarSincronia(campo, instancia);
         });
     }

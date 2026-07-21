@@ -717,20 +717,6 @@ if (!function_exists('controleFormatarPrazo')) {
             formControle.requestSubmit();
         });
 
-        if (controlePossuiVencimento && controleVencimento) {
-            controleVencimento.addEventListener('change', () => {
-                if (!modalControleEl.classList.contains('show')) {
-                    return;
-                }
-
-                if (controleStatus.value !== 'possui' || controleVencimento.value === controleVencimentoInicial) {
-                    return;
-                }
-
-                formControle.requestSubmit();
-            });
-        }
-
         controleRenderizar();
     </script>
 </body>

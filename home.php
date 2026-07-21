@@ -1,6 +1,7 @@
 <?php
 require 'config.php';
 require_once 'includes/parcelamentos_funcoes.php';
+require_once 'includes/avisos_vencimentos.php';
 
 exigirLogin();
 
@@ -44,6 +45,14 @@ if (usuarioPode('parcelamentos')) {
         $avisosSistema = $avisosSistema;
     }
 }
+
+if (usuarioPode('pendencias')) {
+    try {
+        $avisosSistema = array_merge($avisosSistema, listarAvisosVencimentosSistema($pdo));
+    } catch (Throwable $e) {
+        $avisosSistema = $avisosSistema;
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -71,12 +80,13 @@ if (usuarioPode('parcelamentos')) {
             </div>
 
             <?php if ($avisosSistema): ?>
-                <section class="avisos-home mb-4">
+                <section class="avisos-home mb-4" id="avisosHome" data-total="<?= count($avisosSistema) ?>">
                     <div class="avisos-home-cabecalho">
                         <div>
                             <h5 class="mb-1">
                                 <i class="bi bi-bell"></i>
-                                <?= count($avisosSistema) ?> aviso<?= count($avisosSistema) === 1 ? '' : 's' ?> importante<?= count($avisosSistema) === 1 ? '' : 's' ?>
+                                <span id="avisosHomeQuantidade"><?= count($avisosSistema) ?></span>
+                                <span id="avisosHomeRotulo">aviso<?= count($avisosSistema) === 1 ? '' : 's' ?> importante<?= count($avisosSistema) === 1 ? '' : 's' ?></span>
                             </h5>
                             <p class="mb-0">Rotinas que precisam de atenção antes de seguir o mês.</p>
                         </div>
@@ -94,17 +104,30 @@ if (usuarioPode('parcelamentos')) {
                     <div class="collapse" id="avisosHomeDetalhes">
                         <div class="avisos-home-lista">
                             <?php foreach ($avisosSistema as $aviso): ?>
-                                <a href="<?= htmlspecialchars($aviso['url']) ?>" class="aviso-home-item">
-                                    <i class="bi bi-printer"></i>
-                                    <div>
+                                <div class="aviso-home-item">
+                                    <i class="bi <?= htmlspecialchars($aviso['icone'] ?? 'bi-bell') ?>"></i>
+                                    <a href="<?= htmlspecialchars($aviso['url']) ?>" class="aviso-home-dados">
                                         <strong><?= htmlspecialchars($aviso['titulo']) ?></strong>
                                         <small><?= htmlspecialchars($aviso['texto']) ?></small>
-                                    </div>
+                                    </a>
                                     <span class="badge bg-warning text-dark">
                                         <?= (int)($aviso['quantidade'] ?? 1) ?>
                                     </span>
-                                    <i class="bi bi-chevron-right"></i>
-                                </a>
+                                    <?php if (!empty($aviso['resolver_modal'])): ?>
+                                        <button
+                                            type="button"
+                                            class="btn btn-sm btn-outline-success aviso-home-resolver"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#modalResolverAvisoHome"
+                                            data-aviso="<?= htmlspecialchars(json_encode($aviso['resolver_modal'], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>">
+                                            <i class="bi bi-check2-circle"></i> Resolver
+                                        </button>
+                                    <?php else: ?>
+                                        <a href="<?= htmlspecialchars($aviso['resolver_url'] ?? $aviso['url']) ?>" class="btn btn-sm btn-outline-success aviso-home-resolver">
+                                            <i class="bi bi-check2-circle"></i> Resolver
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
                             <?php endforeach; ?>
                         </div>
                     </div>
@@ -272,6 +295,41 @@ if (usuarioPode('parcelamentos')) {
 
     </main>
 
+    <div class="modal fade" id="modalResolverAvisoHome" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form id="formResolverAvisoHome">
+                    <div class="modal-header">
+                        <div>
+                            <h5 class="modal-title" id="modalAvisoHomeTitulo">Resolver aviso</h5>
+                            <p class="text-muted mb-0" id="modalAvisoHomeCliente"></p>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none" id="modalAvisoHomeErro"></div>
+                        <p class="text-muted" id="modalAvisoHomeDescricao"></p>
+                        <input type="hidden" name="tipo" id="modalAvisoHomeTipo">
+                        <input type="hidden" name="cliente_id" id="modalAvisoHomeClienteId">
+                        <input type="hidden" name="campo_status" id="modalAvisoHomeCampoStatus">
+                        <input type="hidden" name="campo_vencimento" id="modalAvisoHomeCampoVencimento">
+                        <input type="hidden" name="orgao_codigo" id="modalAvisoHomeOrgaoCodigo">
+
+                        <label for="modalAvisoHomeVencimento" class="form-label">Novo vencimento</label>
+                        <input type="date" class="form-control" name="vencimento" id="modalAvisoHomeVencimento" required>
+                        <div class="invalid-feedback">Informe o novo vencimento.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-success" id="btnSalvarAvisoHome">
+                            <i class="bi bi-check2-circle"></i> Salvar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <?php if (usuarioLogado()): ?>
         <div class="modal fade" id="modalTutorialInicial" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
@@ -295,6 +353,96 @@ if (usuarioPode('parcelamentos')) {
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
         <script>
             document.addEventListener('DOMContentLoaded', function() {
+                const modalResolverAviso = document.getElementById('modalResolverAvisoHome');
+                const formResolverAviso = document.getElementById('formResolverAvisoHome');
+                const erroResolverAviso = document.getElementById('modalAvisoHomeErro');
+                const btnSalvarAvisoHome = document.getElementById('btnSalvarAvisoHome');
+                let botaoAvisoAtual = null;
+
+                if (modalResolverAviso && formResolverAviso) {
+                    modalResolverAviso.addEventListener('show.bs.modal', function(evento) {
+                        botaoAvisoAtual = evento.relatedTarget;
+                        const dados = JSON.parse(botaoAvisoAtual.dataset.aviso || '{}');
+
+                        erroResolverAviso.classList.add('d-none');
+                        erroResolverAviso.textContent = '';
+                        formResolverAviso.reset();
+
+                        document.getElementById('modalAvisoHomeTitulo').textContent = dados.titulo || 'Resolver aviso';
+                        document.getElementById('modalAvisoHomeCliente').textContent = dados.cliente || '';
+                        document.getElementById('modalAvisoHomeDescricao').textContent = dados.descricao || '';
+                        document.getElementById('modalAvisoHomeTipo').value = dados.tipo || '';
+                        document.getElementById('modalAvisoHomeClienteId').value = dados.cliente_id || '';
+                        document.getElementById('modalAvisoHomeCampoStatus').value = dados.campo_status || '';
+                        document.getElementById('modalAvisoHomeCampoVencimento').value = dados.campo_vencimento || '';
+                        document.getElementById('modalAvisoHomeOrgaoCodigo').value = dados.orgao_codigo || '';
+                        document.getElementById('modalAvisoHomeVencimento').value = dados.vencimento || '';
+
+                        window.sincronizarCalendarioCampo?.('modalAvisoHomeVencimento');
+                    });
+
+                    formResolverAviso.addEventListener('submit', function(evento) {
+                        evento.preventDefault();
+
+                        const vencimento = document.getElementById('modalAvisoHomeVencimento');
+                        vencimento.classList.remove('is-invalid');
+
+                        if (!vencimento.value) {
+                            vencimento.classList.add('is-invalid');
+                            window.focarCalendarioCampo?.(vencimento);
+                            return;
+                        }
+
+                        const textoOriginal = btnSalvarAvisoHome.innerHTML;
+                        btnSalvarAvisoHome.disabled = true;
+                        btnSalvarAvisoHome.innerHTML = 'Salvando...';
+
+                        fetch('api_avisos_resolver.php', {
+                                method: 'POST',
+                                body: new FormData(formResolverAviso),
+                                credentials: 'same-origin',
+                            })
+                            .then(function(resposta) {
+                                return resposta.json();
+                            })
+                            .then(function(resposta) {
+                                if (!resposta.sucesso) {
+                                    throw new Error(resposta.mensagem || 'Não foi possível resolver o aviso.');
+                                }
+
+                                const linha = botaoAvisoAtual?.closest('.aviso-home-item');
+                                linha?.remove();
+                                bootstrap.Modal.getInstance(modalResolverAviso).hide();
+                                window.dispatchEvent(new Event('pendencias:atualizar'));
+
+                                const avisosRestantes = document.querySelectorAll('.aviso-home-item').length;
+                                const secaoAvisos = document.getElementById('avisosHome');
+                                const quantidadeAvisos = document.getElementById('avisosHomeQuantidade');
+                                const rotuloAvisos = document.getElementById('avisosHomeRotulo');
+
+                                if (avisosRestantes === 0) {
+                                    secaoAvisos?.remove();
+                                } else {
+                                    if (quantidadeAvisos) {
+                                        quantidadeAvisos.textContent = String(avisosRestantes);
+                                    }
+
+                                    if (rotuloAvisos) {
+                                        rotuloAvisos.textContent = avisosRestantes === 1 ? 'aviso importante' : 'avisos importantes';
+                                    }
+                                }
+                            })
+                            .catch(function(erro) {
+                                erroResolverAviso.textContent = erro.message;
+                                erroResolverAviso.classList.remove('d-none');
+                            })
+                            .finally(function() {
+                                btnSalvarAvisoHome.disabled = false;
+                                btnSalvarAvisoHome.innerHTML = textoOriginal;
+                            });
+                    });
+                }
+
                 if (localStorage.getItem('logiTutorialInicialVisto') === '1') {
                     return;
                 }

@@ -3,7 +3,6 @@
 function contarPendenciasSistema(PDO $pdo): int
 {
     $hoje = date('Y-m-d');
-    $limiteAlerta = date('Y-m-d', strtotime('+30 days'));
     $total = 0;
 
     $filtroEmpresaClientes = empresaFiltroClienteDireto($pdo);
@@ -34,8 +33,7 @@ function contarPendenciasSistema(PDO $pdo): int
 
             if (
                 $vencimentoCertificado === '' ||
-                $vencimentoCertificado < $hoje ||
-                $vencimentoCertificado <= $limiteAlerta
+                $vencimentoCertificado < $hoje
             ) {
                 $total++;
             }
@@ -56,7 +54,7 @@ function contarPendenciasSistema(PDO $pdo): int
             if ($procuracao['vencimento'] !== null && $status === 'possui') {
                 $vencimento = $cliente[$procuracao['vencimento']] ?? '';
 
-                if ($vencimento === '' || $vencimento < $hoje || $vencimento <= $limiteAlerta) {
+                if ($vencimento === '' || $vencimento < $hoje) {
                     $total++;
                 }
             }
@@ -130,11 +128,11 @@ function contarPendenciasSistema(PDO $pdo): int
             INNER JOIN clientes c ON c.id = ca.cliente_id
             WHERE ca.situacao = 'com_vencimento'
               AND ca.vencimento IS NOT NULL
-              AND ca.vencimento <= ?
+              AND ca.vencimento < ?
               AND c.cliente_contabil = 1
               {$filtroEmpresaClientesAlias}
         ");
-        $stmt->execute([$limiteAlerta]);
+        $stmt->execute([$hoje]);
         $total += (int)$stmt->fetchColumn();
     } catch (Throwable $e) {
     }
