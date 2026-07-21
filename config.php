@@ -270,6 +270,28 @@ if (!function_exists('empresaFiltro')) {
     }
 }
 
+if (!function_exists('empresaFiltroClienteDireto')) {
+    function empresaFiltroClienteDireto(PDO $pdo, string $alias = ''): string
+    {
+        $empresaId = (int)($_SESSION['empresa_id'] ?? 0);
+
+        if ($empresaId <= 0) {
+            $empresaId = (int)(empresaAtivaId($pdo) ?? 0);
+        }
+
+        if (!logiColunaExiste($pdo, 'clientes', 'empresa_id')) {
+            return logiTabelaExiste($pdo, 'empresas') ? ' AND 1 = 0' : '';
+        }
+
+        if ($empresaId <= 0) {
+            return logiTabelaExiste($pdo, 'empresas') ? ' AND 1 = 0' : '';
+        }
+
+        $prefixo = $alias !== '' ? $alias . '.' : '';
+        return " AND {$prefixo}empresa_id = " . $empresaId;
+    }
+}
+
 if (!function_exists('empresaIdParaInsert')) {
     function empresaIdParaInsert(PDO $pdo, string $tabela): ?int
     {

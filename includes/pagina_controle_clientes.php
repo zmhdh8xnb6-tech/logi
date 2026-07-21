@@ -91,6 +91,7 @@ $stmt = $pdo->query("
     FROM clientes
     WHERE cliente_contabil = 1
     " . clientesFiltroAtivos($pdo) . "
+    " . empresaFiltroClienteDireto($pdo) . "
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 
@@ -178,58 +179,15 @@ if (!function_exists('controleFormatarPrazo')) {
     <?php include 'includes/head.php'; ?>
     <title><?= htmlspecialchars($titulo) ?></title>
     <style>
-        .controle-card {
-            border: 1px solid #dbe2ea;
-            border-radius: 8px;
-            overflow: hidden;
-            background: #fff;
-        }
-
-        .controle-toolbar {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 18px;
-        }
-
-        .controle-busca {
-            max-width: 420px;
-        }
-
-        .controle-tabela tbody tr {
-            transition: background-color .18s ease;
-        }
-
-        .controle-tabela tbody tr:hover {
-            background: #f8fafc;
-        }
-
         .controle-acoes {
             white-space: nowrap;
             text-align: right;
-        }
-
-        .controle-paginacao {
-            padding: 14px 14px 0;
-            border-top: 1px solid #dbe2ea;
         }
 
         .controle-vazio {
             padding: 34px 16px;
             color: #64748b;
             text-align: center;
-        }
-
-        @media (max-width: 768px) {
-            .controle-toolbar {
-                align-items: stretch;
-                flex-direction: column;
-            }
-
-            .controle-busca {
-                max-width: none;
-            }
         }
     </style>
 </head>
@@ -239,7 +197,7 @@ if (!function_exists('controleFormatarPrazo')) {
 
     <main class="app-main">
         <div class="container-fluid">
-            <div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
                     <h3 class="mb-1"><?= htmlspecialchars($titulo) ?></h3>
                     <p class="text-muted mb-0"><?= htmlspecialchars($subtitulo) ?></p>
@@ -250,19 +208,22 @@ if (!function_exists('controleFormatarPrazo')) {
                 </a>
             </div>
 
-            <div class="controle-toolbar">
-                <div class="input-group controle-busca">
-                    <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input type="search" class="form-control" id="controleBusca" placeholder="<?= htmlspecialchars($placeholderBusca) ?>">
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="controleBusca"
+                        placeholder="<?= htmlspecialchars($placeholderBusca) ?>">
                 </div>
             </div>
 
-            <div class="controle-card">
+            <div class="clientes-box">
                 <div class="table-responsive">
-                    <table class="table align-middle mb-0 controle-tabela">
-                        <thead class="table-light">
+                    <table class="table align-middle controle-tabela">
+                        <thead>
                             <tr>
-                                <th>Codigo</th>
+                                <th>Código</th>
                                 <th>Cliente</th>
                                 <th>Documento</th>
                                 <th>Status</th>
@@ -271,9 +232,9 @@ if (!function_exists('controleFormatarPrazo')) {
                                     <th>Prazo</th>
                                 <?php endif; ?>
                                 <?php if ($mostrarConferenciaDados): ?>
-                                    <th>Conferencia</th>
+                                    <th>Conferência</th>
                                 <?php endif; ?>
-                                <th class="text-end">Acoes</th>
+                                <th class="text-end">Ações</th>
                             </tr>
                         </thead>
                         <tbody id="controleTabelaCorpo">
@@ -334,7 +295,7 @@ if (!function_exists('controleFormatarPrazo')) {
                     Nenhum cliente encontrado.
                 </div>
 
-                <div class="controle-paginacao" id="controlePaginacao"></div>
+                <div class="mt-3" id="controlePaginacao"></div>
             </div>
         </div>
     </main>

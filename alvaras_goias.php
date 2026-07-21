@@ -7,6 +7,8 @@ $stmt = $pdo->query("
     SELECT id, codigo, documento, nome, uf, alvara, cadastro_df_legal
     FROM clientes
     WHERE cliente_contabil = 1
+      " . clientesFiltroAtivos($pdo) . "
+      " . empresaFiltroClienteDireto($pdo) . "
       AND (
         uf = 'GO'
         OR alvara = 'goias'

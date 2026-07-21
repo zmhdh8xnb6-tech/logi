@@ -125,15 +125,26 @@ if ($campoVencimento !== '' && $status === 'possui' && $vencimento === null) {
     exit;
 }
 
-$stmtAntes = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+$stmtAntes = $pdo->prepare("
+    SELECT *
+    FROM clientes
+    WHERE id = ?
+    " . empresaFiltroClienteDireto($pdo) . "
+");
 $stmtAntes->execute([$id]);
 $clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+if (!$clienteAntes) {
+    echo 'Cliente não encontrado nesta empresa.';
+    exit;
+}
 
 if ($campoVencimento !== '') {
     $stmt = $pdo->prepare("
         UPDATE clientes
         SET {$campoStatus} = ?, {$campoVencimento} = ?
         WHERE id = ?
+          " . empresaFiltroClienteDireto($pdo) . "
     ");
 
     $ok = $stmt->execute([
@@ -146,6 +157,7 @@ if ($campoVencimento !== '') {
         UPDATE clientes
         SET {$campoStatus} = ?
         WHERE id = ?
+          " . empresaFiltroClienteDireto($pdo) . "
     ");
 
     $ok = $stmt->execute([
@@ -169,13 +181,19 @@ if ($ok && isset($pendenciasConferenciaDados[$campoStatus])) {
             UPDATE clientes
             SET {$configuracaoPendencia['coluna']} = ?
             WHERE id = ?
+              " . empresaFiltroClienteDireto($pdo) . "
         ");
         $stmtPendencia->execute([$pendente ? 1 : 0, $id]);
     }
 }
 
 if ($ok && $clienteAntes) {
-    $stmtDepois = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+    $stmtDepois = $pdo->prepare("
+        SELECT *
+        FROM clientes
+        WHERE id = ?
+        " . empresaFiltroClienteDireto($pdo) . "
+    ");
     $stmtDepois->execute([$id]);
     $clienteDepois = $stmtDepois->fetch(PDO::FETCH_ASSOC);
     $mudancas = auditoriaMudancas($clienteAntes, $clienteDepois ?: []);

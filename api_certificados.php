@@ -13,15 +13,26 @@ if ($id == '') {
 
 $vencimento = $vencimento !== '' ? $vencimento : null;
 
-$stmtAntes = $pdo->prepare("SELECT id, codigo, nome, vencimento_certificado FROM clientes WHERE id = ?");
+$stmtAntes = $pdo->prepare("
+    SELECT id, codigo, nome, vencimento_certificado
+    FROM clientes
+    WHERE id = ?
+    " . empresaFiltroClienteDireto($pdo) . "
+");
 $stmtAntes->execute([$id]);
 $clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+if (!$clienteAntes) {
+    echo 'Cliente não encontrado nesta empresa.';
+    exit;
+}
 
 $stmt = $pdo->prepare("
     UPDATE clientes
     SET vencimento_certificado = ?,
         servico_certificado = 1
     WHERE id = ?
+      " . empresaFiltroClienteDireto($pdo) . "
 ");
 
 $ok = $stmt->execute([

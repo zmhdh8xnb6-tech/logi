@@ -6,8 +6,8 @@ function contarPendenciasSistema(PDO $pdo): int
     $limiteAlerta = date('Y-m-d', strtotime('+30 days'));
     $total = 0;
 
-    $filtroEmpresaClientes = empresaFiltro($pdo, 'clientes');
-    $filtroEmpresaClientesAlias = empresaFiltro($pdo, 'clientes', 'c');
+    $filtroEmpresaClientes = empresaFiltroClienteDireto($pdo);
+    $filtroEmpresaClientesAlias = empresaFiltroClienteDireto($pdo, 'c');
 
     $stmt = $pdo->query("SELECT * FROM clientes WHERE 1=1{$filtroEmpresaClientes}");
     $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);

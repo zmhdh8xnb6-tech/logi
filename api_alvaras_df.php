@@ -58,7 +58,12 @@ if (!$clienteId) {
     responderAlvara(false, 'Cliente inválido.');
 }
 
-$stmtClienteExiste = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+$stmtClienteExiste = $pdo->prepare("
+    SELECT *
+    FROM clientes
+    WHERE id = ?
+    " . empresaFiltroClienteDireto($pdo) . "
+");
 $stmtClienteExiste->execute([$clienteId]);
 $clienteAntes = $stmtClienteExiste->fetch(PDO::FETCH_ASSOC);
 
@@ -67,10 +72,12 @@ if (!$clienteAntes) {
 }
 
 $stmtAlvarasAntes = $pdo->prepare("
-    SELECT orgao_codigo, situacao, vencimento
-    FROM cliente_alvaras
-    WHERE cliente_id = ?
-    ORDER BY orgao_codigo
+    SELECT ca.orgao_codigo, ca.situacao, ca.vencimento
+    FROM cliente_alvaras ca
+    INNER JOIN clientes c ON c.id = ca.cliente_id
+    WHERE ca.cliente_id = ?
+    " . empresaFiltroClienteDireto($pdo, 'c') . "
+    ORDER BY ca.orgao_codigo
 ");
 $stmtAlvarasAntes->execute([$clienteId]);
 $alvarasAntes = $stmtAlvarasAntes->fetchAll(PDO::FETCH_ASSOC);
@@ -135,6 +142,7 @@ try {
         UPDATE clientes
         SET alvara = ?, cadastro_df_legal = ?{$sqlExtras}
         WHERE id = ?
+          " . empresaFiltroClienteDireto($pdo) . "
     ");
     $stmtCliente->execute(array_merge(
         [$situacaoAlvara, $cadastroDfLegal],
@@ -142,7 +150,14 @@ try {
         [$clienteId]
     ));
 
-    $pdo->prepare("DELETE FROM cliente_alvaras WHERE cliente_id = ?")->execute([$clienteId]);
+    $stmtDeleteAlvaras = $pdo->prepare("
+        DELETE ca
+        FROM cliente_alvaras ca
+        INNER JOIN clientes c ON c.id = ca.cliente_id
+        WHERE ca.cliente_id = ?
+        " . empresaFiltroClienteDireto($pdo, 'c') . "
+    ");
+    $stmtDeleteAlvaras->execute([$clienteId]);
 
     if ($situacaoAlvara === 'possui') {
         $stmtAlvara = $pdo->prepare("
@@ -168,7 +183,12 @@ try {
 
     $pdo->commit();
 
-    $stmtClienteDepois = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+    $stmtClienteDepois = $pdo->prepare("
+        SELECT *
+        FROM clientes
+        WHERE id = ?
+        " . empresaFiltroClienteDireto($pdo) . "
+    ");
     $stmtClienteDepois->execute([$clienteId]);
     $clienteDepois = $stmtClienteDepois->fetch(PDO::FETCH_ASSOC) ?: [];
     $mudancasCliente = auditoriaMudancas($clienteAntes, $clienteDepois);

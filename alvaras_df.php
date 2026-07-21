@@ -22,14 +22,18 @@ $stmtClientes = $pdo->query("
       AND COALESCE(alvara, '') <> 'goias'
       AND COALESCE(cadastro_df_legal, '') <> 'goias'
       " . clientesFiltroAtivos($pdo) . "
+      " . empresaFiltroClienteDireto($pdo) . "
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 $clientes = $stmtClientes->fetchAll(PDO::FETCH_ASSOC);
 
 $alvarasPorCliente = [];
 $stmtAlvaras = $pdo->query("
-    SELECT cliente_id, orgao_codigo, situacao, vencimento
-    FROM cliente_alvaras
+    SELECT ca.cliente_id, ca.orgao_codigo, ca.situacao, ca.vencimento
+    FROM cliente_alvaras ca
+    INNER JOIN clientes c ON c.id = ca.cliente_id
+    WHERE 1 = 1
+    " . empresaFiltroClienteDireto($pdo, 'c') . "
 ");
 
 foreach ($stmtAlvaras->fetchAll(PDO::FETCH_ASSOC) as $alvara) {

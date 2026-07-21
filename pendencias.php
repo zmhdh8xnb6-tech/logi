@@ -99,7 +99,7 @@ $stmt = $pdo->query("
     FROM clientes
     WHERE 1 = 1
     " . clientesFiltroAtivos($pdo) . "
-    " . empresaFiltro($pdo, 'clientes') . "
+    " . empresaFiltroClienteDireto($pdo) . "
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -116,8 +116,11 @@ foreach ($clientes as $cliente) {
 
 try {
     $stmtTodosAlvaras = $pdo->query("
-        SELECT cliente_id, orgao_codigo, situacao, vencimento
-        FROM cliente_alvaras
+        SELECT ca.cliente_id, ca.orgao_codigo, ca.situacao, ca.vencimento
+        FROM cliente_alvaras ca
+        INNER JOIN clientes c ON c.id = ca.cliente_id
+        WHERE 1 = 1
+        " . empresaFiltroClienteDireto($pdo, 'c') . "
     ");
 
     foreach ($stmtTodosAlvaras->fetchAll(PDO::FETCH_ASSOC) as $alvaraCliente) {
@@ -331,7 +334,7 @@ try {
         WHERE c.alvara = 'possui'
           AND c.cliente_contabil = 1
           " . clientesFiltroAtivos($pdo, 'c') . "
-          " . empresaFiltro($pdo, 'clientes', 'c') . "
+          " . empresaFiltroClienteDireto($pdo, 'c') . "
         GROUP BY c.id, c.codigo, c.nome, c.documento
         HAVING total_preenchido < 8
         ORDER BY CAST(c.codigo AS UNSIGNED) ASC, c.nome ASC
@@ -367,7 +370,7 @@ try {
           AND ca.vencimento <= " . $pdo->quote($limiteAlerta) . "
           AND c.cliente_contabil = 1
           " . clientesFiltroAtivos($pdo, 'c') . "
-          " . empresaFiltro($pdo, 'clientes', 'c') . "
+          " . empresaFiltroClienteDireto($pdo, 'c') . "
         ORDER BY ca.vencimento ASC
     ");
 
