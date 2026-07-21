@@ -167,11 +167,14 @@ $clientesGoias = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 alvarasGoiasPaginaAtual = 1;
                 renderizarAlvarasGoias();
             });
-            paginacaoAlvarasGoias.appendChild(seletorLimite);
-
             if (filtradas.length <= alvarasGoiasPorPagina) {
+
                 return;
+
             }
+
+
+            paginacaoAlvarasGoias.appendChild(seletorLimite);
 
             const nav = document.createElement('nav');
             const lista = document.createElement('ul');

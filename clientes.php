@@ -65,7 +65,7 @@ exigirPermissao('clientes');
                         </button>
                     </div>
 
-                    <div class="col-md-3">
+                    <div class="col-md-3" id="grupoLimiteClientes">
                         <select id="limiteClientes" class="form-select">
                             <option value="15">Mostrar 15</option>
                             <option value="30">Mostrar 30</option>

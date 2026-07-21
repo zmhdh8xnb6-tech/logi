@@ -391,15 +391,17 @@ $abas = [
                                 autocomplete="off"
                                 placeholder="Buscar por tarefa ou observação...">
                         </div>
-                        <div class="col-md-4">
-                            <select name="limite" class="form-select" id="limiteTarefas">
-                                <?php foreach ($limitesPermitidos as $opcaoLimite): ?>
-                                    <option value="<?= (int)$opcaoLimite ?>" <?= $limite === $opcaoLimite ? 'selected' : '' ?>>
-                                        Mostrar <?= (int)$opcaoLimite ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
+                        <?php if ($totalPaginas > 1): ?>
+                            <div class="col-md-4">
+                                <select name="limite" class="form-select" id="limiteTarefas">
+                                    <?php foreach ($limitesPermitidos as $opcaoLimite): ?>
+                                        <option value="<?= (int)$opcaoLimite ?>" <?= $limite === $opcaoLimite ? 'selected' : '' ?>>
+                                            Mostrar <?= (int)$opcaoLimite ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        <?php endif; ?>
                     </form>
 
                     <div class="tarefas-abas">

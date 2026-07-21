@@ -196,11 +196,14 @@ $cadastrosAvulsos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 servicosAvulsosPaginaAtual = 1;
                 renderizarServicosAvulsos();
             });
-            paginacaoServicosAvulsos.appendChild(seletorLimite);
-
             if (filtrados.length <= servicosAvulsosPorPagina) {
+
                 return;
+
             }
+
+
+            paginacaoServicosAvulsos.appendChild(seletorLimite);
 
             const nav = document.createElement('nav');
             const lista = document.createElement('ul');

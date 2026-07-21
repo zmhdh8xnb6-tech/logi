@@ -403,13 +403,15 @@ if ($tabelasDisponiveis) {
                         <button type="submit" class="btn btn-primary">
                             <i class="bi bi-funnel"></i> Filtrar
                         </button>
-                        <select class="form-select" name="por_pagina" onchange="this.form.submit()">
-                            <?php foreach ($opcoesPorPagina as $opcao): ?>
-                                <option value="<?= $opcao ?>" <?= $processosPorPagina === $opcao ? 'selected' : '' ?>>
-                                    Mostrar <?= $opcao ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                        <?php if ($totalPaginasProcessos > 1): ?>
+                            <select class="form-select" name="por_pagina" onchange="this.form.submit()">
+                                <?php foreach ($opcoesPorPagina as $opcao): ?>
+                                    <option value="<?= $opcao ?>" <?= $processosPorPagina === $opcao ? 'selected' : '' ?>>
+                                        Mostrar <?= $opcao ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        <?php endif; ?>
                     </form>
 
                     <div class="legalizacao-abas">

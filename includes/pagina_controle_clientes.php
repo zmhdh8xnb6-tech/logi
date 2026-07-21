@@ -526,11 +526,14 @@ if (!function_exists('controleFormatarPrazo')) {
                 controlePaginaAtual = 1;
                 controleRenderizar();
             });
-            controlePaginacao.appendChild(seletorLimite);
-
             if (filtradas.length <= controleItensPorPagina) {
+
                 return;
+
             }
+
+
+            controlePaginacao.appendChild(seletorLimite);
 
             const nav = document.createElement('nav');
             const lista = document.createElement('ul');

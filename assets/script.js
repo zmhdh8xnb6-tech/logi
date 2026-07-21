@@ -72,7 +72,7 @@ $(document).ready(function () {
             return;
         }
 
-        verificarDocumentoDuplicado(documentoFormatado).done(function (resposta) {
+        verificarDocumentoDuplicado(documentoFormatado).done(function(resposta) {
             if (!resposta.duplicado && documento.length === 14) {
                 consultarCnpjParaPreenchimento(documento);
             }
@@ -245,7 +245,7 @@ $(document).ready(function () {
         this.value = this.value.toUpperCase();
     });
 
-    $('#btnPreencherDadosCnpj').on('click', function () {
+    $('#btnPreencherDadosCnpj').on('click', function() {
         preencherCadastroComCnpj();
     });
 
@@ -276,14 +276,14 @@ $(document).ready(function () {
         $('#btnEditarAlvaras').toggleClass('d-none', this.value !== 'possui');
 
         if (this.value === 'possui') {
-            document.querySelectorAll('.alvara-situacao').forEach(function (campo) {
+            document.querySelectorAll('.alvara-situacao').forEach(function(campo) {
                 campo.required = true;
             });
 
             const modal = new bootstrap.Modal(document.getElementById('modalAlvaras'));
             modal.show();
         } else {
-            document.querySelectorAll('.alvara-situacao').forEach(function (campo) {
+            document.querySelectorAll('.alvara-situacao').forEach(function(campo) {
                 campo.required = false;
             });
 
@@ -292,7 +292,7 @@ $(document).ready(function () {
     });
 
     $('#btnDispensarTodosAlvaras').on('click', function () {
-        document.querySelectorAll('.alvara-situacao').forEach(function (campo) {
+        document.querySelectorAll('.alvara-situacao').forEach(function(campo) {
             campo.value = 'dispensado';
             campo.classList.remove('is-invalid');
             campo.dispatchEvent(new Event('change', { bubbles: true }));
@@ -365,8 +365,8 @@ $(document).ready(function () {
         bootstrap.Modal.getOrCreateInstance(modalEl).show();
     }
 
-    Object.keys(controlesConferencia).forEach(function (campoId) {
-        $('#' + campoId).on('change', function () {
+    Object.keys(controlesConferencia).forEach(function(campoId) {
+        $('#' + campoId).on('change', function() {
             const config = controlesConferencia[campoId];
 
             if (this.value === config.valor) {
@@ -379,7 +379,7 @@ $(document).ready(function () {
         });
     });
 
-    $('#btnConcluirConferenciaCadastro').on('click', function () {
+    $('#btnConcluirConferenciaCadastro').on('click', function() {
         const prefixo = $('#prefixoConferenciaCadastro').val();
         const razao = $('input[name="modal_razao_social_correta"]:checked').val();
         const endereco = $('input[name="modal_endereco_correto"]:checked').val();
@@ -433,7 +433,7 @@ function atualizarCampoVencimentoControle(campoSituacao, darFoco = false) {
 function validarPreenchimentoAlvaras() {
     let valido = true;
 
-    document.querySelectorAll('.alvara-situacao').forEach(function (campoSituacao) {
+    document.querySelectorAll('.alvara-situacao').forEach(function(campoSituacao) {
         const campoVencimento = document.getElementById(campoSituacao.dataset.vencimento);
 
         if (campoSituacao.value === '') {
@@ -458,7 +458,7 @@ function validarPreenchimentoAlvaras() {
 }
 
 function digitoModulo11(numero, pesos) {
-    const soma = numero.split('').reduce(function (total, digito, indice) {
+    const soma = numero.split('').reduce(function(total, digito, indice) {
         return total + Number(digito) * pesos[indice];
     }, 0);
     const resultado = 11 - (soma % 11);
@@ -490,7 +490,7 @@ function validarInscricaoEstadual(valor, uf) {
         if (numero.length !== 9 || !/^(10|11|15|20)/.test(numero)) return false;
 
         const base = numero.slice(0, 8);
-        const soma = base.split('').reduce(function (total, digito, indice) {
+        const soma = base.split('').reduce(function(total, digito, indice) {
             return total + Number(digito) * [9, 8, 7, 6, 5, 4, 3, 2][indice];
         }, 0);
         const resto = soma % 11;
@@ -557,6 +557,7 @@ function carregarClientes(page = 1) {
             `);
 
             $('#paginacao').html('');
+            $('#grupoLimiteClientes').addClass('d-none');
             return;
         }
 
@@ -595,8 +596,11 @@ function renderizarPaginacao(total, pagina, limite) {
 
     if (totalPaginas <= 1) {
         $('#paginacao').html('');
+        $('#grupoLimiteClientes').addClass('d-none');
         return;
     }
+
+    $('#grupoLimiteClientes').removeClass('d-none');
 
     html += `<nav><ul class="pagination justify-content-center mt-3">`;
 
@@ -620,7 +624,7 @@ function renderizarPaginacao(total, pagina, limite) {
         }
     }
 
-    paginasVisiveis.forEach(function (i) {
+    paginasVisiveis.forEach(function(i) {
         if (i === '...') {
             html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
             return;
@@ -805,7 +809,7 @@ function validarFormulario() {
         valido = false;
     }
 
-    document.querySelectorAll('.procuracao-obrigatoria').forEach(function (campo) {
+    document.querySelectorAll('.procuracao-obrigatoria').forEach(function(campo) {
         if (!campo.disabled && campo.value === '') {
             campo.classList.add('is-invalid');
 
@@ -817,7 +821,7 @@ function validarFormulario() {
         }
     });
 
-    document.querySelectorAll('.controle-interno-obrigatorio').forEach(function (campo) {
+    document.querySelectorAll('.controle-interno-obrigatorio').forEach(function(campo) {
         if (!campo.disabled && campo.value === '') {
             campo.classList.add('is-invalid');
 
@@ -829,7 +833,7 @@ function validarFormulario() {
         }
     });
 
-    document.querySelectorAll('.controle-com-vencimento').forEach(function (campoSituacao) {
+    document.querySelectorAll('.controle-com-vencimento').forEach(function(campoSituacao) {
         const campoVencimento = document.getElementById(campoSituacao.dataset.vencimento);
 
         if (!campoSituacao.disabled && campoSituacao.value === 'possui' && campoVencimento.value === '') {
@@ -879,17 +883,17 @@ function atualizarVinculoServicos() {
     const campoServicoParcelamento = document.getElementById('servico_parcelamento');
     const campoServicoCertificado = document.getElementById('servico_certificado');
 
-    document.querySelectorAll('.secao-servicos-avulsos').forEach(function (bloco) {
+    document.querySelectorAll('.secao-servicos-avulsos').forEach(function(bloco) {
         bloco.classList.toggle('d-none', clienteContabil);
     });
 
     const servicoParcelamento = campoServicoParcelamento.checked;
     const servicoCertificado = campoServicoCertificado.checked;
 
-    document.querySelectorAll('.secao-cliente-contabil, .campo-cliente-contabil').forEach(function (bloco) {
+    document.querySelectorAll('.secao-cliente-contabil, .campo-cliente-contabil').forEach(function(bloco) {
         bloco.classList.toggle('d-none', !clienteContabil);
 
-        bloco.querySelectorAll('input, select, textarea').forEach(function (campo) {
+        bloco.querySelectorAll('input, select, textarea').forEach(function(campo) {
             campo.disabled = !clienteContabil;
             campo.classList.remove('is-invalid');
         });
@@ -901,11 +905,11 @@ function atualizarVinculoServicos() {
         campoParcelamento.value = servicoParcelamento ? 'possui' : 'nao_possui';
     }
 
-    document.querySelectorAll('.campo-servico-certificado').forEach(function (bloco) {
+    document.querySelectorAll('.campo-servico-certificado').forEach(function(bloco) {
         const exibirVencimentoCertificado = clienteContabil || servicoCertificado;
         bloco.classList.toggle('d-none', !exibirVencimentoCertificado);
 
-        bloco.querySelectorAll('input, select, textarea').forEach(function (campo) {
+        bloco.querySelectorAll('input, select, textarea').forEach(function(campo) {
             campo.disabled = !exibirVencimentoCertificado;
 
             if (!exibirVencimentoCertificado) {
@@ -915,7 +919,7 @@ function atualizarVinculoServicos() {
     });
 
     if (clienteContabil) {
-        document.querySelectorAll('.controle-com-vencimento').forEach(function (campo) {
+        document.querySelectorAll('.controle-com-vencimento').forEach(function(campo) {
             atualizarCampoVencimentoControle(campo);
         });
     }
@@ -937,7 +941,7 @@ function verificarDocumentoDuplicado(documentoFormatado) {
     return $.getJSON('api.php?action=check_documento', {
         documento: documentoFormatado,
         id: id
-    }).done(function (resposta) {
+    }).done(function(resposta) {
         if (resposta.duplicado) {
             documentoDuplicado = true;
             $('#documento').addClass('is-invalid');
@@ -955,7 +959,7 @@ function verificarDocumentoDuplicado(documentoFormatado) {
             documentoDuplicado = false;
             $('#documento').removeClass('is-invalid');
         }
-    }).fail(function () {
+    }).fail(function() {
         documentoDuplicado = false;
     });
 }
@@ -997,7 +1001,7 @@ function consultarCnpjParaPreenchimento(cnpj) {
     $('#documento').removeClass('is-invalid');
 
     $.getJSON('api.php?action=consultar_cnpj', { cnpj: cnpj })
-        .done(function (resposta) {
+        .done(function(resposta) {
             if (!resposta.ok || !resposta.dados) {
                 return;
             }

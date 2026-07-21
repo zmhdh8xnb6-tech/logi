@@ -874,11 +874,14 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                 alvarasDfPaginaAtual = 1;
                 renderizarAlvarasDf();
             });
-            paginacaoAlvarasDf.appendChild(seletorLimite);
-
             if (filtradas.length <= alvarasDfPorPagina) {
+
                 return;
+
             }
+
+
+            paginacaoAlvarasDf.appendChild(seletorLimite);
 
             const nav = document.createElement('nav');
             const lista = document.createElement('ul');

@@ -59,7 +59,7 @@ if ($situacaoDisponivel) {
                             placeholder="Buscar por código, nome, CPF/CNPJ ou e-mail...">
                     </div>
 
-                    <div class="col-md-3 ms-md-auto">
+                    <div class="col-md-3 ms-md-auto" id="grupoLimiteClientesDevolvidos">
                         <select id="limiteClientesDevolvidos" class="form-select">
                             <option value="15">Mostrar 15</option>
                             <option value="30">Mostrar 30</option>
@@ -261,6 +261,7 @@ if ($situacaoDisponivel) {
 
             clientesDevolvidosVazio.classList.toggle('d-none', filtrados.length > 0);
             paginacaoClientesDevolvidos.innerHTML = '';
+            document.getElementById('grupoLimiteClientesDevolvidos')?.classList.toggle('d-none', filtrados.length <= clientesDevolvidosPorPagina);
 
             if (filtrados.length <= clientesDevolvidosPorPagina) {
                 return;

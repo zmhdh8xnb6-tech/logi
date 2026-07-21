@@ -1113,11 +1113,14 @@ function renderizarModalDetalhesParcelamento(): void
                     parcelamentosPaginaAtual = 1;
                     renderizarParcelamentosPaginados();
                 });
-                paginacaoParcelamentos.appendChild(seletorLimite);
-
                 if (filtradas.length <= parcelamentosPorPagina) {
+
                     return;
+
                 }
+
+
+                paginacaoParcelamentos.appendChild(seletorLimite);
 
                 const nav = document.createElement('nav');
                 const lista = document.createElement('ul');

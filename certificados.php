@@ -313,11 +313,14 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 certificadosPaginaAtual = 1;
                 renderizarCertificados();
             });
-            paginacaoCertificados.appendChild(seletorLimite);
-
             if (filtradas.length <= certificadosPorPagina) {
+
                 return;
+
             }
+
+
+            paginacaoCertificados.appendChild(seletorLimite);
 
             const nav = document.createElement('nav');
             const lista = document.createElement('ul');
