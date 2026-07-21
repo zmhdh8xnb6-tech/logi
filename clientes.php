@@ -26,6 +26,9 @@ exigirPermissao('clientes');
                 </div>
 
                 <div class="d-flex gap-2">
+                    <a href="clientes_devolvidos.php" class="btn btn-outline-warning">
+                        <i class="bi bi-archive"></i> Devolvidos
+                    </a>
                     <a href="servicos_avulsos.php" class="btn btn-outline-secondary">
                         <i class="bi bi-briefcase"></i> Serviços Avulsos
                     </a>

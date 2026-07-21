@@ -83,16 +83,20 @@ if ($tabelaDisponivel) {
     $usuariosFiltro = $pdo->query("
         SELECT DISTINCT usuario_id, usuario_nome
         FROM auditoria_logs
+        WHERE 1=1
+        " . empresaFiltro($pdo, 'auditoria_logs') . "
         ORDER BY usuario_nome
     ")->fetchAll(PDO::FETCH_ASSOC);
 
     $modulosFiltro = $pdo->query("
         SELECT DISTINCT modulo
         FROM auditoria_logs
+        WHERE 1=1
+        " . empresaFiltro($pdo, 'auditoria_logs') . "
         ORDER BY modulo
     ")->fetchAll(PDO::FETCH_COLUMN);
 
-    $condicoes = ['criado_em >= ?', 'criado_em < DATE_ADD(?, INTERVAL 1 DAY)'];
+    $condicoes = ['criado_em >= ?', 'criado_em < DATE_ADD(?, INTERVAL 1 DAY)', '1=1' . empresaFiltro($pdo, 'auditoria_logs')];
     $parametros = [$inicio, $fim];
 
     if ($usuario !== '') {
@@ -136,9 +140,11 @@ if ($tabelaDisponivel) {
 
     $totalHoje = (int)$pdo->query("
         SELECT COUNT(*) FROM auditoria_logs WHERE criado_em >= CURDATE()
+        " . empresaFiltro($pdo, 'auditoria_logs') . "
     ")->fetchColumn();
     $totalSeteDias = (int)$pdo->query("
         SELECT COUNT(*) FROM auditoria_logs WHERE criado_em >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        " . empresaFiltro($pdo, 'auditoria_logs') . "
     ")->fetchColumn();
 } else {
     $totalPaginas = 1;

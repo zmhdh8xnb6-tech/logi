@@ -90,6 +90,7 @@ $stmt = $pdo->query("
     SELECT {$colunas}
     FROM clientes
     WHERE cliente_contabil = 1
+    " . clientesFiltroAtivos($pdo) . "
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 
@@ -454,6 +455,8 @@ if (!function_exists('controleFormatarPrazo')) {
         const modalControleCliente = document.getElementById('modalControleCliente');
         let controleLinhaAtual = null;
         let controlePaginaAtual = 1;
+        let controleSalvando = false;
+        let controleVencimentoInicial = '';
 
         function controleClasseStatus(status) {
             if (['sim', 'possui', 'cadastrado'].includes(status)) {
@@ -638,9 +641,14 @@ if (!function_exists('controleFormatarPrazo')) {
                 modalControleCliente.textContent = (controleLinhaAtual.dataset.codigo || '') + ' - ' + (controleLinhaAtual.dataset.nome || '');
 
                 if (controlePossuiVencimento && controleVencimento) {
-                    controleVencimento.value = controleLinhaAtual.dataset.vencimento || '';
+                    controleVencimentoInicial = controleLinhaAtual.dataset.vencimento || '';
+                    controleVencimento.value = controleVencimentoInicial;
                     controleVencimento.required = controleStatus.value === 'possui';
                     controleVencimento.disabled = controleStatus.value !== 'possui';
+
+                    if (window.sincronizarCalendarioCampo) {
+                        window.sincronizarCalendarioCampo(controleVencimento);
+                    }
                 }
 
                 if (controlePossuiConferencia) {
@@ -662,11 +670,20 @@ if (!function_exists('controleFormatarPrazo')) {
                 } else {
                     controleVencimento.focus();
                 }
+
+                if (window.sincronizarCalendarioCampo) {
+                    window.sincronizarCalendarioCampo(controleVencimento);
+                }
             });
         }
 
         formControle.addEventListener('submit', async (event) => {
             event.preventDefault();
+
+            if (controleSalvando) {
+                return;
+            }
+
             alertaControle.classList.add('d-none');
             alertaControle.textContent = '';
 
@@ -676,6 +693,7 @@ if (!function_exists('controleFormatarPrazo')) {
             }
 
             const dados = new FormData(formControle);
+            controleSalvando = true;
 
             try {
                 const resposta = await fetch('api_controles.php', {
@@ -694,6 +712,7 @@ if (!function_exists('controleFormatarPrazo')) {
 
                 const status = controleStatus.value;
                 const vencimento = controlePossuiVencimento && controleVencimento ? controleVencimento.value : '';
+                controleVencimentoInicial = vencimento;
 
                 controleLinhaAtual.dataset.status = status;
                 controleLinhaAtual.dataset.vencimento = vencimento;
@@ -720,8 +739,33 @@ if (!function_exists('controleFormatarPrazo')) {
             } catch (erro) {
                 alertaControle.textContent = 'Nao foi possivel comunicar com o servidor.';
                 alertaControle.classList.remove('d-none');
+            } finally {
+                controleSalvando = false;
             }
         });
+
+        modalControleEl.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') {
+                return;
+            }
+
+            event.preventDefault();
+            formControle.requestSubmit();
+        });
+
+        if (controlePossuiVencimento && controleVencimento) {
+            controleVencimento.addEventListener('change', () => {
+                if (!modalControleEl.classList.contains('show')) {
+                    return;
+                }
+
+                if (controleStatus.value !== 'possui' || controleVencimento.value === controleVencimentoInicial) {
+                    return;
+                }
+
+                formControle.requestSubmit();
+            });
+        }
 
         controleRenderizar();
     </script>

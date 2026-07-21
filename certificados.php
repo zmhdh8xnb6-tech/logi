@@ -6,8 +6,9 @@ exigirPermissao('certificados');
 $stmt = $pdo->query("
     SELECT *
     FROM clientes
-    WHERE servico_certificado = 1
-       OR cliente_contabil = 1
+    WHERE (servico_certificado = 1
+       OR cliente_contabil = 1)
+    " . clientesFiltroAtivos($pdo) . "
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 
@@ -235,6 +236,11 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
         const linhasCertificados = Array.from(document.querySelectorAll('.linha-cliente'));
         const paginacaoCertificados = document.getElementById('paginacaoCertificados');
         const certificadosVazio = document.getElementById('certificadosVazio');
+        const modalEditarCertificado = document.getElementById('modalEditarCertificado');
+        const campoModalCertificadoVencimento = document.getElementById('modalCertificadoVencimento');
+        const botaoSalvarModalCertificado = document.getElementById('btnSalvarModalCertificado');
+        let salvandoCertificado = false;
+        let vencimentoCertificadoInicial = '';
 
         function certificadosFiltrados() {
             const valor = buscaCertificado.value.trim().toLowerCase();
@@ -406,19 +412,30 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                 document.getElementById('modalCertificadoId').value = this.dataset.id;
                 document.getElementById('modalCertificadoCliente').value = this.dataset.cliente;
-                document.getElementById('modalCertificadoVencimento').value = this.dataset.vencimento || '';
+                vencimentoCertificadoInicial = this.dataset.vencimento || '';
+                campoModalCertificadoVencimento.value = vencimentoCertificadoInicial;
 
-                const modal = new bootstrap.Modal(document.getElementById('modalEditarCertificado'));
+                if (window.sincronizarCalendarioCampo) {
+                    window.sincronizarCalendarioCampo(campoModalCertificadoVencimento);
+                }
+
+                const modal = new bootstrap.Modal(modalEditarCertificado);
                 modal.show();
             });
         });
 
-        document.getElementById('btnSalvarModalCertificado').addEventListener('click', function() {
-            const id = document.getElementById('modalCertificadoId').value;
-            const vencimento = document.getElementById('modalCertificadoVencimento').value;
+        function salvarModalCertificado() {
+            if (salvandoCertificado) {
+                return;
+            }
 
-            this.disabled = true;
-            this.innerHTML = 'Salvando...';
+            const id = document.getElementById('modalCertificadoId').value;
+            const vencimento = campoModalCertificadoVencimento.value;
+            const botao = botaoSalvarModalCertificado;
+
+            salvandoCertificado = true;
+            botao.disabled = true;
+            botao.innerHTML = 'Salvando...';
 
             fetch('api_certificados.php', {
                     method: 'POST',
@@ -447,21 +464,44 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         vencimentoTexto.textContent = formatarDataCertificado(vencimento);
                         dias.innerHTML = textoDiasCertificado(vencimento);
                         botaoCertificadoAtual.dataset.vencimento = vencimento;
+                        vencimentoCertificadoInicial = vencimento;
 
-                        bootstrap.Modal.getInstance(document.getElementById('modalEditarCertificado')).hide();
+                        bootstrap.Modal.getInstance(modalEditarCertificado).hide();
                     } else {
-                        this.innerHTML = 'Erro';
+                        botao.innerHTML = 'Erro';
                     }
                 })
                 .catch(() => {
-                    this.innerHTML = 'Erro';
+                    botao.innerHTML = 'Erro';
                 })
                 .finally(() => {
                     setTimeout(() => {
-                        this.disabled = false;
-                        this.innerHTML = 'Salvar';
+                        salvandoCertificado = false;
+                        botao.disabled = false;
+                        botao.innerHTML = 'Salvar';
                     }, 600);
                 });
+        }
+
+        botaoSalvarModalCertificado.addEventListener('click', salvarModalCertificado);
+
+        modalEditarCertificado.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                salvarModalCertificado();
+            }
+        });
+
+        campoModalCertificadoVencimento.addEventListener('change', function() {
+            if (!modalEditarCertificado.classList.contains('show')) {
+                return;
+            }
+
+            if (this.value === vencimentoCertificadoInicial) {
+                return;
+            }
+
+            salvarModalCertificado();
         });
     </script>
 

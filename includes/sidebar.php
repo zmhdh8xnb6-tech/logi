@@ -12,6 +12,30 @@
 
     </div>
 
+    <?php
+    $empresasSidebar = isset($pdo) && $pdo instanceof PDO ? empresasDisponiveis($pdo) : [];
+    $empresaAtivaSidebar = isset($pdo) && $pdo instanceof PDO ? empresaAtivaId($pdo) : null;
+    ?>
+
+    <?php if (count($empresasSidebar) > 1): ?>
+        <form class="sidebar-empresa" method="post" action="trocar_empresa.php" id="formTrocarEmpresa">
+            <input type="hidden" name="retorno" value="<?= htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'home.php') ?>">
+            <label for="empresaAtivaSidebar">
+                <i class="bi bi-building-check"></i>
+                <span>Empresa</span>
+            </label>
+            <select name="empresa_id" id="empresaAtivaSidebar" onchange="window.location.href = 'trocar_empresa.php?empresa_id=' + encodeURIComponent(this.value) + '&retorno=' + encodeURIComponent(window.location.pathname + window.location.search)">
+                <?php foreach ($empresasSidebar as $empresaSidebar): ?>
+                    <option
+                        value="<?= (int)$empresaSidebar['id'] ?>"
+                        <?= (int)$empresaSidebar['id'] === (int)$empresaAtivaSidebar ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($empresaSidebar['nome']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </form>
+    <?php endif; ?>
+
     <nav class="sidebar-menu">
         <?php if (usuarioPode('pendencias')): ?>
             <?php $urlBaseNotificacoes = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\'); ?>
@@ -112,6 +136,11 @@
             <a href="clientes.php" class="sidebar-link" data-label="Clientes">
                 <i class="bi bi-people"></i>
                 <span>Clientes</span>
+            </a>
+
+            <a href="clientes_devolvidos.php" class="sidebar-link" data-label="Clientes Devolvidos">
+                <i class="bi bi-archive"></i>
+                <span>Clientes Devolvidos</span>
             </a>
 
             <a href="servicos_avulsos.php" class="sidebar-link" data-label="Serviços Avulsos">

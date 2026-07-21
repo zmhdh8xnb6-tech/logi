@@ -27,6 +27,64 @@ function usuariosTenantColunasDisponiveis(PDO $pdo): bool
 }
 
 $tenantDisponivel = usuariosTenantColunasDisponiveis($pdoUsuarios);
+$empresasSistema = [];
+$usuarioEmpresasPorUsuario = [];
+
+if (logiTabelaExiste($pdo, 'empresas')) {
+    try {
+        $empresasSistema = $pdo->query("
+            SELECT id, nome
+            FROM empresas
+            WHERE COALESCE(ativa, 1) = 1
+            ORDER BY id ASC
+        ")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        $empresasSistema = [];
+    }
+}
+
+function usuariosEmpresasTabelaDisponivel(PDO $pdo): bool
+{
+    return logiTabelaExiste($pdo, 'usuario_empresas');
+}
+
+function usuarioEmpresaIdsSelecionados(array $empresasSistema, array $informadas, string $tipo): array
+{
+    $idsValidos = array_map(static fn(array $empresa): int => (int)$empresa['id'], $empresasSistema);
+
+    if ($tipo === 'admin') {
+        return $idsValidos;
+    }
+
+    $selecionadas = array_values(array_intersect(
+        array_map('intval', $informadas),
+        $idsValidos
+    ));
+
+    return array_values(array_unique($selecionadas));
+}
+
+function salvarUsuarioEmpresas(PDO $pdo, int $usuarioId, array $empresaIds): void
+{
+    if ($usuarioId <= 0 || !usuariosEmpresasTabelaDisponivel($pdo)) {
+        return;
+    }
+
+    $pdo->prepare("DELETE FROM usuario_empresas WHERE usuario_id = ?")->execute([$usuarioId]);
+
+    if ($empresaIds === []) {
+        return;
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT IGNORE INTO usuario_empresas (usuario_id, empresa_id)
+        VALUES (?, ?)
+    ");
+
+    foreach ($empresaIds as $empresaId) {
+        $stmt->execute([$usuarioId, (int)$empresaId]);
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
@@ -48,6 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $senha = $_POST['senha'] ?? '';
     $permissoes = $_POST['permissoes'] ?? [];
     $permissoes = array_values(array_intersect($permissoes, array_keys($modulos)));
+    $empresasPermitidas = usuarioEmpresaIdsSelecionados($empresasSistema, $_POST['empresas'] ?? [], $tipo);
     $tenantDb = $tenantDisponivel ? trim($_POST['tenant_db'] ?? '') : '';
     $tenantHost = $tenantDisponivel ? trim($_POST['tenant_host'] ?? '') : '';
     $tenantUser = $tenantDisponivel ? trim($_POST['tenant_user'] ?? '') : '';
@@ -55,6 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($tipo === 'admin') {
         $permissoes = array_keys($modulos);
+        $empresasPermitidas = usuarioEmpresaIdsSelecionados($empresasSistema, [], $tipo);
     }
 
     $permissoesJson = json_encode($permissoes, JSON_UNESCAPED_UNICODE);
@@ -91,6 +151,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($podeExcluir) {
                     try {
+                        if (usuariosEmpresasTabelaDisponivel($pdo)) {
+                            $pdo->prepare("DELETE FROM usuario_empresas WHERE usuario_id = ?")->execute([$id]);
+                        }
+
                         $stmtExcluir = $pdoUsuarios->prepare("DELETE FROM usuarios WHERE id = ?");
                         $stmtExcluir->execute([$id]);
                         registrarAuditoria(
@@ -113,6 +177,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($nome === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $mensagem = 'Informe nome e e-mail válido.';
+        $tipoMensagem = 'danger';
+    } elseif ($empresasSistema !== [] && usuariosEmpresasTabelaDisponivel($pdo) && $empresasPermitidas === []) {
+        $mensagem = 'Selecione pelo menos uma empresa para o usuário.';
         $tipoMensagem = 'danger';
     } elseif ($acao === 'criar') {
         if (strlen($senha) < 6) {
@@ -168,6 +235,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute($parametrosCriar);
 
                 $novoUsuarioId = (int)$pdoUsuarios->lastInsertId();
+                salvarUsuarioEmpresas($pdo, $novoUsuarioId, $empresasPermitidas);
                 $stmtNovoUsuario = $pdoUsuarios->prepare("SELECT * FROM usuarios WHERE id = ?");
                 $stmtNovoUsuario->execute([$novoUsuarioId]);
                 registrarAuditoria(
@@ -217,6 +285,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $parametrosEditar[] = $id;
                 $stmt->execute($parametrosEditar);
+                salvarUsuarioEmpresas($pdo, $id, $empresasPermitidas);
                 $mensagem = 'Usuário atualizado com sucesso.';
             }
         } else {
@@ -243,6 +312,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $parametrosEditar[] = $id;
             $stmt->execute($parametrosEditar);
+            salvarUsuarioEmpresas($pdo, $id, $empresasPermitidas);
             $mensagem = 'Usuário atualizado com sucesso.';
         }
 
@@ -272,6 +342,21 @@ $stmt = $pdoUsuarios->query("
     ORDER BY nome ASC
 ");
 $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+if ($usuarios && usuariosEmpresasTabelaDisponivel($pdo)) {
+    $idsUsuarios = array_map(static fn(array $usuario): int => (int)$usuario['id'], $usuarios);
+    $marcadoresUsuarios = implode(',', array_fill(0, count($idsUsuarios), '?'));
+    $stmtUsuarioEmpresas = $pdo->prepare("
+        SELECT usuario_id, empresa_id
+        FROM usuario_empresas
+        WHERE usuario_id IN ({$marcadoresUsuarios})
+    ");
+    $stmtUsuarioEmpresas->execute($idsUsuarios);
+
+    foreach ($stmtUsuarioEmpresas->fetchAll(PDO::FETCH_ASSOC) as $usuarioEmpresa) {
+        $usuarioEmpresasPorUsuario[(int)$usuarioEmpresa['usuario_id']][] = (int)$usuarioEmpresa['empresa_id'];
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -392,6 +477,35 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         </div>
                     <?php endif; ?>
 
+                    <?php if ($empresasSistema !== [] && usuariosEmpresasTabelaDisponivel($pdo)): ?>
+                        <div class="border rounded p-3 mb-3">
+                            <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                                <h6 class="mb-0">Empresas permitidas</h6>
+                                <small class="text-muted">O usuário só verá as empresas marcadas aqui.</small>
+                            </div>
+                            <div class="row">
+                                <?php foreach ($empresasSistema as $empresa): ?>
+                                    <div class="col-md-4 mb-2">
+                                        <div class="form-check form-switch">
+                                            <input
+                                                class="form-check-input empresa-switch"
+                                                type="checkbox"
+                                                role="switch"
+                                                name="empresas[]"
+                                                value="<?= (int)$empresa['id'] ?>"
+                                                id="novoEmpresa<?= (int)$empresa['id'] ?>"
+                                                <?= (int)$empresa['id'] === 1 ? 'checked' : '' ?>>
+                                            <label class="form-check-label" for="novoEmpresa<?= (int)$empresa['id'] ?>">
+                                                <?= htmlspecialchars($empresa['nome']) ?>
+                                            </label>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <div class="invalid-feedback d-block empresa-feedback d-none">Selecione pelo menos uma empresa.</div>
+                        </div>
+                    <?php endif; ?>
+
                     <div class="d-flex gap-2 mb-3">
                         <button type="button" class="btn btn-sm btn-outline-primary btn-marcar-todas" data-target="#permissoesNovo">
                             Marcar todas
@@ -431,6 +545,7 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <th>E-mail</th>
                                 <th>Tipo</th>
                                 <th>Base</th>
+                                <th>Empresas</th>
                                 <th>Status</th>
                                 <th class="text-end">Ações</th>
                             </tr>
@@ -451,6 +566,29 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                             </span>
                                         <?php else: ?>
                                             <span class="badge bg-secondary">Principal</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php
+                                        $empresasUsuario = $usuario['tipo'] === 'admin'
+                                            ? array_map(static fn(array $empresa): int => (int)$empresa['id'], $empresasSistema)
+                                            : ($usuarioEmpresasPorUsuario[(int)$usuario['id']] ?? []);
+                                        $nomesEmpresasUsuario = [];
+
+                                        foreach ($empresasSistema as $empresa) {
+                                            if (in_array((int)$empresa['id'], $empresasUsuario, true)) {
+                                                $nomesEmpresasUsuario[] = $empresa['nome'];
+                                            }
+                                        }
+                                        ?>
+                                        <?php if ($nomesEmpresasUsuario === []): ?>
+                                            <span class="badge bg-danger">Nenhuma</span>
+                                        <?php else: ?>
+                                            <?php foreach ($nomesEmpresasUsuario as $nomeEmpresaUsuario): ?>
+                                                <span class="badge bg-primary-subtle text-dark border me-1">
+                                                    <?= htmlspecialchars($nomeEmpresaUsuario) ?>
+                                                </span>
+                                            <?php endforeach; ?>
                                         <?php endif; ?>
                                     </td>
                                     <td>
@@ -574,6 +712,40 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                                     <input type="password" name="tenant_pass" class="form-control" value="<?= htmlspecialchars($usuario['tenant_pass'] ?? '') ?>" autocomplete="new-password">
                                                                 </div>
                                                             </div>
+                                                        </div>
+                                                    <?php endif; ?>
+
+                                                    <?php if ($empresasSistema !== [] && usuariosEmpresasTabelaDisponivel($pdo)): ?>
+                                                        <?php
+                                                        $empresasMarcadas = $usuario['tipo'] === 'admin'
+                                                            ? array_map(static fn(array $empresa): int => (int)$empresa['id'], $empresasSistema)
+                                                            : ($usuarioEmpresasPorUsuario[(int)$usuario['id']] ?? []);
+                                                        ?>
+                                                        <div class="border rounded p-3 mb-3">
+                                                            <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                                                                <h6 class="mb-0">Empresas permitidas</h6>
+                                                                <small class="text-muted">O usuário só verá as empresas marcadas aqui.</small>
+                                                            </div>
+                                                            <div class="row">
+                                                                <?php foreach ($empresasSistema as $empresa): ?>
+                                                                    <div class="col-md-6 mb-2">
+                                                                        <div class="form-check form-switch">
+                                                                            <input
+                                                                                class="form-check-input empresa-switch"
+                                                                                type="checkbox"
+                                                                                role="switch"
+                                                                                name="empresas[]"
+                                                                                value="<?= (int)$empresa['id'] ?>"
+                                                                                id="empresaUsuario<?= (int)$usuario['id'] ?>_<?= (int)$empresa['id'] ?>"
+                                                                                <?= in_array((int)$empresa['id'], $empresasMarcadas, true) ? 'checked' : '' ?>>
+                                                                            <label class="form-check-label" for="empresaUsuario<?= (int)$usuario['id'] ?>_<?= (int)$empresa['id'] ?>">
+                                                                                <?= htmlspecialchars($empresa['nome']) ?>
+                                                                            </label>
+                                                                        </div>
+                                                                    </div>
+                                                                <?php endforeach; ?>
+                                                            </div>
+                                                            <div class="invalid-feedback d-block empresa-feedback d-none">Selecione pelo menos uma empresa.</div>
                                                         </div>
                                                     <?php endif; ?>
 
@@ -733,12 +905,19 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 const nome = formulario.querySelector('[name="nome"]');
                 const email = formulario.querySelector('[name="email"]');
                 const senha = formulario.querySelector('[name="senha"]');
+                const tipoUsuario = formulario.querySelector('[name="tipo"]')?.value || 'usuario';
+                const empresas = Array.from(formulario.querySelectorAll('input[name="empresas[]"]'));
+                const feedbackEmpresas = formulario.querySelector('.empresa-feedback');
 
                 [nome, email, senha].forEach(function(campo) {
                     if (campo) {
                         limparCampoInvalido(campo);
                     }
                 });
+
+                if (feedbackEmpresas) {
+                    feedbackEmpresas.classList.add('d-none');
+                }
 
                 if (nome && nome.value.trim() === '') {
                     marcarCampoInvalido(nome);
@@ -763,6 +942,16 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     }
                 }
 
+                if (tipoUsuario !== 'admin' && empresas.length > 0 && !empresas.some(function(campo) {
+                        return campo.checked;
+                    })) {
+                    if (feedbackEmpresas) {
+                        feedbackEmpresas.classList.remove('d-none');
+                    }
+                    valido = false;
+                    primeiroInvalido = primeiroInvalido || empresas[0];
+                }
+
                 if (!valido) {
                     e.preventDefault();
                     primeiroInvalido?.focus();
@@ -773,10 +962,12 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
         document.querySelectorAll('.usuario-form input, .usuario-form select').forEach(function(campo) {
             campo.addEventListener('input', function() {
                 limparCampoInvalido(campo);
+                campo.closest('form')?.querySelector('.empresa-feedback')?.classList.add('d-none');
             });
 
             campo.addEventListener('change', function() {
                 limparCampoInvalido(campo);
+                campo.closest('form')?.querySelector('.empresa-feedback')?.classList.add('d-none');
             });
         });
 

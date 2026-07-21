@@ -51,6 +51,50 @@
     transition-delay: 0s;
 }
 
+.sidebar-empresa {
+    margin: 0 0 16px;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .06);
+}
+
+.sidebar-empresa label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 7px;
+    color: #cbd5e1;
+    font-size: .78rem;
+    font-weight: 700;
+}
+
+.sidebar-empresa select {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: 7px;
+    padding: 7px 9px;
+    background: #fff;
+    color: #172033;
+    font-size: .82rem;
+    font-weight: 700;
+}
+
+.app-sidebar.collapsed .sidebar-empresa {
+    padding: 9px 6px;
+}
+
+.app-sidebar.collapsed .sidebar-empresa label span,
+.app-sidebar.collapsed .sidebar-empresa select {
+    display: none;
+}
+
+.app-sidebar.collapsed .sidebar-empresa label {
+    justify-content: center;
+    margin-bottom: 0;
+}
+
 .app-sidebar.collapsed .sidebar-header {
     justify-content: center;
 }
@@ -70,7 +114,7 @@
     transition-delay: 0s;
 }
 
-.app-sidebar.collapsed~.app-main {
+.app-sidebar.collapsed ~ .app-main {
     margin-left: 82px;
     width: calc(100% - 82px);
 }
@@ -100,7 +144,7 @@
     cursor: pointer;
 }
 
-.sidebar-notification-link.has-pending>i {
+.sidebar-notification-link.has-pending > i {
     color: #fbbf24;
 }
 
@@ -192,7 +236,7 @@
     gap: 12px;
 }
 
-.notification-toast>i {
+.notification-toast > i {
     color: #d97706;
     font-size: 1.35rem;
 }
@@ -208,13 +252,13 @@
     font-size: .84rem;
 }
 
-.notification-toast>a {
+.notification-toast > a {
     color: #166534;
     font-weight: 700;
     text-decoration: none;
 }
 
-.notification-toast>button {
+.notification-toast > button {
     position: absolute;
     top: 8px;
     right: 8px;
@@ -454,7 +498,7 @@
         width: auto;
     }
 
-    .app-sidebar.collapsed~.app-main {
+    .app-sidebar.collapsed ~ .app-main {
         margin-left: 0;
         width: 100%;
     }

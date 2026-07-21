@@ -82,6 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 atualizado_em = NOW()
                 {$concluidoEmSql}
             WHERE id = ?
+            " . empresaFiltro($pdo, 'legalizacao_processos') . "
         ");
         $stmt->execute([
             $status,
@@ -110,7 +111,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$processoId]);
             }
 
-            $stmt = $pdo->prepare("DELETE FROM legalizacao_processos WHERE id = ?");
+            $stmt = $pdo->prepare("
+                DELETE FROM legalizacao_processos
+                WHERE id = ?
+                " . empresaFiltro($pdo, 'legalizacao_processos') . "
+            ");
             $stmt->execute([$processoId]);
 
             $pdo->commit();
@@ -212,6 +217,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     concluido_em = ?,
                     atualizado_em = NOW()
                 WHERE id = ?
+                " . empresaFiltro($pdo, 'legalizacao_processos') . "
             ");
             $stmt->execute([
                 (int)$novaEtapa['ordem'],

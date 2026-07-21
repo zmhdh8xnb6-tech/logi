@@ -323,6 +323,9 @@ function legalizacaoListarClientes(PDO $pdo): array
         $stmt = $pdo->query("
             SELECT id, codigo, nome, documento, uf
             FROM clientes
+            WHERE 1 = 1
+            " . clientesFiltroAtivos($pdo) . "
+            " . empresaFiltro($pdo, 'clientes') . "
             ORDER BY CAST(codigo AS UNSIGNED), nome
         ");
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -352,6 +355,7 @@ function legalizacaoBuscarCliente(PDO $pdo, int $clienteId): ?array
         SELECT id, codigo, nome, documento, uf
         FROM clientes
         WHERE id = ?
+        " . empresaFiltro($pdo, 'clientes') . "
     ");
     $stmt->execute([$clienteId]);
     $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -365,6 +369,7 @@ function legalizacaoBuscarProcesso(PDO $pdo, int $processoId): ?array
         FROM legalizacao_processos p
         LEFT JOIN clientes c ON c.id = p.cliente_id
         WHERE p.id = ?
+        " . empresaFiltro($pdo, 'clientes', 'c') . "
     ");
     $stmt->execute([$processoId]);
     $processo = $stmt->fetch(PDO::FETCH_ASSOC);

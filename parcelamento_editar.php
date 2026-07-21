@@ -36,7 +36,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $urlRetorno = urlOrgaoParcelamento($parcelamento['orgao']);
 
     if ($acao === 'excluir') {
-        $stmt = $pdo->prepare("DELETE FROM parcelamentos WHERE id = ?");
+        $stmt = $pdo->prepare("
+            DELETE FROM parcelamentos
+            WHERE id = ?
+            " . empresaFiltro($pdo, 'parcelamentos') . "
+        ");
         $stmt->execute([$id]);
 
         registrarAuditoria(
@@ -61,6 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             SET cancelado_em = NOW(),
                 parcelas_emitidas = ?
             WHERE id = ?
+            " . empresaFiltro($pdo, 'parcelamentos') . "
         ");
         $stmt->execute([$parcelasNoCancelamento, $id]);
 
@@ -91,7 +96,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'parcelas_emitidas' => (int)($_POST['parcelas_emitidas'] ?? 0),
     ]);
     $parcelasAtrasadas = (int)($_POST['parcelas_atrasadas'] ?? 0);
-    $stmtCliente = $pdo->prepare("SELECT id, codigo, nome FROM clientes WHERE id = ?");
+    $stmtCliente = $pdo->prepare("
+        SELECT id, codigo, nome
+        FROM clientes
+        WHERE id = ?
+        " . empresaFiltro($pdo, 'clientes') . "
+    ");
     $stmtCliente->execute([$clienteSelecionadoId]);
     $clienteSelecionado = $stmtCliente->fetch(PDO::FETCH_ASSOC);
 
@@ -117,6 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 parcelas_emitidas = ?,
                 parcelas_atrasadas = ?
             WHERE id = ?
+            " . empresaFiltro($pdo, 'parcelamentos') . "
         ");
 
         $stmt->execute([
@@ -176,6 +187,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $stmt = $pdo->query("
     SELECT id, codigo, nome
     FROM clientes
+    WHERE 1 = 1
+    " . empresaFiltro($pdo, 'clientes') . "
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);

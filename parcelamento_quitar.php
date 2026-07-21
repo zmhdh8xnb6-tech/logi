@@ -57,6 +57,7 @@ $stmt = $pdo->prepare("
     UPDATE parcelamentos
     SET " . implode(', ', $campos) . "
     WHERE id = ?
+      " . empresaFiltro($pdo, 'parcelamentos') . "
       AND cancelado_em IS NULL
       AND liquidado_em IS NULL
 ");

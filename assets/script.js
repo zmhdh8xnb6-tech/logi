@@ -981,7 +981,10 @@ function formatarCep(valor) {
 }
 
 function consultarCnpjParaPreenchimento(cnpj) {
-    if (!window.location.pathname.includes('cliente_novo.php')) {
+    const paginaCliente = window.location.pathname.includes('cliente_novo.php')
+        || window.location.pathname.includes('cliente_editar.php');
+
+    if (!paginaCliente) {
         return;
     }
 
@@ -1197,7 +1200,7 @@ $(document).on('click', '#btnConfirmarExclusao', function () {
     const botao = $(this);
 
     botao.prop('disabled', true)
-        .html('<span class="spinner-border spinner-border-sm me-1"></span> Excluindo...');
+        .html('<span class="spinner-border spinner-border-sm me-1"></span> Devolvendo...');
 
     $.post('api.php?action=delete', { id: clienteParaExcluir }, function (resp) {
 
@@ -1212,7 +1215,7 @@ $(document).on('click', '#btnConfirmarExclusao', function () {
     }).always(function () {
 
         botao.prop('disabled', false)
-            .html('<i class="bi bi-trash"></i> Sim, excluir');
+            .html('<i class="bi bi-archive"></i> Sim, devolver');
 
         const modalEl = document.getElementById('modalConfirmarExclusao');
         const modal = bootstrap.Modal.getInstance(modalEl);

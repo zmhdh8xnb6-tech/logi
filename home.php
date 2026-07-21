@@ -24,6 +24,7 @@ if (usuarioPode('tarefas')) {
                     SUM(CASE WHEN concluida = 1 AND DATE(concluida_em) = ? THEN 1 ELSE 0 END) AS concluidas_hoje
                 FROM tarefas
                 WHERE usuario_id = ?
+                " . empresaFiltro($pdo, 'tarefas') . "
             ");
             $stmt->execute([$hoje, $usuarioId]);
             $resumoTarefas = array_map('intval', $stmt->fetch(PDO::FETCH_ASSOC) ?: $resumoTarefas);
@@ -131,6 +132,16 @@ if (usuarioPode('parcelamentos')) {
                             <div class="icon"><i class="bi bi-exclamation-triangle"></i></div>
                             <h5>Pendências</h5>
                             <p>Resumo do que falta ou venceu</p>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+                <?php if (usuarioPode('clientes')): ?>
+                    <div class="col-md-4">
+                        <div class="card-servico card-devolvidos" onclick="location.href='clientes_devolvidos.php'">
+                            <div class="icon"><i class="bi bi-archive"></i></div>
+                            <h5>Clientes Devolvidos</h5>
+                            <p>Consulte e reative cadastros devolvidos</p>
                         </div>
                     </div>
                 <?php endif; ?>

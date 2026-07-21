@@ -325,7 +325,13 @@ function importarClienteValidar(PDO $pdo, array $cliente, array $documentosArqui
     }
 
     if ($codigo !== '') {
-        $stmt = $pdo->prepare("SELECT id FROM clientes WHERE codigo = ? LIMIT 1");
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM clientes
+            WHERE codigo = ?
+            " . empresaFiltro($pdo, 'clientes') . "
+            LIMIT 1
+        ");
         $stmt->execute([$codigo]);
 
         if ($stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -334,7 +340,13 @@ function importarClienteValidar(PDO $pdo, array $cliente, array $documentosArqui
     }
 
     if ($documentoLimpo !== '') {
-        $stmt = $pdo->prepare("SELECT id FROM clientes WHERE REPLACE(REPLACE(REPLACE(documento, '.', ''), '/', ''), '-', '') = ? LIMIT 1");
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM clientes
+            WHERE REPLACE(REPLACE(REPLACE(documento, '.', ''), '/', ''), '-', '') = ?
+            " . empresaFiltro($pdo, 'clientes') . "
+            LIMIT 1
+        ");
         $stmt->execute([$documentoLimpo]);
 
         if ($stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -351,8 +363,14 @@ function importarClienteValidar(PDO $pdo, array $cliente, array $documentosArqui
 
 function importarClienteInserir(PDO $pdo, array $cliente): int
 {
+    $empresaIdInsert = empresaIdParaInsert($pdo, 'clientes');
+    $colunaEmpresaInsert = $empresaIdInsert !== null ? "empresa_id,\n            " : '';
+    $marcadorEmpresaInsert = $empresaIdInsert !== null ? "?," : '';
+    $valorEmpresaInsert = $empresaIdInsert !== null ? [$empresaIdInsert] : [];
+
     $stmt = $pdo->prepare("
         INSERT INTO clientes (
+            {$colunaEmpresaInsert}
             codigo,
             tipo_atendimento,
             cliente_contabil,
@@ -390,9 +408,9 @@ function importarClienteInserir(PDO $pdo, array $cliente): int
             tributacao,
             possui_parcelamento
         )
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES ({$marcadorEmpresaInsert}?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ");
-    $stmt->execute([
+    $stmt->execute(array_merge($valorEmpresaInsert, [
         $cliente['codigo'],
         $cliente['tipo_atendimento'],
         $cliente['cliente_contabil'],
@@ -429,7 +447,7 @@ function importarClienteInserir(PDO $pdo, array $cliente): int
         $cliente['contrato_prestacao_servicos'],
         $cliente['tributacao'],
         $cliente['possui_parcelamento'],
-    ]);
+    ]));
 
     return (int)$pdo->lastInsertId();
 }

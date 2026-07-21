@@ -120,6 +120,7 @@ function parcelamentosImpressaoRegistrada(PDO $pdo, string $orgao, ?string $comp
         FROM parcelamentos_impressoes
         WHERE orgao = ?
           AND competencia = ?
+          " . empresaFiltro($pdo, 'parcelamentos_impressoes') . "
         LIMIT 1
     ");
     $stmt->execute([$orgao, $competencia ?: competenciaAtualParcelamentos()]);
@@ -136,13 +137,16 @@ function registrarImpressaoParcelamentos(PDO $pdo, string $orgao, int $usuarioId
     $competencia = $competencia ?: competenciaAtualParcelamentos();
 
     $stmt = $pdo->prepare("
-        INSERT INTO parcelamentos_impressoes (orgao, competencia, usuario_id, impresso_em)
-        VALUES (?, ?, ?, NOW())
+        INSERT INTO parcelamentos_impressoes (" . empresaInsertColuna($pdo, 'parcelamentos_impressoes') . "orgao, competencia, usuario_id, impresso_em)
+        VALUES (" . empresaInsertPlaceholder($pdo, 'parcelamentos_impressoes') . "?, ?, ?, NOW())
         ON DUPLICATE KEY UPDATE
             usuario_id = VALUES(usuario_id),
             impresso_em = NOW()
     ");
-    $stmt->execute([$orgao, $competencia, $usuarioId]);
+    $stmt->execute(array_merge(
+        empresaInsertValores($pdo, 'parcelamentos_impressoes'),
+        [$orgao, $competencia, $usuarioId]
+    ));
 
     registrarAuditoria(
         $pdo,
@@ -168,8 +172,10 @@ function contarParcelamentosAtivosPorOrgao(PDO $pdo, string $orgao): int
     $stmt = $pdo->prepare("
         SELECT COUNT(*)
         FROM parcelamentos p
+        INNER JOIN clientes c ON c.id = p.cliente_id
         WHERE p.orgao = ?
           AND {$filtroSituacao}
+          " . empresaFiltro($pdo, 'clientes', 'c') . "
     ");
     $stmt->execute([$orgao]);
 
@@ -186,8 +192,10 @@ function primeiraCompetenciaParcelamentoAtivo(PDO $pdo, string $orgao): ?string
     $stmt = $pdo->prepare("
         SELECT MIN(COALESCE(p.data_primeira_parcela, DATE(p.criado_em), CURDATE()))
         FROM parcelamentos p
+        INNER JOIN clientes c ON c.id = p.cliente_id
         WHERE p.orgao = ?
           AND {$filtroSituacao}
+          " . empresaFiltro($pdo, 'clientes', 'c') . "
     ");
     $stmt->execute([$orgao]);
     $data = $stmt->fetchColumn();
@@ -314,6 +322,7 @@ function atualizarParcelamentosLiquidados(PDO $pdo, string $orgao): array
         FROM parcelamentos p
         INNER JOIN clientes c ON c.id = p.cliente_id
         WHERE p.orgao = ?
+          " . empresaFiltro($pdo, 'clientes', 'c') . "
           AND p.liquidado_em IS NULL
           AND p.cancelado_em IS NULL
           AND p.parcelas_total > 0
@@ -356,6 +365,7 @@ function atualizarParcelamentosLiquidados(PDO $pdo, string $orgao): array
         SET {$camposLiquidacao}
         WHERE liquidado_em IS NULL
           AND id IN ({$marcadores})
+          " . empresaFiltro($pdo, 'parcelamentos') . "
     ");
     $stmt->execute($ids);
 
@@ -410,6 +420,7 @@ function buscarParcelamentosPorOrgao(
         INNER JOIN clientes c ON c.id = p.cliente_id
         WHERE p.orgao = ?
         AND {$filtroSituacao}
+        " . empresaFiltro($pdo, 'clientes', 'c') . "
         ORDER BY CAST(c.codigo AS UNSIGNED) ASC, c.nome ASC, p.id DESC
     ");
 
@@ -580,6 +591,7 @@ function buscarParcelamentoPorId(PDO $pdo, int $id): ?array
         FROM parcelamentos p
         INNER JOIN clientes c ON c.id = p.cliente_id
         WHERE p.id = ?
+          " . empresaFiltro($pdo, 'clientes', 'c') . "
     ");
 
     $stmt->execute([$id]);

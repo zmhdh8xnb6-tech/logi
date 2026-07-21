@@ -20,6 +20,9 @@ if (!$cliente) {
     exit;
 }
 
+$clienteDevolvido = clientesSituacaoDisponivel($pdo)
+    && (($cliente['situacao_cliente'] ?? 'ativo') === 'devolvido');
+
 $stmtAlvaras = $pdo->prepare("
     SELECT orgao_nome, situacao, vencimento
     FROM cliente_alvaras
@@ -282,13 +285,30 @@ if ($clienteContabil) {
             <span class="badge <?= $clienteContabil ? 'bg-success' : 'bg-info text-dark' ?> mb-3">
                 <?= $clienteContabil ? 'Cliente contábil' : 'Serviço avulso' ?>
             </span>
+            <?php if ($clienteDevolvido): ?>
+                <span class="badge bg-warning text-dark mb-3 ms-1">Cliente devolvido</span>
+            <?php endif; ?>
 
             <div class="d-flex gap-2 mb-4 nao-imprimir">
                 <a href="cliente_editar.php?id=<?= (int)$cliente['id'] ?>" class="btn btn-primary">
                     <i class="bi bi-pencil-square"></i> Editar
                 </a>
 
-                <button class="btn btn-danger" onclick="excluirCliente(<?= (int)$cliente['id'] ?>)">
+                <?php if (!$clienteDevolvido): ?>
+                    <button class="btn btn-warning" onclick="excluirCliente(<?= (int)$cliente['id'] ?>)">
+                        <i class="bi bi-archive"></i> Devolver
+                    </button>
+                <?php else: ?>
+                    <a href="clientes_devolvidos.php" class="btn btn-outline-success">
+                        <i class="bi bi-arrow-counterclockwise"></i> Reativar em devolvidos
+                    </a>
+                <?php endif; ?>
+
+                <button
+                    type="button"
+                    class="btn btn-outline-danger"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modalExcluirClienteDefinitivo">
                     <i class="bi bi-trash"></i> Excluir
                 </button>
 
@@ -643,6 +663,30 @@ if ($clienteContabil) {
 
     <?php include 'includes/modal_confirmar.php'; ?>
 
+    <div class="modal fade" id="modalExcluirClienteDefinitivo" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Excluir cliente definitivamente</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-1">Tem certeza que deseja excluir este cliente definitivamente?</p>
+                    <strong><?= htmlspecialchars(($cliente['codigo'] ?? '') . ' - ' . ($cliente['nome'] ?? '')) ?></strong>
+                    <small class="text-danger d-block mt-2">
+                        Essa ação apaga o cadastro e não pode ser desfeita.
+                    </small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-danger" id="btnExcluirClienteDefinitivo">
+                        <i class="bi bi-trash"></i> Excluir definitivamente
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <?php include 'includes/modal_aviso.php'; ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -652,6 +696,36 @@ if ($clienteContabil) {
 
     <script>
         const clienteAtual = <?= json_encode($cliente, JSON_UNESCAPED_UNICODE) ?>;
+
+        document.getElementById('btnExcluirClienteDefinitivo').addEventListener('click', function() {
+            const botao = this;
+
+            botao.disabled = true;
+            botao.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Excluindo...';
+
+            fetch('api.php?action=delete_permanente', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: 'id=<?= (int)$cliente['id'] ?>'
+                })
+                .then(function(resposta) {
+                    return resposta.text();
+                })
+                .then(function(texto) {
+                    if (texto.trim() === 'ok') {
+                        window.location.href = '<?= $clienteDevolvido ? 'clientes_devolvidos.php' : $paginaRetorno ?>';
+                        return;
+                    }
+
+                    mostrarAviso(texto);
+                })
+                .finally(function() {
+                    botao.disabled = false;
+                    botao.innerHTML = '<i class="bi bi-trash"></i> Excluir definitivamente';
+                });
+        });
     </script>
 
 </body>

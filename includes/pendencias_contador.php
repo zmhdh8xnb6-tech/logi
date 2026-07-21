@@ -6,7 +6,10 @@ function contarPendenciasSistema(PDO $pdo): int
     $limiteAlerta = date('Y-m-d', strtotime('+30 days'));
     $total = 0;
 
-    $stmt = $pdo->query("SELECT * FROM clientes");
+    $filtroEmpresaClientes = empresaFiltro($pdo, 'clientes');
+    $filtroEmpresaClientesAlias = empresaFiltro($pdo, 'clientes', 'c');
+
+    $stmt = $pdo->query("SELECT * FROM clientes WHERE 1=1{$filtroEmpresaClientes}");
     $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $procuracoes = [
@@ -107,6 +110,7 @@ function contarPendenciasSistema(PDO $pdo): int
                 LEFT JOIN cliente_alvaras ca ON ca.cliente_id = c.id
                 WHERE c.alvara = 'possui'
                   AND c.cliente_contabil = 1
+                  {$filtroEmpresaClientesAlias}
                 GROUP BY c.id
                 HAVING COUNT(DISTINCT CASE
                     WHEN ca.orgao_codigo IN ('ibram', 'cbmdf', 'df_legal', 'pcdf', 'seagri', 'seedf', 'sudesc', 'visadf')
@@ -128,6 +132,7 @@ function contarPendenciasSistema(PDO $pdo): int
               AND ca.vencimento IS NOT NULL
               AND ca.vencimento <= ?
               AND c.cliente_contabil = 1
+              {$filtroEmpresaClientesAlias}
         ");
         $stmt->execute([$limiteAlerta]);
         $total += (int)$stmt->fetchColumn();

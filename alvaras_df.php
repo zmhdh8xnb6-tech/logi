@@ -21,6 +21,7 @@ $stmtClientes = $pdo->query("
       AND COALESCE(uf, '') <> 'GO'
       AND COALESCE(alvara, '') <> 'goias'
       AND COALESCE(cadastro_df_legal, '') <> 'goias'
+      " . clientesFiltroAtivos($pdo) . "
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 $clientes = $stmtClientes->fetchAll(PDO::FETCH_ASSOC);
@@ -1012,6 +1013,15 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                     botaoSalvar.disabled = false;
                     botaoSalvar.innerHTML = textoOriginal;
                 });
+        });
+
+        document.getElementById('modalEditarAlvarasDf').addEventListener('keydown', function(evento) {
+            if (evento.key !== 'Enter' || evento.target.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            evento.preventDefault();
+            formAlvarasDf.requestSubmit();
         });
 
         renderizarAlvarasDf();

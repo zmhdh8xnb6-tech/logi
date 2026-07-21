@@ -21,6 +21,7 @@ $stmt = $pdo->prepare("
     UPDATE parcelamentos
     SET cancelado_em = NULL
     WHERE id = ?
+    " . empresaFiltro($pdo, 'parcelamentos') . "
 ");
 $stmt->execute([$id]);
 

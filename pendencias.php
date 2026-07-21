@@ -72,6 +72,17 @@ function modalAlvaraDf(array $cliente, array $alvaras): array
     ];
 }
 
+function clienteEnderecoIncompleto(array $cliente): bool
+{
+    foreach (['cep', 'endereco', 'numero_endereco', 'bairro', 'cidade', 'uf'] as $campo) {
+        if (trim((string)($cliente[$campo] ?? '')) === '') {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 $orgaosAlvaraDf = [
     'ibram' => 'INSTITUTO BRASÍLIA AMBIENTAL - IBRAM',
     'cbmdf' => 'CORPO DE BOMBEIROS MILITAR DO DISTRITO FEDERAL - CBMDF',
@@ -86,6 +97,9 @@ $orgaosAlvaraDf = [
 $stmt = $pdo->query("
     SELECT *
     FROM clientes
+    WHERE 1 = 1
+    " . clientesFiltroAtivos($pdo) . "
+    " . empresaFiltro($pdo, 'clientes') . "
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -159,6 +173,20 @@ $procuracoes = [
 foreach ($clientes as $cliente) {
     $clienteContabil = (int)($cliente['cliente_contabil'] ?? 1) === 1;
     $controlaCertificado = $clienteContabil || (int)($cliente['servico_certificado'] ?? 1) === 1;
+
+    if ($clienteContabil && clienteEnderecoIncompleto($cliente)) {
+        adicionarPendencia(
+            $pendencias,
+            $resumo,
+            $cliente,
+            'Dados cadastrais',
+            'Endereço incompleto no cadastro do cliente',
+            'Incompleto',
+            'warning',
+            null,
+            'cliente_editar.php?id=' . (int)$cliente['id']
+        );
+    }
 
     if ($controlaCertificado && !empty($cliente['pendencia_certificado_digital'])) {
         adicionarPendencia(
@@ -302,6 +330,8 @@ try {
         LEFT JOIN cliente_alvaras ca ON ca.cliente_id = c.id
         WHERE c.alvara = 'possui'
           AND c.cliente_contabil = 1
+          " . clientesFiltroAtivos($pdo, 'c') . "
+          " . empresaFiltro($pdo, 'clientes', 'c') . "
         GROUP BY c.id, c.codigo, c.nome, c.documento
         HAVING total_preenchido < 8
         ORDER BY CAST(c.codigo AS UNSIGNED) ASC, c.nome ASC
@@ -336,6 +366,8 @@ try {
           AND ca.vencimento IS NOT NULL
           AND ca.vencimento <= " . $pdo->quote($limiteAlerta) . "
           AND c.cliente_contabil = 1
+          " . clientesFiltroAtivos($pdo, 'c') . "
+          " . empresaFiltro($pdo, 'clientes', 'c') . "
         ORDER BY ca.vencimento ASC
     ");
 
@@ -900,6 +932,11 @@ $limiteGraficoPendencias = 15;
     <script>
         let botaoPendenciaAtual = null;
         let configuracaoPendenciaAtual = null;
+        const modalEditarPendenciaEl = document.getElementById('modalEditarPendencia');
+        const campoModalPendenciaVencimento = document.getElementById('modalPendenciaVencimento');
+        const botaoSalvarModalPendencia = document.getElementById('btnSalvarModalPendencia');
+        let salvandoModalPendencia = false;
+        let vencimentoModalPendenciaInicial = '';
         const modalPendenciaAlvaraDf = bootstrap.Modal.getOrCreateInstance(document.getElementById('modalPendenciaAlvaraDf'));
         const formPendenciaAlvaraDf = document.getElementById('formPendenciaAlvaraDf');
         const campoPendenciaSituacaoAlvara = document.getElementById('pendenciaSituacaoAlvara');
@@ -1193,9 +1230,10 @@ $limiteGraficoPendencias = 15;
                 document.getElementById('modalPendenciaCampoStatus').value = configuracaoPendenciaAtual.campo_status || '';
                 document.getElementById('modalPendenciaCampoVencimento').value = configuracaoPendenciaAtual.campo_vencimento || '';
                 document.getElementById('modalPendenciaCliente').value = configuracaoPendenciaAtual.cliente || '';
-                document.getElementById('modalPendenciaVencimento').value = configuracaoPendenciaAtual.vencimento_atual || '';
+                vencimentoModalPendenciaInicial = configuracaoPendenciaAtual.vencimento_atual || '';
+                campoModalPendenciaVencimento.value = vencimentoModalPendenciaInicial;
                 document.getElementById('modalPendenciaStatus').classList.remove('is-invalid');
-                document.getElementById('modalPendenciaVencimento').classList.remove('is-invalid');
+                campoModalPendenciaVencimento.classList.remove('is-invalid');
                 document.getElementById('grupoModalPendenciaConferencia').classList.toggle('d-none', !(configuracaoPendenciaAtual.conferir_dados || false));
                 document.getElementById('grupoModalPendenciaSocio').classList.toggle('d-none', !(configuracaoPendenciaAtual.conferir_socio || false));
                 document.getElementById('pendencia_razao_social_sim').checked = true;
@@ -1212,7 +1250,7 @@ $limiteGraficoPendencias = 15;
                 }
 
                 atualizarVencimentoPendencia();
-                bootstrap.Modal.getOrCreateInstance(document.getElementById('modalEditarPendencia')).show();
+                bootstrap.Modal.getOrCreateInstance(modalEditarPendenciaEl).show();
             });
         });
 
@@ -1268,16 +1306,20 @@ $limiteGraficoPendencias = 15;
             atualizarVencimentoPendencia(true);
         });
 
-        document.getElementById('btnSalvarModalPendencia').addEventListener('click', function() {
+        function salvarModalPendencia() {
+            if (salvandoModalPendencia) {
+                return;
+            }
+
             const modo = document.getElementById('modalPendenciaModo').value;
             const clienteId = document.getElementById('modalPendenciaClienteId').value;
             const status = document.getElementById('modalPendenciaStatus').value;
-            const vencimento = document.getElementById('modalPendenciaVencimento').value;
+            const vencimento = campoModalPendenciaVencimento.value;
             const campoStatus = document.getElementById('modalPendenciaCampoStatus').value;
             const campoVencimento = document.getElementById('modalPendenciaCampoVencimento').value;
 
             document.getElementById('modalPendenciaStatus').classList.remove('is-invalid');
-            document.getElementById('modalPendenciaVencimento').classList.remove('is-invalid');
+            campoModalPendenciaVencimento.classList.remove('is-invalid');
 
             if (modo === 'controle') {
                 if (status === '') {
@@ -1287,7 +1329,7 @@ $limiteGraficoPendencias = 15;
                 }
 
                 if (campoVencimento !== '' && status === 'possui' && vencimento === '') {
-                    const campoData = document.getElementById('modalPendenciaVencimento');
+                    const campoData = campoModalPendenciaVencimento;
                     campoData.classList.add('is-invalid');
                     sincronizarCampoDataPendencia(campoData);
                     focarCampoDataPendencia(campoData);
@@ -1295,8 +1337,9 @@ $limiteGraficoPendencias = 15;
                 }
             }
 
-            this.disabled = true;
-            this.innerHTML = 'Salvando...';
+            salvandoModalPendencia = true;
+            botaoSalvarModalPendencia.disabled = true;
+            botaoSalvarModalPendencia.innerHTML = 'Salvando...';
 
             const destino = modo === 'certificado' ? 'api_certificados.php' : 'api_controles.php';
             const dados = new URLSearchParams();
@@ -1324,30 +1367,56 @@ $limiteGraficoPendencias = 15;
                 .then(response => response.text())
                 .then(resp => {
                     if (resp.trim() === 'ok') {
+                        vencimentoModalPendenciaInicial = vencimento;
+
                         if (pendenciaFoiResolvida(modo, status, vencimento, campoVencimento)) {
-                            bootstrap.Modal.getInstance(document.getElementById('modalEditarPendencia')).hide();
+                            bootstrap.Modal.getInstance(modalEditarPendenciaEl).hide();
                             removerLinhaPendencia(botaoPendenciaAtual);
                         } else {
                             document.getElementById('textoAjudaModalPendencia').textContent = 'Salvo, mas essa informação ainda continua como pendência.';
                         }
                     } else if (resp.trim() === 'vencimento_obrigatorio') {
-                        const campoData = document.getElementById('modalPendenciaVencimento');
+                        const campoData = campoModalPendenciaVencimento;
                         campoData.classList.add('is-invalid');
                         sincronizarCampoDataPendencia(campoData);
                         focarCampoDataPendencia(campoData);
                     } else {
-                        this.innerHTML = 'Erro';
+                        botaoSalvarModalPendencia.innerHTML = 'Erro';
                     }
                 })
                 .catch(() => {
-                    this.innerHTML = 'Erro';
+                    botaoSalvarModalPendencia.innerHTML = 'Erro';
                 })
                 .finally(() => {
                     setTimeout(() => {
-                        this.disabled = false;
-                        this.innerHTML = 'Salvar';
+                        salvandoModalPendencia = false;
+                        botaoSalvarModalPendencia.disabled = false;
+                        botaoSalvarModalPendencia.innerHTML = 'Salvar';
                     }, 600);
                 });
+        }
+
+        botaoSalvarModalPendencia.addEventListener('click', salvarModalPendencia);
+
+        modalEditarPendenciaEl.addEventListener('keydown', function(evento) {
+            if (evento.key !== 'Enter') {
+                return;
+            }
+
+            evento.preventDefault();
+            salvarModalPendencia();
+        });
+
+        campoModalPendenciaVencimento.addEventListener('change', function() {
+            if (!modalEditarPendenciaEl.classList.contains('show')) {
+                return;
+            }
+
+            if (this.value === vencimentoModalPendenciaInicial) {
+                return;
+            }
+
+            salvarModalPendencia();
         });
 
         function filtrarPendencias() {

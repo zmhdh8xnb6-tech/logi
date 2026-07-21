@@ -66,6 +66,7 @@ function tarefasUrl(array $parametros): string
 $sqlTarefas = <<<SQL
 CREATE TABLE tarefas (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    empresa_id INT NOT NULL DEFAULT 1,
     usuario_id INT NOT NULL,
     titulo VARCHAR(180) NOT NULL,
     descricao TEXT NULL,
@@ -75,6 +76,7 @@ CREATE TABLE tarefas (
     concluida_em DATETIME NULL,
     criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_tarefas_empresa (empresa_id),
     INDEX idx_tarefas_usuario_data (usuario_id, data_tarefa),
     INDEX idx_tarefas_usuario_concluida (usuario_id, concluida)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -97,7 +99,13 @@ if (tarefasTabelaExiste($pdo) && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($id > 0) {
-            $stmtAntes = $pdo->prepare("SELECT * FROM tarefas WHERE id = ? AND usuario_id = ?");
+            $stmtAntes = $pdo->prepare("
+                SELECT *
+                FROM tarefas
+                WHERE id = ?
+                  AND usuario_id = ?
+                  " . empresaFiltro($pdo, 'tarefas') . "
+            ");
             $stmtAntes->execute([$id, $usuarioId]);
             $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
 
@@ -109,6 +117,7 @@ if (tarefasTabelaExiste($pdo) && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 UPDATE tarefas
                 SET titulo = ?, descricao = ?, data_tarefa = ?, importante = ?
                 WHERE id = ? AND usuario_id = ?
+                " . empresaFiltro($pdo, 'tarefas') . "
             ");
             $stmt->execute([$titulo, $descricao, $dataTarefa, $importante, $id, $usuarioId]);
             registrarAuditoria($pdo, 'Tarefas', 'editar', 'tarefa', $id, 'Editou a tarefa ' . $titulo, $antes, [
@@ -121,10 +130,13 @@ if (tarefasTabelaExiste($pdo) && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $stmt = $pdo->prepare("
-            INSERT INTO tarefas (usuario_id, titulo, descricao, data_tarefa, importante)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO tarefas (" . empresaInsertColuna($pdo, 'tarefas') . "usuario_id, titulo, descricao, data_tarefa, importante)
+            VALUES (" . empresaInsertPlaceholder($pdo, 'tarefas') . "?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$usuarioId, $titulo, $descricao, $dataTarefa, $importante]);
+        $stmt->execute(array_merge(
+            empresaInsertValores($pdo, 'tarefas'),
+            [$usuarioId, $titulo, $descricao, $dataTarefa, $importante]
+        ));
         $novaTarefaId = (int)$pdo->lastInsertId();
         registrarAuditoria($pdo, 'Tarefas', 'criar', 'tarefa', $novaTarefaId, 'Criou a tarefa ' . $titulo, null, [
             'titulo' => $titulo,
@@ -136,7 +148,13 @@ if (tarefasTabelaExiste($pdo) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($acao === 'concluir' && $id > 0) {
-        $stmtAntes = $pdo->prepare("SELECT * FROM tarefas WHERE id = ? AND usuario_id = ?");
+        $stmtAntes = $pdo->prepare("
+            SELECT *
+            FROM tarefas
+            WHERE id = ?
+              AND usuario_id = ?
+              " . empresaFiltro($pdo, 'tarefas') . "
+        ");
         $stmtAntes->execute([$id, $usuarioId]);
         $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
 
@@ -145,6 +163,7 @@ if (tarefasTabelaExiste($pdo) && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 UPDATE tarefas
                 SET concluida = 1, concluida_em = NOW()
                 WHERE id = ? AND usuario_id = ?
+                " . empresaFiltro($pdo, 'tarefas') . "
             ")->execute([$id, $usuarioId]);
             registrarAuditoria($pdo, 'Tarefas', 'concluir', 'tarefa', $id, 'Concluiu a tarefa ' . $antes['titulo'], $antes, null);
         }
@@ -153,7 +172,13 @@ if (tarefasTabelaExiste($pdo) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($acao === 'reabrir' && $id > 0) {
-        $stmtAntes = $pdo->prepare("SELECT * FROM tarefas WHERE id = ? AND usuario_id = ?");
+        $stmtAntes = $pdo->prepare("
+            SELECT *
+            FROM tarefas
+            WHERE id = ?
+              AND usuario_id = ?
+              " . empresaFiltro($pdo, 'tarefas') . "
+        ");
         $stmtAntes->execute([$id, $usuarioId]);
         $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
 
@@ -162,6 +187,7 @@ if (tarefasTabelaExiste($pdo) && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 UPDATE tarefas
                 SET concluida = 0, concluida_em = NULL
                 WHERE id = ? AND usuario_id = ?
+                " . empresaFiltro($pdo, 'tarefas') . "
             ")->execute([$id, $usuarioId]);
             registrarAuditoria($pdo, 'Tarefas', 'reabrir', 'tarefa', $id, 'Reabriu a tarefa ' . $antes['titulo'], $antes, null);
         }
@@ -170,10 +196,21 @@ if (tarefasTabelaExiste($pdo) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($acao === 'excluir' && $id > 0) {
-        $stmtAntes = $pdo->prepare("SELECT * FROM tarefas WHERE id = ? AND usuario_id = ?");
+        $stmtAntes = $pdo->prepare("
+            SELECT *
+            FROM tarefas
+            WHERE id = ?
+              AND usuario_id = ?
+              " . empresaFiltro($pdo, 'tarefas') . "
+        ");
         $stmtAntes->execute([$id, $usuarioId]);
         $antes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
-        $pdo->prepare("DELETE FROM tarefas WHERE id = ? AND usuario_id = ?")->execute([$id, $usuarioId]);
+        $pdo->prepare("
+            DELETE FROM tarefas
+            WHERE id = ?
+              AND usuario_id = ?
+              " . empresaFiltro($pdo, 'tarefas') . "
+        ")->execute([$id, $usuarioId]);
 
         if ($antes) {
             registrarAuditoria($pdo, 'Tarefas', 'excluir', 'tarefa', $id, 'Excluiu a tarefa ' . $antes['titulo'], $antes, null);
@@ -188,6 +225,7 @@ if (tarefasTabelaExiste($pdo) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             FROM tarefas
             WHERE usuario_id = ?
               AND concluida = 1
+              " . empresaFiltro($pdo, 'tarefas') . "
         ");
         $stmtAntes->execute([$usuarioId]);
         $totalAntes = (int)$stmtAntes->fetchColumn();
@@ -196,6 +234,7 @@ if (tarefasTabelaExiste($pdo) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             DELETE FROM tarefas
             WHERE usuario_id = ?
               AND concluida = 1
+              " . empresaFiltro($pdo, 'tarefas') . "
         ")->execute([$usuarioId]);
 
         registrarAuditoria($pdo, 'Tarefas', 'limpar', 'tarefa', null, 'Limpou tarefas concluídas', ['total' => $totalAntes], null);
@@ -223,11 +262,12 @@ if ($tabelaDisponivel) {
             SUM(CASE WHEN concluida = 0 THEN 1 ELSE 0 END) AS todas
         FROM tarefas
         WHERE usuario_id = ?
+        " . empresaFiltro($pdo, 'tarefas') . "
     ");
     $stmt->execute([$hoje, $usuarioId]);
     $resumo = array_map('intval', $stmt->fetch(PDO::FETCH_ASSOC) ?: $resumo);
 
-    $filtroSql = 'usuario_id = ?';
+    $filtroSql = 'usuario_id = ?' . empresaFiltro($pdo, 'tarefas');
     $parametros = [$usuarioId];
 
     if ($aba === 'hoje') {

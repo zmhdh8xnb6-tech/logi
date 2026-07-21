@@ -42,6 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $stmt = $pdo->prepare("
             INSERT INTO parcelamentos (
+                " . empresaInsertColuna($pdo, 'parcelamentos') . "
                 cliente_id,
                 orgao,
                 numero_parcelamento,
@@ -51,19 +52,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 parcelas_emitidas,
                 parcelas_atrasadas
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (" . empresaInsertPlaceholder($pdo, 'parcelamentos') . "?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
-        $stmt->execute([
-            $clienteId,
-            $orgao,
-            $numeroParcelamento,
-            $formaEnvio,
-            $dataPrimeiraParcela,
-            $parcelasTotal,
-            $parcelasEmitidas,
-            $parcelasAtrasadas,
-        ]);
+        $stmt->execute(array_merge(
+            empresaInsertValores($pdo, 'parcelamentos'),
+            [
+                $clienteId,
+                $orgao,
+                $numeroParcelamento,
+                $formaEnvio,
+                $dataPrimeiraParcela,
+                $parcelasTotal,
+                $parcelasEmitidas,
+                $parcelasAtrasadas,
+            ]
+        ));
 
         $parcelamentoId = (int)$pdo->lastInsertId();
         registrarAuditoria(
@@ -94,6 +98,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $stmt = $pdo->query("
 SELECT id,codigo,nome
 FROM clientes
+WHERE 1 = 1
+" . empresaFiltro($pdo, 'clientes') . "
 ORDER BY CAST(codigo AS UNSIGNED) ASC
 ");
 

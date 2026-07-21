@@ -110,6 +110,7 @@ function registrarAuditoria(
     try {
         $stmt = $pdo->prepare("
             INSERT INTO auditoria_logs (
+                " . empresaInsertColuna($pdo, 'auditoria_logs') . "
                 usuario_id,
                 usuario_nome,
                 modulo,
@@ -124,27 +125,30 @@ function registrarAuditoria(
                 url,
                 criado_em
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (" . empresaInsertPlaceholder($pdo, 'auditoria_logs') . "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([
-            $usuarioId,
-            auditoriaCortar($usuarioNome, 150),
-            auditoriaCortar($modulo, 80),
-            auditoriaCortar($acao, 40),
-            auditoriaCortar($entidade, 80),
-            $entidadeId !== null ? (string)$entidadeId : null,
-            auditoriaCortar($descricao, 500),
-            $dadosAntes !== null
-                ? json_encode($dadosAntes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-                : null,
-            $dadosDepois !== null
-                ? json_encode($dadosDepois, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-                : null,
-            auditoriaCortar($_SERVER['REMOTE_ADDR'] ?? '', 45),
-            auditoriaCortar($_SERVER['HTTP_USER_AGENT'] ?? '', 500),
-            auditoriaCortar($_SERVER['REQUEST_URI'] ?? ($_SERVER['SCRIPT_NAME'] ?? ''), 500),
-            date('Y-m-d H:i:s'),
-        ]);
+        $stmt->execute(array_merge(
+            empresaInsertValores($pdo, 'auditoria_logs'),
+            [
+                $usuarioId,
+                auditoriaCortar($usuarioNome, 150),
+                auditoriaCortar($modulo, 80),
+                auditoriaCortar($acao, 40),
+                auditoriaCortar($entidade, 80),
+                $entidadeId !== null ? (string)$entidadeId : null,
+                auditoriaCortar($descricao, 500),
+                $dadosAntes !== null
+                    ? json_encode($dadosAntes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                    : null,
+                $dadosDepois !== null
+                    ? json_encode($dadosDepois, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                    : null,
+                auditoriaCortar($_SERVER['REMOTE_ADDR'] ?? '', 45),
+                auditoriaCortar($_SERVER['HTTP_USER_AGENT'] ?? '', 500),
+                auditoriaCortar($_SERVER['REQUEST_URI'] ?? ($_SERVER['SCRIPT_NAME'] ?? ''), 500),
+                date('Y-m-d H:i:s'),
+            ]
+        ));
     } catch (Throwable $e) {
         // A auditoria nunca deve impedir a operação principal do sistema.
     }

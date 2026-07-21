@@ -64,6 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $stmt = $pdo->prepare("
                 INSERT INTO legalizacao_processos (
+                    " . empresaInsertColuna($pdo, 'legalizacao_processos') . "
                     cliente_id,
                     cliente_codigo,
                     cliente_nome,
@@ -82,23 +83,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     criado_em,
                     atualizado_em
                 )
-                VALUES (?, ?, ?, ?, ?, 1, ?, 'em_andamento', ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                VALUES (" . empresaInsertPlaceholder($pdo, 'legalizacao_processos') . "?, ?, ?, ?, ?, 1, ?, 'em_andamento', ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
             ");
-            $stmt->execute([
-                $clienteId,
-                $cliente['codigo'] ?? '',
-                $cliente['nome'] ?? '',
-                $cliente['documento'] ?? '',
-                $tipo,
-                $etapaInicial,
-                $solicitadoEm,
-                $prazo,
-                $responsavelId,
-                $responsavelNome,
-                $contatoCliente,
-                $observacoes,
-                (int)($_SESSION['usuario_id'] ?? 0),
-            ]);
+            $stmt->execute(array_merge(
+                empresaInsertValores($pdo, 'legalizacao_processos'),
+                [
+                    $clienteId,
+                    $cliente['codigo'] ?? '',
+                    $cliente['nome'] ?? '',
+                    $cliente['documento'] ?? '',
+                    $tipo,
+                    $etapaInicial,
+                    $solicitadoEm,
+                    $prazo,
+                    $responsavelId,
+                    $responsavelNome,
+                    $contatoCliente,
+                    $observacoes,
+                    (int)($_SESSION['usuario_id'] ?? 0),
+                ]
+            ));
             $processoId = (int)$pdo->lastInsertId();
 
             $stmtEtapa = $pdo->prepare("
@@ -209,7 +213,9 @@ if ($tabelasDisponiveis) {
     $stmtTotalProcessos = $pdo->prepare("
         SELECT COUNT(*)
         FROM legalizacao_processos p
+        LEFT JOIN clientes c ON c.id = p.cliente_id
         WHERE " . implode(' AND ', $where) . "
+        " . empresaFiltro($pdo, 'clientes', 'c') . "
     ");
     $stmtTotalProcessos->execute($params);
     $totalProcessos = (int)$stmtTotalProcessos->fetchColumn();
@@ -223,7 +229,9 @@ if ($tabelasDisponiveis) {
                COUNT(ck.id) AS checklist_total
         FROM legalizacao_processos p
         LEFT JOIN legalizacao_checklist ck ON ck.processo_id = p.id
+        LEFT JOIN clientes c ON c.id = p.cliente_id
         WHERE " . implode(' AND ', $where) . "
+        " . empresaFiltro($pdo, 'clientes', 'c') . "
         GROUP BY p.id
         ORDER BY
             FIELD(p.status, 'pendente_cliente', 'pendente_orgao', 'em_andamento', 'pausado', 'concluido', 'cancelado'),
@@ -242,7 +250,10 @@ if ($tabelasDisponiveis) {
             SUM(status = 'pendente_orgao') AS pendente_orgao,
             SUM(status <> 'concluido' AND status <> 'cancelado' AND prazo IS NOT NULL AND prazo < CURDATE()) AS vencidos,
             SUM(status = 'concluido' AND DATE(concluido_em) = CURDATE()) AS concluidos_hoje
-        FROM legalizacao_processos
+        FROM legalizacao_processos p
+        LEFT JOIN clientes c ON c.id = p.cliente_id
+        WHERE 1 = 1
+        " . empresaFiltro($pdo, 'clientes', 'c') . "
     ");
     $resumoBanco = $stmtResumo->fetch(PDO::FETCH_ASSOC) ?: [];
 

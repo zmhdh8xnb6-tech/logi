@@ -2,14 +2,14 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Excluir cliente</h5>
+                <h5 class="modal-title">Devolver cliente</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
             </div>
 
             <div class="modal-body">
-                <p class="mb-1">Tem certeza que deseja excluir este cliente?</p>
-                <small class="text-danger">
-                    Essa ação apaga o cadastro definitivamente e não poderá ser desfeita.
+                <p class="mb-1">Tem certeza que deseja enviar este cliente para devolvidos?</p>
+                <small class="text-muted">
+                    Ele sairá das listas principais e das pendências, mas poderá ser reativado depois.
                 </small>
             </div>
 
@@ -18,8 +18,8 @@
                     Não
                 </button>
 
-                <button type="button" class="btn btn-danger" id="btnConfirmarExclusao">
-                    <i class="bi bi-trash"></i> Sim, excluir
+                <button type="button" class="btn btn-warning" id="btnConfirmarExclusao">
+                    <i class="bi bi-archive"></i> Sim, devolver
                 </button>
             </div>
         </div>

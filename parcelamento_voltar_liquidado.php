@@ -34,6 +34,7 @@ $stmt = $pdo->prepare("
     UPDATE parcelamentos
     SET " . implode(', ', $campos) . "
     WHERE id = ?
+    " . empresaFiltro($pdo, 'parcelamentos') . "
 ");
 $stmt->execute([$id]);
 

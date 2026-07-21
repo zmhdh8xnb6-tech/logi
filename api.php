@@ -132,9 +132,83 @@ function clienteTemColuna(PDO $pdo, string $coluna): bool
     return $cache[$coluna];
 }
 
+function normalizarValorClienteComparacao(?string $valor): string
+{
+    $valor = trim((string)$valor);
+    $valor = preg_replace('/\s+/', ' ', $valor) ?? $valor;
+    $valor = strtr($valor, [
+        'Á' => 'A',
+        'À' => 'A',
+        'Â' => 'A',
+        'Ã' => 'A',
+        'Ä' => 'A',
+        'á' => 'a',
+        'à' => 'a',
+        'â' => 'a',
+        'ã' => 'a',
+        'ä' => 'a',
+        'É' => 'E',
+        'È' => 'E',
+        'Ê' => 'E',
+        'Ë' => 'E',
+        'é' => 'e',
+        'è' => 'e',
+        'ê' => 'e',
+        'ë' => 'e',
+        'Í' => 'I',
+        'Ì' => 'I',
+        'Î' => 'I',
+        'Ï' => 'I',
+        'í' => 'i',
+        'ì' => 'i',
+        'î' => 'i',
+        'ï' => 'i',
+        'Ó' => 'O',
+        'Ò' => 'O',
+        'Ô' => 'O',
+        'Õ' => 'O',
+        'Ö' => 'O',
+        'ó' => 'o',
+        'ò' => 'o',
+        'ô' => 'o',
+        'õ' => 'o',
+        'ö' => 'o',
+        'Ú' => 'U',
+        'Ù' => 'U',
+        'Û' => 'U',
+        'Ü' => 'U',
+        'ú' => 'u',
+        'ù' => 'u',
+        'û' => 'u',
+        'ü' => 'u',
+        'Ç' => 'C',
+        'ç' => 'c',
+    ]);
+
+    if (function_exists('iconv')) {
+        $semAcentos = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $valor);
+
+        if ($semAcentos !== false) {
+            $valor = $semAcentos;
+        }
+    }
+
+    if (function_exists('mb_strtolower')) {
+        $valor = mb_strtolower($valor, 'UTF-8');
+    } else {
+        $valor = strtolower($valor);
+    }
+
+    $valor = preg_replace('/[^a-z0-9]+/i', ' ', $valor) ?? $valor;
+    $valor = trim(preg_replace('/\s+/', ' ', $valor) ?? $valor);
+
+    return $valor;
+}
+
 function valorClienteMudou(array $clienteAtual, string $campo, ?string $novoValor): bool
 {
-    return trim((string)($clienteAtual[$campo] ?? '')) !== trim((string)$novoValor);
+    return normalizarValorClienteComparacao($clienteAtual[$campo] ?? '')
+        !== normalizarValorClienteComparacao($novoValor);
 }
 
 function conferenciaDadosIncorreta(array $dados, string $prefixo, bool $verificarSocio = false): bool
@@ -227,13 +301,17 @@ if ($action === 'read') {
 
     $offset = ($page - 1) * $limit;
 
-    $stmtTotal = $pdo->query("SELECT COUNT(*) FROM clientes WHERE cliente_contabil = 1");
+    $filtroAtivos = clientesFiltroAtivos($pdo);
+    $filtroEmpresa = empresaFiltro($pdo, 'clientes');
+    $stmtTotal = $pdo->query("SELECT COUNT(*) FROM clientes WHERE cliente_contabil = 1{$filtroAtivos}{$filtroEmpresa}");
     $total = $stmtTotal->fetchColumn();
 
     $stmt = $pdo->prepare("
         SELECT * 
         FROM clientes
         WHERE cliente_contabil = 1
+        {$filtroAtivos}
+        {$filtroEmpresa}
         ORDER BY CAST(codigo AS UNSIGNED) ASC
         LIMIT :limit OFFSET :offset
     ");
@@ -259,7 +337,7 @@ if ($action === 'read') {
 if ($action === 'print_clientes') {
     $busca = trim($_GET['busca'] ?? '');
     $ufFiltro = strtoupper(trim($_GET['uf'] ?? ''));
-    $filtros = ['cliente_contabil = 1'];
+    $filtros = ["cliente_contabil = 1" . clientesFiltroAtivos($pdo) . empresaFiltro($pdo, 'clientes')];
     $parametros = [];
 
     if ($busca !== '') {
@@ -301,6 +379,7 @@ if ($action === 'check_documento') {
         FROM clientes
         WHERE documento = ?
           AND id <> ?
+          " . empresaFiltro($pdo, 'clientes') . "
         LIMIT 1
     ");
     $stmt->execute([$documento, $id]);
@@ -554,6 +633,7 @@ if ($action === 'create' || $action === 'update') {
             SELECT id 
             FROM clientes 
             WHERE documento = ?
+            " . empresaFiltro($pdo, 'clientes') . "
         ");
 
         $stmt->execute([$documento]);
@@ -563,6 +643,7 @@ if ($action === 'create' || $action === 'update') {
             FROM clientes
             WHERE documento = ?
             AND id <> ?
+            " . empresaFiltro($pdo, 'clientes') . "
         ");
 
         $stmt->execute([$documento, $id]);
@@ -579,9 +660,14 @@ if ($action === 'create' || $action === 'update') {
         $pdo->beginTransaction();
 
         if ($id == '') {
+            $empresaIdInsert = empresaIdParaInsert($pdo, 'clientes');
+            $colunaEmpresaInsert = $empresaIdInsert !== null ? "empresa_id,\n                " : '';
+            $marcadorEmpresaInsert = $empresaIdInsert !== null ? "?," : '';
+            $valorEmpresaInsert = $empresaIdInsert !== null ? [$empresaIdInsert] : [];
 
             $stmt = $pdo->prepare("
             INSERT INTO clientes (
+                {$colunaEmpresaInsert}
                 codigo,
                 tipo_atendimento,
                 cliente_contabil,
@@ -619,10 +705,10 @@ if ($action === 'create' || $action === 'update') {
                 tributacao,
                 possui_parcelamento
             )
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES ({$marcadorEmpresaInsert}?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ");
 
-            $ok = $stmt->execute([
+            $ok = $stmt->execute(array_merge($valorEmpresaInsert, [
                 $codigo,
                 $tipo_atendimento,
                 $cliente_contabil,
@@ -659,13 +745,24 @@ if ($action === 'create' || $action === 'update') {
                 $contrato_prestacao_servicos,
                 $tributacao,
                 $possui_parcelamento
-            ]);
+            ]));
 
             $clienteIdSalvo = (int)$pdo->lastInsertId();
         } else {
-            $stmtClienteAtual = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+            $stmtClienteAtual = $pdo->prepare("
+            SELECT *
+            FROM clientes
+            WHERE id = ?
+            " . empresaFiltro($pdo, 'clientes') . "
+        ");
             $stmtClienteAtual->execute([$id]);
             $clienteAtual = $stmtClienteAtual->fetch(PDO::FETCH_ASSOC) ?: [];
+
+            if (!$clienteAtual) {
+                echo 'Cliente não encontrado nesta empresa.';
+                exit;
+            }
+
             $clienteAntesAuditoria = $clienteAtual;
             $eraClienteContabil = (int)($clienteAtual['cliente_contabil'] ?? 1) === 1;
             $eraServicoCertificado = (int)($clienteAtual['servico_certificado'] ?? 1) === 1;
@@ -730,6 +827,7 @@ if ($action === 'create' || $action === 'update') {
                 tributacao=?,
                 possui_parcelamento=?
             WHERE id=?
+            " . empresaFiltro($pdo, 'clientes') . "
         ");
 
             $ok = $stmt->execute([
@@ -801,6 +899,7 @@ if ($action === 'create' || $action === 'update') {
                 UPDATE clientes
                 SET " . implode(', ', $atualizacoesPendencias) . "
                 WHERE id = ?
+                " . empresaFiltro($pdo, 'clientes') . "
             ")->execute([$clienteIdSalvo]);
             }
         }
@@ -830,7 +929,12 @@ if ($action === 'create' || $action === 'update') {
 
         $pdo->commit();
 
-        $stmtAuditoria = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+        $stmtAuditoria = $pdo->prepare("
+        SELECT *
+        FROM clientes
+        WHERE id = ?
+        " . empresaFiltro($pdo, 'clientes') . "
+    ");
         $stmtAuditoria->execute([$clienteIdSalvo]);
         $clienteDepoisAuditoria = $stmtAuditoria->fetch(PDO::FETCH_ASSOC) ?: [];
         $mudancasAuditoria = auditoriaMudancas($clienteAntesAuditoria, $clienteDepoisAuditoria);
@@ -861,13 +965,27 @@ if ($action === 'delete') {
 
     $id = $_POST['id'] ?? '';
 
-    $stmtAntes = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+    if (!clientesSituacaoDisponivel($pdo)) {
+        echo 'Execute o SQL de clientes devolvidos antes de devolver clientes.';
+        exit;
+    }
+
+    $stmtAntes = $pdo->prepare("
+        SELECT *
+        FROM clientes
+        WHERE id = ?
+        " . empresaFiltro($pdo, 'clientes') . "
+    ");
     $stmtAntes->execute([$id]);
     $clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
 
     $stmt = $pdo->prepare("
-        DELETE FROM clientes
+        UPDATE clientes
+        SET situacao_cliente = 'devolvido',
+            devolvido_em = NOW(),
+            motivo_devolucao = NULL
         WHERE id = ?
+          " . empresaFiltro($pdo, 'clientes') . "
     ");
 
     $ok = $stmt->execute([$id]);
@@ -876,10 +994,112 @@ if ($action === 'delete') {
         registrarAuditoria(
             $pdo,
             'Clientes',
-            'excluir',
+            'devolver',
             'cliente',
             $id,
-            'Excluiu o cliente ' . $clienteAntes['codigo'] . ' - ' . $clienteAntes['nome'],
+            'Devolveu o cliente ' . $clienteAntes['codigo'] . ' - ' . $clienteAntes['nome'],
+            $clienteAntes,
+            array_merge($clienteAntes, [
+                'situacao_cliente' => 'devolvido',
+                'devolvido_em' => date('Y-m-d H:i:s'),
+            ])
+        );
+    }
+
+    echo $ok ? 'ok' : 'erro';
+    exit;
+}
+
+if ($action === 'reativar_cliente') {
+    $id = (int)($_POST['id'] ?? 0);
+
+    if (!clientesSituacaoDisponivel($pdo)) {
+        echo 'Execute o SQL de clientes devolvidos antes de reativar clientes.';
+        exit;
+    }
+
+    $stmtAntes = $pdo->prepare("
+        SELECT *
+        FROM clientes
+        WHERE id = ?
+        " . empresaFiltro($pdo, 'clientes') . "
+    ");
+    $stmtAntes->execute([$id]);
+    $clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+    if (!$clienteAntes) {
+        echo 'Cliente não encontrado.';
+        exit;
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE clientes
+        SET situacao_cliente = 'ativo',
+            devolvido_em = NULL,
+            motivo_devolucao = NULL
+        WHERE id = ?
+          " . empresaFiltro($pdo, 'clientes') . "
+    ");
+    $ok = $stmt->execute([$id]);
+
+    if ($ok) {
+        registrarAuditoria(
+            $pdo,
+            'Clientes',
+            'reativar',
+            'cliente',
+            $id,
+            'Reativou o cliente ' . $clienteAntes['codigo'] . ' - ' . $clienteAntes['nome'],
+            $clienteAntes,
+            array_merge($clienteAntes, [
+                'situacao_cliente' => 'ativo',
+                'devolvido_em' => null,
+                'motivo_devolucao' => null,
+            ])
+        );
+    }
+
+    echo $ok ? 'ok' : 'erro';
+    exit;
+}
+
+if ($action === 'delete_permanente') {
+    $id = (int)($_POST['id'] ?? 0);
+
+    $stmtAntes = $pdo->prepare("
+        SELECT *
+        FROM clientes
+        WHERE id = ?
+        " . empresaFiltro($pdo, 'clientes') . "
+    ");
+    $stmtAntes->execute([$id]);
+    $clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+    if (!$clienteAntes) {
+        echo 'Cliente não encontrado.';
+        exit;
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            DELETE FROM clientes
+            WHERE id = ?
+              " . empresaFiltro($pdo, 'clientes') . "
+        ");
+        $ok = $stmt->execute([$id]);
+    } catch (Throwable $e) {
+        echo 'Não foi possível excluir definitivamente. Verifique se existem parcelamentos, processos ou vínculos para este cliente.';
+        exit;
+    }
+
+    if ($ok) {
+        registrarAuditoria(
+            $pdo,
+            'Clientes',
+            'excluir_definitivamente',
+            'cliente',
+            $id,
+            'Excluiu definitivamente o cliente ' . $clienteAntes['codigo'] . ' - ' . $clienteAntes['nome'],
             $clienteAntes,
             null
         );
