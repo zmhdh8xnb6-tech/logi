@@ -405,6 +405,8 @@ try {
 
 $totalPendencias = count($pendencias);
 $limiteGraficoPendencias = 15;
+$pendenciasPorPaginaInicial = 15;
+$totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPaginaInicial);
 ?>
 
 <!DOCTYPE html>
@@ -618,7 +620,7 @@ $limiteGraficoPendencias = 15;
                         </select>
                     </div>
 
-                    <div class="col-md-2" id="grupoLimitePendencias">
+                    <div class="col-md-2<?= $totalPendencias <= $pendenciasPorPaginaInicial ? ' d-none' : '' ?>" id="grupoLimitePendencias">
                         <select id="limitePendencias" class="form-select">
                             <option value="15">Mostrar 15</option>
                             <option value="30">Mostrar 30</option>
@@ -652,8 +654,8 @@ $limiteGraficoPendencias = 15;
                                 </tr>
                             <?php endif; ?>
 
-                            <?php foreach ($pendencias as $pendencia): ?>
-                                <tr class="linha-pendencia" data-tipo="<?= htmlspecialchars($pendencia['tipo']) ?>">
+                            <?php foreach ($pendencias as $indicePendencia => $pendencia): ?>
+                                <tr class="linha-pendencia<?= $indicePendencia >= $pendenciasPorPaginaInicial ? ' d-none' : '' ?>" data-tipo="<?= htmlspecialchars($pendencia['tipo']) ?>">
                                     <td class="texto-pendencia">
                                         <strong><?= htmlspecialchars($pendencia['codigo']) ?> - <?= htmlspecialchars($pendencia['nome']) ?></strong>
                                         <small class="text-muted d-block"><?= htmlspecialchars($pendencia['documento']) ?></small>
@@ -709,7 +711,38 @@ $limiteGraficoPendencias = 15;
                     </table>
                 </div>
 
-                <div class="mt-3 filtros-pendencias" id="paginacaoPendencias"></div>
+                <div class="mt-3 filtros-pendencias<?= $totalPaginasPendenciasInicial <= 1 ? ' d-none' : '' ?>" id="paginacaoPendencias">
+                    <?php if ($totalPaginasPendenciasInicial > 1): ?>
+                        <nav>
+                            <ul class="pagination justify-content-center mb-0">
+                                <li class="page-item disabled">
+                                    <button type="button" class="page-link" disabled>Anterior</button>
+                                </li>
+                                <li class="page-item active">
+                                    <button type="button" class="page-link">1</button>
+                                </li>
+                                <?php for ($paginaInicial = 2; $paginaInicial <= min(3, $totalPaginasPendenciasInicial); $paginaInicial++): ?>
+                                    <li class="page-item">
+                                        <button type="button" class="page-link"><?= $paginaInicial ?></button>
+                                    </li>
+                                <?php endfor; ?>
+                                <?php if ($totalPaginasPendenciasInicial > 4): ?>
+                                    <li class="page-item disabled">
+                                        <button type="button" class="page-link" disabled>...</button>
+                                    </li>
+                                <?php endif; ?>
+                                <?php if ($totalPaginasPendenciasInicial > 3): ?>
+                                    <li class="page-item">
+                                        <button type="button" class="page-link"><?= $totalPaginasPendenciasInicial ?></button>
+                                    </li>
+                                <?php endif; ?>
+                                <li class="page-item">
+                                    <button type="button" class="page-link">Próxima</button>
+                                </li>
+                            </ul>
+                        </nav>
+                    <?php endif; ?>
+                </div>
             </div>
         </div>
     </main>
