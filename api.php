@@ -78,7 +78,14 @@ function salvarAlvarasCliente(PDO $pdo, int $clienteId, string $situacaoAlvara, 
         'visadf' => 'VIGILÂNCIA SANITÁRIA DO DISTRITO FEDERAL - VISADF',
     ];
 
-    $pdo->prepare("DELETE FROM cliente_alvaras WHERE cliente_id = ?")->execute([$clienteId]);
+    $stmtDeleteAlvaras = $pdo->prepare("
+        DELETE ca
+        FROM cliente_alvaras ca
+        INNER JOIN clientes c ON c.id = ca.cliente_id
+        WHERE ca.cliente_id = ?
+        " . empresaFiltroClienteDireto($pdo, 'c') . "
+    ");
+    $stmtDeleteAlvaras->execute([$clienteId]);
 
     if ($situacaoAlvara !== 'possui') {
         return;
@@ -241,6 +248,7 @@ function atualizarPendenciaControleDados(PDO $pdo, int $clienteId, string $colun
         UPDATE clientes
         SET {$coluna} = ?
         WHERE id = ?
+        " . empresaFiltroClienteDireto($pdo) . "
     ");
     $stmt->execute([$pendente ? 1 : 0, $clienteId]);
 }
@@ -302,7 +310,7 @@ if ($action === 'read') {
     $offset = ($page - 1) * $limit;
 
     $filtroAtivos = clientesFiltroAtivos($pdo);
-    $filtroEmpresa = empresaFiltro($pdo, 'clientes');
+    $filtroEmpresa = empresaFiltroClienteDireto($pdo);
     $stmtTotal = $pdo->query("SELECT COUNT(*) FROM clientes WHERE cliente_contabil = 1{$filtroAtivos}{$filtroEmpresa}");
     $total = $stmtTotal->fetchColumn();
 
@@ -337,7 +345,7 @@ if ($action === 'read') {
 if ($action === 'print_clientes') {
     $busca = trim($_GET['busca'] ?? '');
     $ufFiltro = strtoupper(trim($_GET['uf'] ?? ''));
-    $filtros = ["cliente_contabil = 1" . clientesFiltroAtivos($pdo) . empresaFiltro($pdo, 'clientes')];
+    $filtros = ["cliente_contabil = 1" . clientesFiltroAtivos($pdo) . empresaFiltroClienteDireto($pdo)];
     $parametros = [];
 
     if ($busca !== '') {
@@ -379,7 +387,7 @@ if ($action === 'check_documento') {
         FROM clientes
         WHERE documento = ?
           AND id <> ?
-          " . empresaFiltro($pdo, 'clientes') . "
+          " . empresaFiltroClienteDireto($pdo) . "
         LIMIT 1
     ");
     $stmt->execute([$documento, $id]);
@@ -633,7 +641,7 @@ if ($action === 'create' || $action === 'update') {
             SELECT id 
             FROM clientes 
             WHERE documento = ?
-            " . empresaFiltro($pdo, 'clientes') . "
+            " . empresaFiltroClienteDireto($pdo) . "
         ");
 
         $stmt->execute([$documento]);
@@ -643,7 +651,7 @@ if ($action === 'create' || $action === 'update') {
             FROM clientes
             WHERE documento = ?
             AND id <> ?
-            " . empresaFiltro($pdo, 'clientes') . "
+            " . empresaFiltroClienteDireto($pdo) . "
         ");
 
         $stmt->execute([$documento, $id]);
@@ -753,7 +761,7 @@ if ($action === 'create' || $action === 'update') {
             SELECT *
             FROM clientes
             WHERE id = ?
-            " . empresaFiltro($pdo, 'clientes') . "
+            " . empresaFiltroClienteDireto($pdo) . "
         ");
             $stmtClienteAtual->execute([$id]);
             $clienteAtual = $stmtClienteAtual->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -827,7 +835,7 @@ if ($action === 'create' || $action === 'update') {
                 tributacao=?,
                 possui_parcelamento=?
             WHERE id=?
-            " . empresaFiltro($pdo, 'clientes') . "
+            " . empresaFiltroClienteDireto($pdo) . "
         ");
 
             $ok = $stmt->execute([
@@ -899,7 +907,7 @@ if ($action === 'create' || $action === 'update') {
                 UPDATE clientes
                 SET " . implode(', ', $atualizacoesPendencias) . "
                 WHERE id = ?
-                " . empresaFiltro($pdo, 'clientes') . "
+                " . empresaFiltroClienteDireto($pdo) . "
             ")->execute([$clienteIdSalvo]);
             }
         }
@@ -933,7 +941,7 @@ if ($action === 'create' || $action === 'update') {
         SELECT *
         FROM clientes
         WHERE id = ?
-        " . empresaFiltro($pdo, 'clientes') . "
+        " . empresaFiltroClienteDireto($pdo) . "
     ");
         $stmtAuditoria->execute([$clienteIdSalvo]);
         $clienteDepoisAuditoria = $stmtAuditoria->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -974,7 +982,7 @@ if ($action === 'delete') {
         SELECT *
         FROM clientes
         WHERE id = ?
-        " . empresaFiltro($pdo, 'clientes') . "
+        " . empresaFiltroClienteDireto($pdo) . "
     ");
     $stmtAntes->execute([$id]);
     $clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
@@ -985,7 +993,7 @@ if ($action === 'delete') {
             devolvido_em = NOW(),
             motivo_devolucao = NULL
         WHERE id = ?
-          " . empresaFiltro($pdo, 'clientes') . "
+          " . empresaFiltroClienteDireto($pdo) . "
     ");
 
     $ok = $stmt->execute([$id]);
@@ -1022,7 +1030,7 @@ if ($action === 'reativar_cliente') {
         SELECT *
         FROM clientes
         WHERE id = ?
-        " . empresaFiltro($pdo, 'clientes') . "
+        " . empresaFiltroClienteDireto($pdo) . "
     ");
     $stmtAntes->execute([$id]);
     $clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
@@ -1038,7 +1046,7 @@ if ($action === 'reativar_cliente') {
             devolvido_em = NULL,
             motivo_devolucao = NULL
         WHERE id = ?
-          " . empresaFiltro($pdo, 'clientes') . "
+          " . empresaFiltroClienteDireto($pdo) . "
     ");
     $ok = $stmt->execute([$id]);
 
@@ -1070,7 +1078,7 @@ if ($action === 'delete_permanente') {
         SELECT *
         FROM clientes
         WHERE id = ?
-        " . empresaFiltro($pdo, 'clientes') . "
+        " . empresaFiltroClienteDireto($pdo) . "
     ");
     $stmtAntes->execute([$id]);
     $clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
@@ -1084,7 +1092,7 @@ if ($action === 'delete_permanente') {
         $stmt = $pdo->prepare("
             DELETE FROM clientes
             WHERE id = ?
-              " . empresaFiltro($pdo, 'clientes') . "
+              " . empresaFiltroClienteDireto($pdo) . "
         ");
         $ok = $stmt->execute([$id]);
     } catch (Throwable $e) {

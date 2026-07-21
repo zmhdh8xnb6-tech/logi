@@ -21,7 +21,12 @@ if ($clienteId <= 0 || !isset($colunas[$tipo])) {
     exit;
 }
 
-$stmtCliente = $pdo->prepare("SELECT id, codigo, nome, {$colunas[$tipo]} AS pendencia FROM clientes WHERE id = ?");
+$stmtCliente = $pdo->prepare("
+    SELECT id, codigo, nome, {$colunas[$tipo]} AS pendencia
+    FROM clientes
+    WHERE id = ?
+    " . empresaFiltroClienteDireto($pdo) . "
+");
 $stmtCliente->execute([$clienteId]);
 $clienteAntes = $stmtCliente->fetch(PDO::FETCH_ASSOC);
 
@@ -29,6 +34,7 @@ $stmt = $pdo->prepare("
     UPDATE clientes
     SET {$colunas[$tipo]} = 0
     WHERE id = ?
+    " . empresaFiltroClienteDireto($pdo) . "
 ");
 $stmt->execute([$clienteId]);
 

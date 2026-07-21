@@ -170,6 +170,9 @@ $filtroBusca = trim($_GET['busca'] ?? '');
 $filtroTipo = $_GET['tipo'] ?? '';
 $filtroStatus = $_GET['status'] ?? '';
 $filtroResponsavel = (int)($_GET['responsavel'] ?? 0);
+$abaProcessos = $_GET['aba'] ?? 'ativos';
+$abasProcessosPermitidas = ['ativos', 'concluidos', 'todos'];
+$abaProcessos = in_array($abaProcessos, $abasProcessosPermitidas, true) ? $abaProcessos : 'ativos';
 $processos = [];
 $opcoesPorPagina = [15, 30, 60, 90];
 $processosPorPagina = (int)($_GET['por_pagina'] ?? 15);
@@ -177,6 +180,11 @@ $processosPorPagina = in_array($processosPorPagina, $opcoesPorPagina, true) ? $p
 $paginaProcessos = max(1, (int)($_GET['pagina'] ?? 1));
 $totalProcessos = 0;
 $totalPaginasProcessos = 1;
+$totaisAbasProcessos = [
+    'ativos' => 0,
+    'concluidos' => 0,
+    'todos' => 0,
+];
 $resumo = [
     'em_andamento' => 0,
     'pendente_cliente' => 0,
@@ -190,9 +198,9 @@ if ($tabelasDisponiveis) {
     $params = [];
 
     if ($filtroBusca !== '') {
-        $where[] = "(p.cliente_codigo LIKE ? OR p.cliente_nome LIKE ? OR p.cliente_documento LIKE ? OR p.etapa_atual_nome LIKE ?)";
+        $where[] = "(p.cliente_codigo LIKE ? OR p.cliente_nome LIKE ? OR p.cliente_documento LIKE ? OR c.codigo LIKE ? OR c.nome LIKE ? OR c.documento LIKE ? OR p.etapa_atual_nome LIKE ?)";
         $like = '%' . $filtroBusca . '%';
-        array_push($params, $like, $like, $like, $like);
+        array_push($params, $like, $like, $like, $like, $like, $like, $like);
     }
 
     if ($filtroTipo !== '' && array_key_exists($filtroTipo, $tiposProcesso)) {
@@ -203,6 +211,10 @@ if ($tabelasDisponiveis) {
     if ($filtroStatus !== '') {
         $where[] = 'p.status = ?';
         $params[] = $filtroStatus;
+    } elseif ($abaProcessos === 'concluidos') {
+        $where[] = "p.status = 'concluido'";
+    } elseif ($abaProcessos === 'ativos') {
+        $where[] = "p.status <> 'concluido'";
     }
 
     if ($filtroResponsavel > 0) {
@@ -215,7 +227,7 @@ if ($tabelasDisponiveis) {
         FROM legalizacao_processos p
         LEFT JOIN clientes c ON c.id = p.cliente_id
         WHERE " . implode(' AND ', $where) . "
-        " . empresaFiltro($pdo, 'clientes', 'c') . "
+        " . empresaFiltroClienteDireto($pdo, 'c') . "
     ");
     $stmtTotalProcessos->execute($params);
     $totalProcessos = (int)$stmtTotalProcessos->fetchColumn();
@@ -225,13 +237,16 @@ if ($tabelasDisponiveis) {
 
     $stmt = $pdo->prepare("
         SELECT p.*,
+               COALESCE(NULLIF(c.codigo, ''), p.cliente_codigo) AS cliente_codigo_exibicao,
+               COALESCE(NULLIF(c.nome, ''), p.cliente_nome) AS cliente_nome_exibicao,
+               COALESCE(NULLIF(c.documento, ''), p.cliente_documento) AS cliente_documento_exibicao,
                SUM(CASE WHEN ck.status = 'pendente' THEN 1 ELSE 0 END) AS checklist_pendente,
                COUNT(ck.id) AS checklist_total
         FROM legalizacao_processos p
         LEFT JOIN legalizacao_checklist ck ON ck.processo_id = p.id
         LEFT JOIN clientes c ON c.id = p.cliente_id
         WHERE " . implode(' AND ', $where) . "
-        " . empresaFiltro($pdo, 'clientes', 'c') . "
+        " . empresaFiltroClienteDireto($pdo, 'c') . "
         GROUP BY p.id
         ORDER BY
             FIELD(p.status, 'pendente_cliente', 'pendente_orgao', 'em_andamento', 'pausado', 'concluido', 'cancelado'),
@@ -245,21 +260,37 @@ if ($tabelasDisponiveis) {
 
     $stmtResumo = $pdo->query("
         SELECT
-            SUM(status = 'em_andamento') AS em_andamento,
-            SUM(status = 'pendente_cliente') AS pendente_cliente,
-            SUM(status = 'pendente_orgao') AS pendente_orgao,
-            SUM(status <> 'concluido' AND status <> 'cancelado' AND prazo IS NOT NULL AND prazo < CURDATE()) AS vencidos,
-            SUM(status = 'concluido' AND DATE(concluido_em) = CURDATE()) AS concluidos_hoje
+            SUM(p.status = 'em_andamento') AS em_andamento,
+            SUM(p.status = 'pendente_cliente') AS pendente_cliente,
+            SUM(p.status = 'pendente_orgao') AS pendente_orgao,
+            SUM(p.status <> 'concluido' AND p.status <> 'cancelado' AND p.prazo IS NOT NULL AND p.prazo < CURDATE()) AS vencidos,
+            SUM(p.status = 'concluido' AND DATE(p.concluido_em) = CURDATE()) AS concluidos_hoje
         FROM legalizacao_processos p
         LEFT JOIN clientes c ON c.id = p.cliente_id
         WHERE 1 = 1
-        " . empresaFiltro($pdo, 'clientes', 'c') . "
+        " . empresaFiltroClienteDireto($pdo, 'c') . "
     ");
     $resumoBanco = $stmtResumo->fetch(PDO::FETCH_ASSOC) ?: [];
 
     foreach ($resumo as $chave => $valor) {
         $resumo[$chave] = (int)($resumoBanco[$chave] ?? 0);
     }
+
+    $stmtAbas = $pdo->query("
+        SELECT
+            SUM(p.status <> 'concluido') AS ativos,
+            SUM(p.status = 'concluido') AS concluidos,
+            COUNT(*) AS todos
+        FROM legalizacao_processos p
+        LEFT JOIN clientes c ON c.id = p.cliente_id
+        WHERE 1 = 1
+        " . empresaFiltroClienteDireto($pdo, 'c') . "
+    ");
+    $totaisAbasProcessos = array_map('intval', $stmtAbas->fetch(PDO::FETCH_ASSOC) ?: [
+        'ativos' => 0,
+        'concluidos' => 0,
+        'todos' => 0,
+    ]);
 }
 ?>
 
@@ -335,6 +366,7 @@ if ($tabelasDisponiveis) {
 
                 <section class="legalizacao-painel">
                     <form method="get" class="legalizacao-filtros">
+                        <input type="hidden" name="aba" value="<?= htmlspecialchars($abaProcessos) ?>">
                         <div class="legalizacao-campo-busca">
                             <i class="bi bi-search"></i>
                             <input
@@ -380,6 +412,26 @@ if ($tabelasDisponiveis) {
                         </select>
                     </form>
 
+                    <div class="legalizacao-abas">
+                        <?php
+                        $abasProcessos = [
+                            'ativos' => 'Em andamento',
+                            'concluidos' => 'Concluídos',
+                            'todos' => 'Todos',
+                        ];
+                        foreach ($abasProcessos as $chaveAba => $rotuloAba):
+                            $parametrosAba = $_GET;
+                            $parametrosAba['aba'] = $chaveAba;
+                            $parametrosAba['pagina'] = 1;
+                            unset($parametrosAba['status']);
+                        ?>
+                            <a href="?<?= htmlspecialchars(http_build_query($parametrosAba)) ?>" class="<?= $abaProcessos === $chaveAba && $filtroStatus === '' ? 'ativo' : '' ?>">
+                                <?= htmlspecialchars($rotuloAba) ?>
+                                <span><?= (int)($totaisAbasProcessos[$chaveAba] ?? 0) ?></span>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+
                     <div class="table-responsive">
                         <table class="table align-middle legalizacao-tabela">
                             <thead>
@@ -402,6 +454,9 @@ if ($tabelasDisponiveis) {
                                 <?php endif; ?>
 
                                 <?php foreach ($processos as $processo):
+                                    $clienteCodigoExibicao = $processo['cliente_codigo_exibicao'] ?? $processo['cliente_codigo'];
+                                    $clienteNomeExibicao = $processo['cliente_nome_exibicao'] ?? $processo['cliente_nome'];
+                                    $clienteDocumentoExibicao = $processo['cliente_documento_exibicao'] ?? $processo['cliente_documento'];
                                     $prazoInfo = legalizacaoPrazoTexto($processo['prazo'], $processo['status']);
                                     $processoVencido = $processo['prazo']
                                         && !in_array($processo['status'], ['concluido', 'cancelado'], true)
@@ -413,8 +468,8 @@ if ($tabelasDisponiveis) {
                                 ?>
                                     <tr>
                                         <td>
-                                            <strong><?= htmlspecialchars(($processo['cliente_codigo'] ? $processo['cliente_codigo'] . ' - ' : '') . $processo['cliente_nome']) ?></strong>
-                                            <small><?= htmlspecialchars($processo['cliente_documento'] ?: '-') ?></small>
+                                            <strong><?= htmlspecialchars(($clienteCodigoExibicao ? $clienteCodigoExibicao . ' - ' : '') . $clienteNomeExibicao) ?></strong>
+                                            <small><?= htmlspecialchars($clienteDocumentoExibicao ?: '-') ?></small>
                                         </td>
                                         <td><?= htmlspecialchars(legalizacaoTextoTipo($processo['tipo'])) ?></td>
                                         <td><?= htmlspecialchars($processo['etapa_atual_nome']) ?></td>

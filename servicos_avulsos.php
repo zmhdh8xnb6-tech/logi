@@ -3,10 +3,14 @@ require 'config.php';
 
 exigirPermissao('clientes');
 
+$filtroAtivos = clientesFiltroAtivos($pdo);
+
 $stmt = $pdo->query("
     SELECT *
     FROM clientes
     WHERE cliente_contabil = 0
+    {$filtroAtivos}
+    " . empresaFiltroClienteDireto($pdo) . "
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 $cadastrosAvulsos = $stmt->fetchAll(PDO::FETCH_ASSOC);

@@ -99,7 +99,7 @@ $stmt = $pdo->query("
 SELECT id,codigo,nome
 FROM clientes
 WHERE 1 = 1
-" . empresaFiltro($pdo, 'clientes') . "
+" . empresaFiltroClienteDireto($pdo) . "
 ORDER BY CAST(codigo AS UNSIGNED) ASC
 ");
 

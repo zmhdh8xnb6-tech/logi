@@ -10,7 +10,12 @@ if (!$id) {
     exit;
 }
 
-$stmt = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+$stmt = $pdo->prepare("
+    SELECT *
+    FROM clientes
+    WHERE id = ?
+    " . empresaFiltroClienteDireto($pdo) . "
+");
 $stmt->execute([$id]);
 $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -20,9 +25,11 @@ if (!$cliente) {
 }
 
 $stmtAlvaras = $pdo->prepare("
-    SELECT orgao_codigo, situacao, vencimento
-    FROM cliente_alvaras
-    WHERE cliente_id = ?
+    SELECT ca.orgao_codigo, ca.situacao, ca.vencimento
+    FROM cliente_alvaras ca
+    INNER JOIN clientes c ON c.id = ca.cliente_id
+    WHERE ca.cliente_id = ?
+    " . empresaFiltroClienteDireto($pdo, 'c') . "
 ");
 $stmtAlvaras->execute([$id]);
 

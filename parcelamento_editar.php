@@ -100,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         SELECT id, codigo, nome
         FROM clientes
         WHERE id = ?
-        " . empresaFiltro($pdo, 'clientes') . "
+        " . empresaFiltroClienteDireto($pdo) . "
     ");
     $stmtCliente->execute([$clienteSelecionadoId]);
     $clienteSelecionado = $stmtCliente->fetch(PDO::FETCH_ASSOC);
@@ -188,7 +188,7 @@ $stmt = $pdo->query("
     SELECT id, codigo, nome
     FROM clientes
     WHERE 1 = 1
-    " . empresaFiltro($pdo, 'clientes') . "
+    " . empresaFiltroClienteDireto($pdo) . "
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);

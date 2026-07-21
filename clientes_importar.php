@@ -329,7 +329,7 @@ function importarClienteValidar(PDO $pdo, array $cliente, array $documentosArqui
             SELECT id
             FROM clientes
             WHERE codigo = ?
-            " . empresaFiltro($pdo, 'clientes') . "
+            " . empresaFiltroClienteDireto($pdo) . "
             LIMIT 1
         ");
         $stmt->execute([$codigo]);
@@ -344,7 +344,7 @@ function importarClienteValidar(PDO $pdo, array $cliente, array $documentosArqui
             SELECT id
             FROM clientes
             WHERE REPLACE(REPLACE(REPLACE(documento, '.', ''), '/', ''), '-', '') = ?
-            " . empresaFiltro($pdo, 'clientes') . "
+            " . empresaFiltroClienteDireto($pdo) . "
             LIMIT 1
         ");
         $stmt->execute([$documentoLimpo]);

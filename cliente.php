@@ -11,7 +11,12 @@ if (!$id) {
     exit;
 }
 
-$stmt = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
+$stmt = $pdo->prepare("
+    SELECT *
+    FROM clientes
+    WHERE id = ?
+    " . empresaFiltroClienteDireto($pdo) . "
+");
 $stmt->execute([$id]);
 $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -24,19 +29,23 @@ $clienteDevolvido = clientesSituacaoDisponivel($pdo)
     && (($cliente['situacao_cliente'] ?? 'ativo') === 'devolvido');
 
 $stmtAlvaras = $pdo->prepare("
-    SELECT orgao_nome, situacao, vencimento
-    FROM cliente_alvaras
-    WHERE cliente_id = ?
-    ORDER BY orgao_nome
+    SELECT ca.orgao_nome, ca.situacao, ca.vencimento
+    FROM cliente_alvaras ca
+    INNER JOIN clientes c ON c.id = ca.cliente_id
+    WHERE ca.cliente_id = ?
+    " . empresaFiltroClienteDireto($pdo, 'c') . "
+    ORDER BY ca.orgao_nome
 ");
 $stmtAlvaras->execute([$id]);
 $alvarasCliente = $stmtAlvaras->fetchAll(PDO::FETCH_ASSOC);
 
 $stmtParcelamentos = $pdo->prepare("
-    SELECT *
-    FROM parcelamentos
-    WHERE cliente_id = ?
-    ORDER BY orgao, data_primeira_parcela, id
+    SELECT p.*
+    FROM parcelamentos p
+    INNER JOIN clientes c ON c.id = p.cliente_id
+    WHERE p.cliente_id = ?
+    " . empresaFiltroClienteDireto($pdo, 'c') . "
+    ORDER BY p.orgao, p.data_primeira_parcela, p.id
 ");
 $stmtParcelamentos->execute([$id]);
 $parcelamentosCliente = $stmtParcelamentos->fetchAll(PDO::FETCH_ASSOC);

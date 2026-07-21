@@ -12,6 +12,7 @@ if ($situacaoDisponivel) {
         FROM clientes
         WHERE 1 = 1
         " . clientesFiltroDevolvidos($pdo) . "
+        " . empresaFiltroClienteDireto($pdo) . "
         ORDER BY devolvido_em DESC, CAST(codigo AS UNSIGNED) ASC, nome ASC
     ");
     $clientesDevolvidos = $stmt->fetchAll(PDO::FETCH_ASSOC);

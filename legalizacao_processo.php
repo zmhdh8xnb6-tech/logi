@@ -372,6 +372,9 @@ $processoVencido = $processo['prazo']
     && $processo['prazo'] < date('Y-m-d');
 $statusClasseProcesso = $processoVencido ? 'bg-danger' : legalizacaoClasseStatus($processo['status']);
 $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTextoStatus($processo['status']);
+$clienteCodigoExibicao = $processo['cliente_codigo_atual'] ?? $processo['cliente_codigo'];
+$clienteNomeExibicao = $processo['cliente_nome_atual'] ?? $processo['cliente_nome'];
+$clienteDocumentoExibicao = $processo['cliente_documento_atual'] ?? $processo['cliente_documento'];
 ?>
 
 <!DOCTYPE html>
@@ -392,7 +395,7 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                 <div>
                     <h3 class="mb-1"><?= htmlspecialchars(legalizacaoTextoTipo($processo['tipo'])) ?></h3>
                     <p class="text-muted mb-0">
-                        <?= htmlspecialchars(($processo['cliente_codigo'] ? $processo['cliente_codigo'] . ' - ' : '') . $processo['cliente_nome']) ?>
+                        <?= htmlspecialchars(($clienteCodigoExibicao ? $clienteCodigoExibicao . ' - ' : '') . $clienteNomeExibicao) ?>
                     </p>
                 </div>
 
@@ -538,7 +541,7 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                             </div>
                             <div class="col-md-12">
                                 <label class="form-label" for="observacoesProcesso">Observações</label>
-                                <textarea class="form-control legalizacao-dado-editavel" name="observacoes" id="observacoesProcesso" rows="4" required disabled><?= htmlspecialchars($processo['observacoes'] ?? '') ?></textarea>
+                                <textarea class="form-control legalizacao-dado-editavel legalizacao-textarea-auto" name="observacoes" id="observacoesProcesso" rows="2" required disabled><?= htmlspecialchars($processo['observacoes'] ?? '') ?></textarea>
                                 <div class="invalid-feedback">Informe as observações.</div>
                             </div>
                         </div>
@@ -685,7 +688,7 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                     Tem certeza que deseja excluir este processo de
                     <strong><?= htmlspecialchars(legalizacaoTextoTipo($processo['tipo'])) ?></strong>
                     da empresa
-                    <strong><?= htmlspecialchars(($processo['cliente_codigo'] ? $processo['cliente_codigo'] . ' - ' : '') . $processo['cliente_nome']) ?></strong>?
+                    <strong><?= htmlspecialchars(($clienteCodigoExibicao ? $clienteCodigoExibicao . ' - ' : '') . $clienteNomeExibicao) ?></strong>?
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -736,10 +739,23 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
         const botaoCancelarDados = document.getElementById('btnCancelarDadosProcesso');
         const botaoSalvarDados = document.getElementById('btnSalvarDadosProcesso');
         const camposDadosProcesso = Array.from(document.querySelectorAll('.legalizacao-dado-editavel'));
+        const textareasAuto = Array.from(document.querySelectorAll('.legalizacao-textarea-auto'));
         const valoresOriginaisDados = new Map();
 
         camposDadosProcesso.forEach(function(campo) {
             valoresOriginaisDados.set(campo, campo.value);
+        });
+
+        function ajustarTextareaLegalizacao(campo) {
+            campo.style.height = 'auto';
+            campo.style.height = Math.max(70, campo.scrollHeight) + 'px';
+        }
+
+        textareasAuto.forEach(function(campo) {
+            ajustarTextareaLegalizacao(campo);
+            campo.addEventListener('input', function() {
+                ajustarTextareaLegalizacao(campo);
+            });
         });
 
         function alternarEdicaoDadosProcesso(editando) {
@@ -749,18 +765,16 @@ $statusTextoProcesso = $processoVencido ? $prazoInfo['texto'] : legalizacaoTexto
                 if (!editando && valoresOriginaisDados.has(campo)) {
                     campo.value = valoresOriginaisDados.get(campo);
                 }
+
+                if (campo.classList.contains('legalizacao-textarea-auto')) {
+                    ajustarTextareaLegalizacao(campo);
+                }
             });
 
             document.querySelector('.needs-validation')?.classList.remove('was-validated');
             botaoEditarDados?.classList.toggle('d-none', editando);
             botaoCancelarDados?.classList.toggle('d-none', !editando);
             botaoSalvarDados?.classList.toggle('d-none', !editando);
-
-            if (editando) {
-                camposDadosProcesso.find(function(campo) {
-                    return !campo.disabled;
-                })?.focus();
-            }
         }
 
         botaoEditarDados?.addEventListener('click', function() {
