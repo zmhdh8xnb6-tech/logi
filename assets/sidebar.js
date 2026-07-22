@@ -100,7 +100,7 @@ if (notificationCenter) {
 
         if (total > 0) {
             notificationPanelTitle.textContent = `Você possui ${textoPendencias(total)}.`;
-            notificationPanelText.textContent = 'Confira os itens vencidos, ausentes ou próximos do vencimento.';
+            notificationPanelText.textContent = 'Confira os itens vencidos, ausentes ou pendentes de cadastro.';
         } else {
             notificationPanelTitle.textContent = 'Tudo em dia.';
             notificationPanelText.textContent = 'Nenhuma pendência encontrada neste momento.';

@@ -11,6 +11,16 @@ function contarPendenciasSistema(PDO $pdo): int
     $stmt = $pdo->query("SELECT * FROM clientes WHERE 1=1" . clientesFiltroAtivos($pdo) . "{$filtroEmpresaClientes}");
     $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    $clienteEnderecoIncompleto = static function (array $cliente): bool {
+        foreach (['cep', 'endereco', 'numero_endereco', 'bairro', 'cidade', 'uf'] as $campo) {
+            if (trim((string)($cliente[$campo] ?? '')) === '') {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
     $procuracoes = [
         ['status' => 'procuracao_receita_federal', 'vencimento' => 'vencimento_procuracao_receita_federal'],
         ['status' => 'procuracao_conectividade', 'vencimento' => 'vencimento_procuracao_conectividade'],
@@ -23,6 +33,10 @@ function contarPendenciasSistema(PDO $pdo): int
     foreach ($clientes as $cliente) {
         $clienteContabil = (int)($cliente['cliente_contabil'] ?? 1) === 1;
         $controlaCertificado = $clienteContabil || (int)($cliente['servico_certificado'] ?? 1) === 1;
+
+        if ($clienteContabil && $clienteEnderecoIncompleto($cliente)) {
+            $total++;
+        }
 
         if ($controlaCertificado && !empty($cliente['pendencia_certificado_digital'])) {
             $total++;
