@@ -1019,12 +1019,16 @@ if ($action === 'delete') {
         exit;
     }
 
-    if (!$contadorRetirado) {
+    $exigeContadorRetirado = strtolower((string)($clienteAntes['contador'] ?? '')) === 'sim';
+    $exigeProcuracaoSefazRevogada = strtoupper((string)($clienteAntes['uf'] ?? '')) === 'DF'
+        && strtolower((string)($clienteAntes['procuracao_sefaz'] ?? '')) === 'possui';
+
+    if ($exigeContadorRetirado && !$contadorRetirado) {
         echo 'Confirme que o contador já foi retirado antes de devolver o cliente.';
         exit;
     }
 
-    if (strtoupper((string)($clienteAntes['uf'] ?? '')) === 'DF' && !$procuracaoSefazRevogada) {
+    if ($exigeProcuracaoSefazRevogada && !$procuracaoSefazRevogada) {
         echo 'Para cliente do DF, confirme que a procuração SEFAZ DF foi revogada antes de devolver.';
         exit;
     }

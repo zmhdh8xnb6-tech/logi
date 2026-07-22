@@ -314,7 +314,14 @@ if ($clienteContabil) {
                     <a href="cliente_editar.php?id=<?= (int)$cliente['id'] ?>" class="btn btn-primary">
                         <i class="bi bi-pencil-square"></i> Editar
                     </a>
-                    <button class="btn btn-warning" onclick="excluirCliente(<?= (int)$cliente['id'] ?>, '<?= htmlspecialchars(strtoupper((string)($cliente['uf'] ?? '')), ENT_QUOTES) ?>')">
+                    <button
+                        class="btn btn-warning"
+                        onclick="excluirCliente(
+                            <?= (int)$cliente['id'] ?>,
+                            '<?= htmlspecialchars(strtoupper((string)($cliente['uf'] ?? '')), ENT_QUOTES) ?>',
+                            <?= json_encode(($cliente['contador'] ?? '') === 'sim') ?>,
+                            <?= json_encode(($cliente['procuracao_sefaz'] ?? '') === 'possui') ?>
+                        )">
                         <i class="bi bi-archive"></i> Devolver
                     </button>
                 <?php elseif (!$clienteBaixado): ?>

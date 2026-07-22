@@ -13,7 +13,7 @@
                 </small>
 
                 <div class="mt-3">
-                    <div class="form-check mb-2">
+                    <div class="form-check mb-2" id="grupoConfirmarContadorRetirado">
                         <input class="form-check-input" type="checkbox" value="1" id="confirmarContadorRetirado">
                         <label class="form-check-label" for="confirmarContadorRetirado">
                             Já foi retirado o contador.

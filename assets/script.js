@@ -7,7 +7,10 @@ let dadosCnpjEncontrado = null;
 let requisicaoClientes = null;
 let timerBuscaClientes = null;
 let sequenciaRequisicaoClientes = 0;
+let clienteParaExcluir = null;
 let clienteUfParaExcluir = '';
+let clienteExigeContadorRetirado = true;
+let clienteExigeSefazRevogada = false;
 
 $(document).ready(function () {
     const limiteClientesSalvo = Number(localStorage.getItem('limiteClientes') || 15);
@@ -757,12 +760,17 @@ function abrirModalEditar(
     modal.show();
 }
 
-function excluirCliente(id, uf = '') {
+function excluirCliente(id, uf = '', exigeContadorRetirado = true, exigeSefazRevogada = false) {
     clienteParaExcluir = id;
     clienteUfParaExcluir = String(uf || '').toUpperCase();
+    clienteExigeContadorRetirado = exigeContadorRetirado === true || exigeContadorRetirado === '1';
+    clienteExigeSefazRevogada = (exigeSefazRevogada === true || exigeSefazRevogada === '1')
+        && clienteUfParaExcluir === 'DF';
+
     $('#confirmarContadorRetirado').prop('checked', false).removeClass('is-invalid');
     $('#confirmarSefazRevogada').prop('checked', false).removeClass('is-invalid');
-    $('#grupoConfirmarSefazRevogada').toggleClass('d-none', clienteUfParaExcluir !== 'DF');
+    $('#grupoConfirmarContadorRetirado').toggleClass('d-none', !clienteExigeContadorRetirado);
+    $('#grupoConfirmarSefazRevogada').toggleClass('d-none', !clienteExigeSefazRevogada);
 
     const modal = new bootstrap.Modal(document.getElementById('modalConfirmarExclusao'));
     modal.show();
@@ -1269,13 +1277,13 @@ $(document).on('click', '#btnConfirmarExclusao', function () {
     const procuracaoSefazRevogada = $('#confirmarSefazRevogada').is(':checked');
     let devolucaoConfirmada = false;
 
-    if (!contadorRetirado) {
+    if (clienteExigeContadorRetirado && !contadorRetirado) {
         $('#confirmarContadorRetirado').addClass('is-invalid').focus();
         mostrarAviso('Confirme que o contador já foi retirado antes de devolver.');
         return;
     }
 
-    if (clienteUfParaExcluir === 'DF' && !procuracaoSefazRevogada) {
+    if (clienteExigeSefazRevogada && !procuracaoSefazRevogada) {
         $('#confirmarSefazRevogada').addClass('is-invalid').focus();
         mostrarAviso('Confirme que a procuração SEFAZ DF já foi revogada.');
         return;
