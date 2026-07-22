@@ -25,8 +25,9 @@ if (!$cliente) {
     exit;
 }
 
-$clienteDevolvido = clientesSituacaoDisponivel($pdo)
-    && (($cliente['situacao_cliente'] ?? 'ativo') === 'devolvido');
+$situacaoCliente = clientesSituacaoDisponivel($pdo) ? ($cliente['situacao_cliente'] ?? 'ativo') : 'ativo';
+$clienteConsulta = in_array($situacaoCliente, ['devolvido', 'baixado'], true);
+$clienteBaixado = $situacaoCliente === 'baixado';
 
 $stmtAlvaras = $pdo->prepare("
     SELECT ca.orgao_nome, ca.situacao, ca.vencimento
@@ -88,6 +89,14 @@ $valorOuNaoInformado = static function ($valor): string {
 
     return $valor !== '' ? $valor : 'Não informado';
 };
+$enderecoTela = $valorOuNaoInformado(
+    trim((string)($cliente['endereco'] ?? ''))
+        . (!empty($cliente['numero_endereco']) ? ', ' . $cliente['numero_endereco'] : '')
+);
+$cidadeUfTela = $valorOuNaoInformado(
+    trim((string)($cliente['cidade'] ?? ''))
+        . (!empty($cliente['uf']) ? ' / ' . $cliente['uf'] : '')
+);
 
 $controlesImpressao = [];
 
@@ -294,20 +303,21 @@ if ($clienteContabil) {
             <span class="badge <?= $clienteContabil ? 'bg-success' : 'bg-info text-dark' ?> mb-3">
                 <?= $clienteContabil ? 'Cliente contábil' : 'Serviço avulso' ?>
             </span>
-            <?php if ($clienteDevolvido): ?>
-                <span class="badge bg-warning text-dark mb-3 ms-1">Cliente devolvido</span>
+            <?php if ($clienteConsulta): ?>
+                <span class="badge <?= $clienteBaixado ? 'bg-danger' : 'bg-warning text-dark' ?> mb-3 ms-1">
+                    <?= $clienteBaixado ? 'Cliente baixado' : 'Cliente devolvido' ?>
+                </span>
             <?php endif; ?>
 
             <div class="d-flex gap-2 mb-4 nao-imprimir">
-                <a href="cliente_editar.php?id=<?= (int)$cliente['id'] ?>" class="btn btn-primary">
-                    <i class="bi bi-pencil-square"></i> Editar
-                </a>
-
-                <?php if (!$clienteDevolvido): ?>
+                <?php if (!$clienteConsulta): ?>
+                    <a href="cliente_editar.php?id=<?= (int)$cliente['id'] ?>" class="btn btn-primary">
+                        <i class="bi bi-pencil-square"></i> Editar
+                    </a>
                     <button class="btn btn-warning" onclick="excluirCliente(<?= (int)$cliente['id'] ?>, '<?= htmlspecialchars(strtoupper((string)($cliente['uf'] ?? '')), ENT_QUOTES) ?>')">
                         <i class="bi bi-archive"></i> Devolver
                     </button>
-                <?php else: ?>
+                <?php elseif (!$clienteBaixado): ?>
                     <a href="clientes_devolvidos.php" class="btn btn-outline-success">
                         <i class="bi bi-arrow-counterclockwise"></i> Reativar em devolvidos
                     </a>
@@ -326,14 +336,20 @@ if ($clienteContabil) {
                 </button>
             </div>
 
+            <?php if ($clienteConsulta): ?>
+                <div class="alert alert-secondary nao-imprimir">
+                    Este cadastro está apenas para consulta e impressão. Ele não entra nas pendências nem nas telas de controle dos clientes ativos.
+                </div>
+            <?php endif; ?>
+
             <div class="clientes-box mt-4">
                 <h5>Dados principais</h5>
-                <p><strong>Código:</strong> <?= htmlspecialchars($cliente['codigo'] ?? '') ?></p>
-                <p><strong>Nome Fantasia:</strong> <?= htmlspecialchars($cliente['nome_fantasia'] ?? '') ?></p>
-                <p><strong>E-mail:</strong> <?= htmlspecialchars($cliente['email'] ?? '') ?></p>
-                <p><strong>Telefone:</strong> <?= htmlspecialchars($cliente['telefone'] ?? '') ?></p>
-                <p><strong>Inscrição Estadual:</strong> <?= htmlspecialchars($cliente['inscricao_estadual'] ?? '') ?></p>
-                <p><strong>NIRE:</strong> <?= htmlspecialchars($cliente['nire'] ?? '') ?></p>
+                <p><strong>Código:</strong> <?= htmlspecialchars($valorOuNaoInformado($cliente['codigo'] ?? '')) ?></p>
+                <p><strong>Nome Fantasia:</strong> <?= htmlspecialchars($valorOuNaoInformado($cliente['nome_fantasia'] ?? '')) ?></p>
+                <p><strong>E-mail:</strong> <?= htmlspecialchars($valorOuNaoInformado($cliente['email'] ?? '')) ?></p>
+                <p><strong>Telefone:</strong> <?= htmlspecialchars($valorOuNaoInformado($cliente['telefone'] ?? '')) ?></p>
+                <p><strong>Inscrição Estadual:</strong> <?= htmlspecialchars($valorOuNaoInformado($cliente['inscricao_estadual'] ?? '')) ?></p>
+                <p><strong>NIRE:</strong> <?= htmlspecialchars($valorOuNaoInformado($cliente['nire'] ?? '')) ?></p>
                 <?php if ($servicoCertificado): ?>
                     <p>
                         <strong>Vencimento Certificado Digital:</strong>
@@ -435,6 +451,32 @@ if ($clienteContabil) {
                 <?php endif; ?>
             </div>
 
+            <div class="clientes-box mt-4">
+                <h5>Endereço</h5>
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <small class="text-muted d-block">CEP</small>
+                        <?= htmlspecialchars($valorOuNaoInformado($cliente['cep'] ?? '')) ?>
+                    </div>
+                    <div class="col-md-5 mb-2">
+                        <small class="text-muted d-block">Endereço</small>
+                        <?= htmlspecialchars($enderecoTela) ?>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <small class="text-muted d-block">Complemento</small>
+                        <?= htmlspecialchars($valorOuNaoInformado($cliente['complemento'] ?? '')) ?>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <small class="text-muted d-block">Bairro</small>
+                        <?= htmlspecialchars($valorOuNaoInformado($cliente['bairro'] ?? '')) ?>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <small class="text-muted d-block">Cidade/UF</small>
+                        <?= htmlspecialchars($cidadeUfTela) ?>
+                    </div>
+                </div>
+            </div>
+
             <?php if ($clienteContabil && !empty($alvarasCliente)): ?>
                 <div class="clientes-box mt-4">
                     <h5>Alvarás e licenças</h5>
@@ -469,15 +511,6 @@ if ($clienteContabil) {
                     </div>
                 </div>
             <?php endif; ?>
-
-            <div class="clientes-box mt-4">
-                <h5>Endereço</h5>
-                <p><strong>CEP:</strong> <?= htmlspecialchars($cliente['cep'] ?? '') ?></p>
-                <p><strong>Endereço:</strong> <?= htmlspecialchars($cliente['endereco'] ?? '') ?>, <?= htmlspecialchars($cliente['numero_endereco'] ?? '') ?></p>
-                <p><strong>Complemento:</strong> <?= htmlspecialchars($cliente['complemento'] ?? '') ?></p>
-                <p><strong>Bairro:</strong> <?= htmlspecialchars($cliente['bairro'] ?? '') ?></p>
-                <p><strong>Cidade/UF:</strong> <?= htmlspecialchars($cliente['cidade'] ?? '') ?> / <?= htmlspecialchars($cliente['uf'] ?? '') ?></p>
-            </div>
 
             <article class="ficha-cliente-impressao">
                 <header class="ficha-impressao-cabecalho">
@@ -724,7 +757,7 @@ if ($clienteContabil) {
                 })
                 .then(function(texto) {
                     if (texto.trim() === 'ok') {
-                        window.location.href = '<?= $clienteDevolvido ? 'clientes_devolvidos.php' : $paginaRetorno ?>';
+                        window.location.href = '<?= $clienteConsulta ? 'clientes_devolvidos.php' : $paginaRetorno ?>';
                         return;
                     }
 
