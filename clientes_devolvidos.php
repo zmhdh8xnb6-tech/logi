@@ -8,7 +8,7 @@ $situacaoDisponivel = clientesSituacaoDisponivel($pdo);
 
 if ($situacaoDisponivel) {
     $stmt = $pdo->query("
-        SELECT id, codigo, documento, nome, nome_fantasia, cidade, uf, telefone, email, devolvido_em
+        SELECT id, codigo, documento, nome, nome_fantasia, cidade, uf, telefone, email, situacao_cliente, devolvido_em, motivo_devolucao
         FROM clientes
         WHERE 1 = 1
         " . clientesFiltroDevolvidos($pdo) . "
@@ -104,6 +104,11 @@ if ($situacaoDisponivel) {
                                         <td><?= htmlspecialchars($cliente['documento']) ?></td>
                                         <td>
                                             <strong><?= htmlspecialchars($cliente['nome']) ?></strong>
+                                            <?php if (($cliente['situacao_cliente'] ?? '') === 'baixado'): ?>
+                                                <span class="badge bg-danger ms-2">Baixado</span>
+                                            <?php else: ?>
+                                                <span class="badge bg-warning text-dark ms-2">Devolvido</span>
+                                            <?php endif; ?>
                                         </td>
                                         <td><?= htmlspecialchars($cliente['nome_fantasia']) ?></td>
                                         <td><?= htmlspecialchars(trim(($cliente['cidade'] ?? '') . '/' . ($cliente['uf'] ?? ''), '/')) ?></td>
@@ -117,15 +122,21 @@ if ($situacaoDisponivel) {
                                                 <a href="cliente.php?id=<?= (int)$cliente['id'] ?>" class="btn btn-outline-primary btn-sm" title="Visualizar">
                                                     <i class="bi bi-eye"></i>
                                                 </a>
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-outline-success btn-sm btn-reativar-cliente"
-                                                    data-id="<?= (int)$cliente['id'] ?>"
-                                                    data-cliente="<?= htmlspecialchars(($cliente['codigo'] ?? '') . ' - ' . ($cliente['nome'] ?? '')) ?>"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#modalReativarCliente">
-                                                    <i class="bi bi-arrow-counterclockwise"></i>
-                                                </button>
+                                                <?php if (($cliente['situacao_cliente'] ?? '') !== 'baixado'): ?>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline-success btn-sm btn-reativar-cliente"
+                                                        data-id="<?= (int)$cliente['id'] ?>"
+                                                        data-cliente="<?= htmlspecialchars(($cliente['codigo'] ?? '') . ' - ' . ($cliente['nome'] ?? '')) ?>"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalReativarCliente">
+                                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                                    </button>
+                                                <?php else: ?>
+                                                    <button type="button" class="btn btn-outline-secondary btn-sm" disabled title="CNPJ baixado não reativa">
+                                                        <i class="bi bi-lock"></i>
+                                                    </button>
+                                                <?php endif; ?>
                                                 <button
                                                     type="button"
                                                     class="btn btn-outline-danger btn-sm btn-excluir-definitivo"

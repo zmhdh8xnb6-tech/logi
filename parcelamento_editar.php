@@ -142,6 +142,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id,
         ]);
 
+        if (logiColunaExiste($pdo, 'clientes', 'possui_parcelamento')) {
+            $stmtAtualizarCliente = $pdo->prepare("
+                UPDATE clientes
+                SET possui_parcelamento = 'possui'
+                WHERE id = ?
+                " . empresaFiltroClienteDireto($pdo) . "
+            ");
+            $stmtAtualizarCliente->execute([$clienteSelecionadoId]);
+        }
+
         $depois = $parcelamento;
         $depois['cliente_id'] = $clienteSelecionadoId;
         $depois['cliente_codigo'] = $clienteSelecionado['codigo'];

@@ -38,6 +38,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Informe as observações antes de salvar.', 'danger');
         }
 
+        if (($processo['tipo'] ?? '') === 'baixa' && ($processo['status'] ?? '') === 'concluido' && $status !== 'concluido') {
+            legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Baixa concluída não pode ser reativada.', 'danger');
+        }
+
         if ($status === 'concluido') {
             $stmtEtapaFinal = $pdo->prepare("
                 SELECT MAX(ordem)
@@ -96,6 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         legalizacaoRegistrarHistorico($pdo, $processoId, 'editar', 'Dados do processo atualizados.');
         $depois = legalizacaoBuscarProcesso($pdo, $processoId);
+        legalizacaoSincronizarSituacaoClienteBaixa($pdo, $depois ?: array_merge($processo, ['status' => $status]));
         registrarAuditoria($pdo, 'Legalização', 'editar', 'processo', $processoId, 'Atualizou dados do processo', $antes, $depois);
         legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Processo atualizado com sucesso.');
     }
@@ -118,6 +123,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $stmt->execute([$processoId]);
 
+            legalizacaoSincronizarSituacaoClienteBaixa($pdo, $antes, 'excluir');
+
             $pdo->commit();
         } catch (Throwable $e) {
             $pdo->rollBack();
@@ -139,6 +146,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($acao === 'avancar_etapa' || $acao === 'voltar_etapa') {
+        if (($processo['tipo'] ?? '') === 'baixa' && ($processo['status'] ?? '') === 'concluido') {
+            legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Baixa concluída não pode ser reativada.', 'danger');
+        }
+
         $stmt = $pdo->prepare("
             SELECT *
             FROM legalizacao_etapas
@@ -226,6 +237,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $concluidoEm,
                 $processoId,
             ]);
+
+            legalizacaoSincronizarSituacaoClienteBaixa($pdo, array_merge($processo, [
+                'status' => $novoStatus,
+            ]));
 
             legalizacaoRegistrarHistorico(
                 $pdo,

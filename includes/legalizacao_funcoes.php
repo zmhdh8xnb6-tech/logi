@@ -375,3 +375,89 @@ function legalizacaoBuscarProcesso(PDO $pdo, int $processoId): ?array
     $processo = $stmt->fetch(PDO::FETCH_ASSOC);
     return $processo ?: null;
 }
+
+function legalizacaoTemBaixaAtivaCliente(PDO $pdo, int $clienteId, int $ignorarProcessoId = 0): bool
+{
+    if ($clienteId <= 0 || !legalizacaoTabelasDisponiveis($pdo)) {
+        return false;
+    }
+
+    $sqlIgnorar = $ignorarProcessoId > 0 ? 'AND id <> ?' : '';
+    $parametros = [$clienteId];
+
+    if ($ignorarProcessoId > 0) {
+        $parametros[] = $ignorarProcessoId;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM legalizacao_processos
+        WHERE cliente_id = ?
+          AND tipo = 'baixa'
+          AND status NOT IN ('concluido', 'cancelado')
+          {$sqlIgnorar}
+          " . empresaFiltro($pdo, 'legalizacao_processos') . "
+    ");
+    $stmt->execute($parametros);
+
+    return (int)$stmt->fetchColumn() > 0;
+}
+
+function legalizacaoAtualizarSituacaoCliente(PDO $pdo, int $clienteId, string $situacao, ?string $motivo = null): void
+{
+    if ($clienteId <= 0 || !clientesSituacaoDisponivel($pdo)) {
+        return;
+    }
+
+    if (!in_array($situacao, ['ativo', 'em_baixa', 'devolvido', 'baixado'], true)) {
+        return;
+    }
+
+    $devolvidoEmSql = in_array($situacao, ['devolvido', 'baixado'], true)
+        ? 'COALESCE(devolvido_em, NOW())'
+        : 'NULL';
+
+    $stmt = $pdo->prepare("
+        UPDATE clientes
+        SET situacao_cliente = ?,
+            devolvido_em = {$devolvidoEmSql},
+            motivo_devolucao = ?
+        WHERE id = ?
+          " . empresaFiltroClienteDireto($pdo) . "
+    ");
+    $stmt->execute([
+        $situacao,
+        in_array($situacao, ['devolvido', 'baixado'], true) ? $motivo : null,
+        $clienteId,
+    ]);
+}
+
+function legalizacaoSincronizarSituacaoClienteBaixa(PDO $pdo, array $processo, string $evento = ''): void
+{
+    if (($processo['tipo'] ?? '') !== 'baixa') {
+        return;
+    }
+
+    $clienteId = (int)($processo['cliente_id'] ?? 0);
+
+    if ($clienteId <= 0) {
+        return;
+    }
+
+    $status = $processo['status'] ?? 'em_andamento';
+    $processoId = (int)($processo['id'] ?? 0);
+
+    if ($status === 'concluido') {
+        legalizacaoAtualizarSituacaoCliente($pdo, $clienteId, 'baixado', 'Baixa concluída pela legalização');
+        return;
+    }
+
+    if ($status === 'cancelado' || $evento === 'excluir') {
+        if (!legalizacaoTemBaixaAtivaCliente($pdo, $clienteId, $processoId)) {
+            legalizacaoAtualizarSituacaoCliente($pdo, $clienteId, 'ativo');
+        }
+        return;
+    }
+
+    legalizacaoAtualizarSituacaoCliente($pdo, $clienteId, 'em_baixa');
+}

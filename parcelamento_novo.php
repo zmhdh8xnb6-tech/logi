@@ -70,6 +70,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ));
 
         $parcelamentoId = (int)$pdo->lastInsertId();
+
+        if (logiColunaExiste($pdo, 'clientes', 'possui_parcelamento')) {
+            $stmtAtualizarCliente = $pdo->prepare("
+                UPDATE clientes
+                SET possui_parcelamento = 'possui'
+                WHERE id = ?
+                " . empresaFiltroClienteDireto($pdo) . "
+            ");
+            $stmtAtualizarCliente->execute([$clienteId]);
+        }
+
         registrarAuditoria(
             $pdo,
             'Parcelamentos',

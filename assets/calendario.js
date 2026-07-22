@@ -160,6 +160,33 @@
         campo.dataset.calendarioBotao = '1';
     }
 
+    function aplicarMascaraData(input) {
+        if (!input || input.dataset.mascaraDataAplicada === '1') {
+            return;
+        }
+
+        input.dataset.mascaraDataAplicada = '1';
+        input.setAttribute('inputmode', 'numeric');
+        input.setAttribute('maxlength', '10');
+
+        input.addEventListener('input', function () {
+            const selecaoNoFim = input.selectionStart === input.value.length;
+            let valor = input.value.replace(/\D/g, '').slice(0, 8);
+
+            if (valor.length > 4) {
+                valor = valor.replace(/^(\d{2})(\d{2})(\d{1,4}).*/, '$1/$2/$3');
+            } else if (valor.length > 2) {
+                valor = valor.replace(/^(\d{2})(\d{1,2}).*/, '$1/$2');
+            }
+
+            input.value = valor;
+
+            if (selecaoNoFim) {
+                input.setSelectionRange(input.value.length, input.value.length);
+            }
+        });
+    }
+
     function iniciarCalendarios(contexto) {
         if (!window.flatpickr) {
             return;
@@ -213,6 +240,9 @@
 
             campo.dataset.calendarioAplicado = '1';
             const instancia = window.flatpickr(campo, config);
+            if (tipoOriginal === 'date') {
+                aplicarMascaraData(instancia.altInput);
+            }
             instalarBotaoCalendario(campo, instancia);
             instalarSincronia(campo, instancia);
         });

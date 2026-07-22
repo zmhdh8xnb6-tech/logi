@@ -143,6 +143,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             legalizacaoRegistrarHistorico($pdo, $processoId, 'criar', 'Processo criado na etapa "' . $etapaInicial . '".');
+            if ($tipo === 'baixa') {
+                legalizacaoSincronizarSituacaoClienteBaixa($pdo, [
+                    'id' => $processoId,
+                    'cliente_id' => $clienteId,
+                    'tipo' => $tipo,
+                    'status' => 'em_andamento',
+                ]);
+            }
             $pdo->commit();
 
             registrarAuditoria(

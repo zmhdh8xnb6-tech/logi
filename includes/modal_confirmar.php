@@ -21,11 +21,12 @@
                         <div class="invalid-feedback">Confirme a retirada do contador.</div>
                     </div>
 
-                    <div class="form-check">
+                    <div class="form-check d-none" id="grupoConfirmarSefazRevogada">
                         <input class="form-check-input" type="checkbox" value="1" id="confirmarSefazRevogada">
                         <label class="form-check-label" for="confirmarSefazRevogada">
-                            Já foi revogada a procuração SEFAZ DF, quando for cliente do DF.
+                            Já foi revogada a procuração SEFAZ DF.
                         </label>
+                        <div class="invalid-feedback">Confirme a revogação da procuração SEFAZ DF.</div>
                     </div>
                 </div>
             </div>

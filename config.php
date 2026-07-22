@@ -109,7 +109,7 @@ if (!function_exists('clientesFiltroDevolvidos')) {
         }
 
         $prefixo = $alias !== '' ? $alias . '.' : '';
-        return " AND COALESCE({$prefixo}situacao_cliente, 'ativo') = 'devolvido'";
+        return " AND COALESCE({$prefixo}situacao_cliente, 'ativo') IN ('devolvido', 'baixado')";
     }
 }
 

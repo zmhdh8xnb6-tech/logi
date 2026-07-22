@@ -4,6 +4,10 @@ let documentoDuplicado = false;
 let ultimaConsultaDocumento = '';
 let ultimoCnpjConsultado = '';
 let dadosCnpjEncontrado = null;
+let requisicaoClientes = null;
+let timerBuscaClientes = null;
+let sequenciaRequisicaoClientes = 0;
+let clienteUfParaExcluir = '';
 
 $(document).ready(function () {
     const limiteClientesSalvo = Number(localStorage.getItem('limiteClientes') || 15);
@@ -234,7 +238,14 @@ $(document).ready(function () {
         this.value = this.value.replace(/\D/g, '');
     });
 
-    $('#buscaCliente, #filtroUf').on('input change', function () {
+    $('#buscaCliente').on('input', function () {
+        clearTimeout(timerBuscaClientes);
+        timerBuscaClientes = setTimeout(function () {
+            carregarClientes(1);
+        }, 250);
+    });
+
+    $('#filtroUf').on('change', function () {
         carregarClientes(1);
     });
 
@@ -542,6 +553,7 @@ function mostrarAviso(mensagem, campo = null) {
 
 function carregarClientes(page = 1) {
     paginaAtual = page;
+    const sequenciaAtual = ++sequenciaRequisicaoClientes;
 
     const parametros = new URLSearchParams({
         action: 'read',
@@ -551,7 +563,15 @@ function carregarClientes(page = 1) {
         uf: $('#filtroUf').val() || ''
     });
 
-    $.getJSON(`api.php?${parametros.toString()}`, function (res) {
+    if (requisicaoClientes && requisicaoClientes.readyState !== 4) {
+        requisicaoClientes.abort();
+    }
+
+    requisicaoClientes = $.getJSON(`api.php?${parametros.toString()}`, function (res) {
+        if (sequenciaAtual !== sequenciaRequisicaoClientes) {
+            return;
+        }
+
         let linhas = '';
         const clientes = Array.isArray(res) ? res : (res.data || []);
 
@@ -574,7 +594,9 @@ function carregarClientes(page = 1) {
 <tr class="linha-cliente"
     data-busca="${escapeHtml(`${cliente.codigo} ${cliente.documento} ${cliente.nome} ${cliente.nome_fantasia} ${cliente.email}`).toLowerCase()}"
     data-uf="${escapeHtml(cliente.uf)}"
-    onclick="window.location.href='cliente.php?id=${cliente.id}'">
+    data-url="cliente.php?id=${cliente.id}"
+    role="button"
+    tabindex="0">
 
     <td>${escapeHtml(cliente.codigo)}</td>
     <td class="coluna-documento-cliente">${escapeHtml(cliente.documento)}</td>
@@ -594,6 +616,10 @@ function carregarClientes(page = 1) {
         $('#clientesTable tbody').html(linhas);
         renderizarPaginacao(res.total || 0, res.page || 1, res.limit || limitePorPagina);
     }).fail(function (xhr) {
+        if (xhr.statusText === 'abort') {
+            return;
+        }
+
         ('Erro ao carregar clientes: ' + xhr.responseText);
     });
 }
@@ -731,10 +757,12 @@ function abrirModalEditar(
     modal.show();
 }
 
-function excluirCliente(id) {
+function excluirCliente(id, uf = '') {
     clienteParaExcluir = id;
+    clienteUfParaExcluir = String(uf || '').toUpperCase();
     $('#confirmarContadorRetirado').prop('checked', false).removeClass('is-invalid');
     $('#confirmarSefazRevogada').prop('checked', false).removeClass('is-invalid');
+    $('#grupoConfirmarSefazRevogada').toggleClass('d-none', clienteUfParaExcluir !== 'DF');
 
     const modal = new bootstrap.Modal(document.getElementById('modalConfirmarExclusao'));
     modal.show();
@@ -1192,6 +1220,31 @@ if (clienteModalEl) {
     });
 }
 
+$(document).on('pointerdown', '#clientesTable tbody tr.linha-cliente', function (evento) {
+    if (evento.button !== 0) {
+        return;
+    }
+
+    const url = $(this).data('url');
+
+    if (url) {
+        window.location.href = url;
+    }
+});
+
+$(document).on('keydown', '#clientesTable tbody tr.linha-cliente', function (evento) {
+    if (evento.key !== 'Enter' && evento.key !== ' ') {
+        return;
+    }
+
+    evento.preventDefault();
+    const url = $(this).data('url');
+
+    if (url) {
+        window.location.href = url;
+    }
+});
+
 function filtrarClientesNaTela() {
     const busca = $('#buscaCliente').val().toLowerCase().trim();
     const uf = $('#filtroUf').val();
@@ -1219,6 +1272,12 @@ $(document).on('click', '#btnConfirmarExclusao', function () {
     if (!contadorRetirado) {
         $('#confirmarContadorRetirado').addClass('is-invalid').focus();
         mostrarAviso('Confirme que o contador já foi retirado antes de devolver.');
+        return;
+    }
+
+    if (clienteUfParaExcluir === 'DF' && !procuracaoSefazRevogada) {
+        $('#confirmarSefazRevogada').addClass('is-invalid').focus();
+        mostrarAviso('Confirme que a procuração SEFAZ DF já foi revogada.');
         return;
     }
 

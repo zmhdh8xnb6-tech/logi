@@ -1082,6 +1082,11 @@ if ($action === 'reativar_cliente') {
         exit;
     }
 
+    if (($clienteAntes['situacao_cliente'] ?? '') === 'baixado') {
+        echo 'Cliente baixado não pode ser reativado.';
+        exit;
+    }
+
     $stmt = $pdo->prepare("
         UPDATE clientes
         SET situacao_cliente = 'ativo',

@@ -304,7 +304,7 @@ if ($clienteContabil) {
                 </a>
 
                 <?php if (!$clienteDevolvido): ?>
-                    <button class="btn btn-warning" onclick="excluirCliente(<?= (int)$cliente['id'] ?>)">
+                    <button class="btn btn-warning" onclick="excluirCliente(<?= (int)$cliente['id'] ?>, '<?= htmlspecialchars(strtoupper((string)($cliente['uf'] ?? '')), ENT_QUOTES) ?>')">
                         <i class="bi bi-archive"></i> Devolver
                     </button>
                 <?php else: ?>
