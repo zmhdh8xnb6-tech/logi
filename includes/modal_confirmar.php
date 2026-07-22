@@ -11,6 +11,23 @@
                 <small class="text-muted">
                     Ele sairá das listas principais e das pendências, mas poderá ser reativado depois.
                 </small>
+
+                <div class="mt-3">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" value="1" id="confirmarContadorRetirado">
+                        <label class="form-check-label" for="confirmarContadorRetirado">
+                            Já foi retirado o contador.
+                        </label>
+                        <div class="invalid-feedback">Confirme a retirada do contador.</div>
+                    </div>
+
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="1" id="confirmarSefazRevogada">
+                        <label class="form-check-label" for="confirmarSefazRevogada">
+                            Já foi revogada a procuração SEFAZ DF, quando for cliente do DF.
+                        </label>
+                    </div>
+                </div>
             </div>
 
             <div class="modal-footer">

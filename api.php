@@ -303,6 +303,8 @@ if ($action === 'read') {
 
     $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
     $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
+    $busca = trim((string)($_GET['busca'] ?? ''));
+    $ufFiltro = strtoupper(trim((string)($_GET['uf'] ?? '')));
 
     if ($page < 1) $page = 1;
     if ($limit < 1) $limit = 10;
@@ -311,21 +313,44 @@ if ($action === 'read') {
 
     $filtroAtivos = clientesFiltroAtivos($pdo);
     $filtroEmpresa = empresaFiltroClienteDireto($pdo);
-    $stmtTotal = $pdo->query("SELECT COUNT(*) FROM clientes WHERE cliente_contabil = 1{$filtroAtivos}{$filtroEmpresa}");
-    $total = $stmtTotal->fetchColumn();
+    $filtros = ["cliente_contabil = 1{$filtroAtivos}{$filtroEmpresa}"];
+    $parametros = [];
+
+    if ($busca !== '') {
+        $filtros[] = "(
+            codigo LIKE ?
+            OR documento LIKE ?
+            OR nome LIKE ?
+            OR nome_fantasia LIKE ?
+            OR email LIKE ?
+            OR telefone LIKE ?
+        )";
+        $termoBusca = '%' . $busca . '%';
+        array_push($parametros, $termoBusca, $termoBusca, $termoBusca, $termoBusca, $termoBusca, $termoBusca);
+    }
+
+    if ($ufFiltro !== '') {
+        $filtros[] = 'UPPER(uf) = ?';
+        $parametros[] = $ufFiltro;
+    }
+
+    $whereSql = implode(' AND ', $filtros);
+
+    $stmtTotal = $pdo->prepare("SELECT COUNT(*) FROM clientes WHERE {$whereSql}");
+    $stmtTotal->execute($parametros);
+    $total = (int)$stmtTotal->fetchColumn();
 
     $stmt = $pdo->prepare("
         SELECT * 
         FROM clientes
-        WHERE cliente_contabil = 1
-        {$filtroAtivos}
-        {$filtroEmpresa}
+        WHERE {$whereSql}
         ORDER BY CAST(codigo AS UNSIGNED) ASC
-        LIMIT :limit OFFSET :offset
+        LIMIT {$limit} OFFSET {$offset}
     ");
 
-    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    foreach ($parametros as $indice => $valor) {
+        $stmt->bindValue($indice + 1, $valor, PDO::PARAM_STR);
+    }
     $stmt->execute();
 
     $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -972,6 +997,8 @@ if ($action === 'create' || $action === 'update') {
 if ($action === 'delete') {
 
     $id = $_POST['id'] ?? '';
+    $contadorRetirado = ($_POST['contador_retirado'] ?? '') === '1';
+    $procuracaoSefazRevogada = ($_POST['procuracao_sefaz_revogada'] ?? '') === '1';
 
     if (!clientesSituacaoDisponivel($pdo)) {
         echo 'Execute o SQL de clientes devolvidos antes de devolver clientes.';
@@ -986,6 +1013,21 @@ if ($action === 'delete') {
     ");
     $stmtAntes->execute([$id]);
     $clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
+
+    if (!$clienteAntes) {
+        echo 'Cliente não encontrado.';
+        exit;
+    }
+
+    if (!$contadorRetirado) {
+        echo 'Confirme que o contador já foi retirado antes de devolver o cliente.';
+        exit;
+    }
+
+    if (strtoupper((string)($clienteAntes['uf'] ?? '')) === 'DF' && !$procuracaoSefazRevogada) {
+        echo 'Para cliente do DF, confirme que a procuração SEFAZ DF foi revogada antes de devolver.';
+        exit;
+    }
 
     $stmt = $pdo->prepare("
         UPDATE clientes

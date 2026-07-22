@@ -1848,7 +1848,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                         <div class="invalid-feedback">Informe a data do pagamento.</div>
                                     </div>
                                 </div>
-                                <div class="border rounded-3 p-3">
+                                <div class="border rounded-3 p-3 d-none" id="blocoParcelarFatura">
                                     <div class="form-check form-switch mb-3">
                                         <input class="form-check-input" type="checkbox" role="switch" name="parcelar_fatura" value="1" id="parcelarFatura">
                                         <label class="form-check-label" for="parcelarFatura">
@@ -2024,6 +2024,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
 
             function atualizarCamposParcelamentoFatura() {
                 const parcelarFatura = document.getElementById('parcelarFatura');
+                const blocoParcelarFatura = document.getElementById('blocoParcelarFatura');
                 const camposParcelarFatura = document.getElementById('camposParcelarFatura');
                 const parcelasFatura = document.getElementById('parcelasFatura');
                 const resumo = document.getElementById('resumoParcelamentoFatura');
@@ -2031,15 +2032,22 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                 const valorPago = valorMoedaParaNumero(document.getElementById('valorPagamentoFatura')?.value);
                 const parcelas = Math.max(2, Number(parcelasFatura?.value || 2));
                 const restante = Math.max(0, valorTotal - valorPago);
+                const podeParcelar = restante > 0.009;
 
-                if (!parcelarFatura || !camposParcelarFatura) {
+                if (!parcelarFatura || !camposParcelarFatura || !blocoParcelarFatura) {
                     return;
                 }
 
-                camposParcelarFatura.classList.toggle('d-none', !parcelarFatura.checked);
+                blocoParcelarFatura.classList.toggle('d-none', !podeParcelar);
+
+                if (!podeParcelar) {
+                    parcelarFatura.checked = false;
+                }
+
+                camposParcelarFatura.classList.toggle('d-none', !podeParcelar || !parcelarFatura.checked);
 
                 if (parcelasFatura) {
-                    parcelasFatura.required = parcelarFatura.checked;
+                    parcelasFatura.required = podeParcelar && parcelarFatura.checked;
                 }
 
                 if (resumo) {

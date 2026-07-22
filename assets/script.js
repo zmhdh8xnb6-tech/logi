@@ -235,7 +235,7 @@ $(document).ready(function () {
     });
 
     $('#buscaCliente, #filtroUf').on('input change', function () {
-        filtrarClientesNaTela();
+        carregarClientes(1);
     });
 
     $('#cliente_contabil, #possui_parcelamento, #servico_parcelamento, #servico_certificado').on('change', atualizarVinculoServicos);
@@ -543,7 +543,15 @@ function mostrarAviso(mensagem, campo = null) {
 function carregarClientes(page = 1) {
     paginaAtual = page;
 
-    $.getJSON(`api.php?action=read&page=${page}&limit=${limitePorPagina}`, function (res) {
+    const parametros = new URLSearchParams({
+        action: 'read',
+        page: String(page),
+        limit: String(limitePorPagina),
+        busca: ($('#buscaCliente').val() || '').trim(),
+        uf: $('#filtroUf').val() || ''
+    });
+
+    $.getJSON(`api.php?${parametros.toString()}`, function (res) {
         let linhas = '';
         const clientes = Array.isArray(res) ? res : (res.data || []);
 
@@ -725,6 +733,8 @@ function abrirModalEditar(
 
 function excluirCliente(id) {
     clienteParaExcluir = id;
+    $('#confirmarContadorRetirado').prop('checked', false).removeClass('is-invalid');
+    $('#confirmarSefazRevogada').prop('checked', false).removeClass('is-invalid');
 
     const modal = new bootstrap.Modal(document.getElementById('modalConfirmarExclusao'));
     modal.show();
@@ -1202,13 +1212,27 @@ $(document).on('click', '#btnConfirmarExclusao', function () {
     if (!clienteParaExcluir) return;
 
     const botao = $(this);
+    const contadorRetirado = $('#confirmarContadorRetirado').is(':checked');
+    const procuracaoSefazRevogada = $('#confirmarSefazRevogada').is(':checked');
+    let devolucaoConfirmada = false;
+
+    if (!contadorRetirado) {
+        $('#confirmarContadorRetirado').addClass('is-invalid').focus();
+        mostrarAviso('Confirme que o contador já foi retirado antes de devolver.');
+        return;
+    }
 
     botao.prop('disabled', true)
         .html('<span class="spinner-border spinner-border-sm me-1"></span> Devolvendo...');
 
-    $.post('api.php?action=delete', { id: clienteParaExcluir }, function (resp) {
+    $.post('api.php?action=delete', {
+        id: clienteParaExcluir,
+        contador_retirado: contadorRetirado ? '1' : '0',
+        procuracao_sefaz_revogada: procuracaoSefazRevogada ? '1' : '0'
+    }, function (resp) {
 
         if (resp.trim() === 'ok') {
+            devolucaoConfirmada = true;
             window.location.href = 'clientes.php';
         } else {
             mostrarAviso(resp);
@@ -1224,6 +1248,6 @@ $(document).on('click', '#btnConfirmarExclusao', function () {
         const modalEl = document.getElementById('modalConfirmarExclusao');
         const modal = bootstrap.Modal.getInstance(modalEl);
 
-        if (modal) modal.hide();
+        if (modal && devolucaoConfirmada) modal.hide();
     });
 });

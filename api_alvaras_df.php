@@ -98,6 +98,7 @@ if (
 }
 
 $alvarasValidados = [];
+$temAlvaraVencido = false;
 
 if ($situacaoAlvara === 'possui') {
     foreach ($orgaos as $codigo => $nome) {
@@ -117,6 +118,10 @@ if ($situacaoAlvara === 'possui') {
             'situacao' => $situacao,
             'vencimento' => $situacao === 'com_vencimento' ? $vencimento : null,
         ];
+
+        if ($situacao === 'com_vencimento' && $vencimento < date('Y-m-d')) {
+            $temAlvaraVencido = true;
+        }
     }
 }
 
@@ -127,7 +132,8 @@ try {
     $valoresExtras = [];
 
     if (tabelaClientesTemColuna($pdo, 'pendencia_alvara_funcionamento')) {
-        $camposExtras[] = 'pendencia_alvara_funcionamento = 0';
+        $camposExtras[] = 'pendencia_alvara_funcionamento = ?';
+        $valoresExtras[] = $temAlvaraVencido ? 1 : 0;
     }
 
     if (tabelaClientesTemColuna($pdo, 'pendencia_df_legal_dados')) {
