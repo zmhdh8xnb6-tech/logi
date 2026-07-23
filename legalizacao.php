@@ -257,9 +257,9 @@ if ($tabelasDisponiveis) {
         " . empresaFiltroClienteDireto($pdo, 'c') . "
         GROUP BY p.id
         ORDER BY
-            FIELD(p.status, 'pendente_cliente', 'pendente_orgao', 'em_andamento', 'pausado', 'concluido', 'cancelado'),
-            p.prazo IS NULL,
-            p.prazo ASC,
+            CAST(COALESCE(NULLIF(c.codigo, ''), p.cliente_codigo, '0') AS UNSIGNED) ASC,
+            COALESCE(NULLIF(c.codigo, ''), p.cliente_codigo, '') ASC,
+            COALESCE(NULLIF(c.nome, ''), p.cliente_nome, '') ASC,
             p.atualizado_em DESC
         LIMIT {$processosPorPagina} OFFSET {$offsetProcessos}
     ");
@@ -545,7 +545,7 @@ if ($tabelasDisponiveis) {
                                     $parametrosPagina = $_GET;
                                     $parametrosPagina['pagina'] = $numeroPagina;
                                     $ultimaPaginaExibida = $numeroPagina;
-                                    ?>
+                                ?>
                                     <li class="page-item <?= $numeroPagina === $paginaProcessos ? 'active' : '' ?>">
                                         <a class="page-link" href="?<?= htmlspecialchars(http_build_query($parametrosPagina)) ?>">
                                             <?= $numeroPagina ?>
