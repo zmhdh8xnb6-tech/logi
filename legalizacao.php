@@ -373,7 +373,7 @@ if ($tabelasDisponiveis) {
                 </section>
 
                 <section class="legalizacao-painel">
-                    <form method="get" class="legalizacao-filtros">
+                    <form method="get" class="legalizacao-filtros" id="formFiltrosLegalizacao">
                         <input type="hidden" name="aba" value="<?= htmlspecialchars($abaProcessos) ?>">
                         <div class="legalizacao-campo-busca">
                             <i class="bi bi-search"></i>
@@ -381,6 +381,7 @@ if ($tabelasDisponiveis) {
                                 type="search"
                                 class="form-control"
                                 name="busca"
+                                id="buscaLegalizacao"
                                 value="<?= htmlspecialchars($filtroBusca) ?>"
                                 placeholder="Buscar empresa, CNPJ, etapa...">
                         </div>
@@ -545,7 +546,7 @@ if ($tabelasDisponiveis) {
                                     $parametrosPagina = $_GET;
                                     $parametrosPagina['pagina'] = $numeroPagina;
                                     $ultimaPaginaExibida = $numeroPagina;
-                                ?>
+                                    ?>
                                     <li class="page-item <?= $numeroPagina === $paginaProcessos ? 'active' : '' ?>">
                                         <a class="page-link" href="?<?= htmlspecialchars(http_build_query($parametrosPagina)) ?>">
                                             <?= $numeroPagina ?>
@@ -686,6 +687,20 @@ if ($tabelasDisponiveis) {
             const feedbackClienteLegalizacao = document.getElementById('clienteFeedbackLegalizacao');
             const avisoClienteVazioLegalizacao = document.getElementById('clienteVazioLegalizacao');
             const opcoesClientesLegalizacao = Array.from(document.querySelectorAll('#clienteOpcoesLegalizacao .cliente-seletor-opcao'));
+            const formFiltrosLegalizacao = document.getElementById('formFiltrosLegalizacao');
+            const buscaLegalizacao = document.getElementById('buscaLegalizacao');
+            let timerBuscaLegalizacao = null;
+
+            buscaLegalizacao?.addEventListener('input', function() {
+                clearTimeout(timerBuscaLegalizacao);
+
+                timerBuscaLegalizacao = setTimeout(function() {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('pagina');
+                    window.history.replaceState(null, '', url.toString());
+                    formFiltrosLegalizacao?.requestSubmit();
+                }, 500);
+            });
 
             function normalizarBuscaClienteLegalizacao(texto) {
                 return String(texto || '')

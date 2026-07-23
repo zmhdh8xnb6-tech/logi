@@ -577,6 +577,11 @@ function carregarClientes(page = 1) {
 
         let linhas = '';
         const clientes = Array.isArray(res) ? res : (res.data || []);
+        const totalClientes = Number(res.total || clientes.length || 0);
+
+        $('#totalClientesResumo').text(
+            'Total: ' + totalClientes + ' ' + (totalClientes === 1 ? 'cliente' : 'clientes')
+        );
 
         if (clientes.length === 0) {
             $('#clientesTable tbody').html(`

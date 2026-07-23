@@ -1278,6 +1278,8 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                     $classeFaturaCartao = ' fatura-parcial';
                                 } elseif ((int)($cartao['fatura_paga_mes'] ?? 0) === 1) {
                                     $classeFaturaCartao = ' fatura-paga';
+                                } elseif ((float)($cartao['fatura_mes'] ?? 0) <= 0) {
+                                    $classeFaturaCartao = ' fatura-paga';
                                 }
                                 ?>
                                 <a

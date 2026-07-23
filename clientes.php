@@ -59,13 +59,17 @@ exigirPermissao('clientes');
                         </select>
                     </div>
 
+                    <div class="col-md-3 d-flex align-items-center">
+                        <span class="text-muted small" id="totalClientesResumo">Total: 0 clientes</span>
+                    </div>
+
                     <div class="col-md-3 text-md-end">
                         <button type="button" class="btn btn-outline-secondary" id="btnImprimirClientes">
                             <i class="bi bi-printer"></i> Imprimir lista
                         </button>
                     </div>
 
-                    <div class="col-md-3" id="grupoLimiteClientes">
+                    <div class="col-md-12 col-lg-2" id="grupoLimiteClientes">
                         <select id="limiteClientes" class="form-select">
                             <option value="15">Mostrar 15</option>
                             <option value="30">Mostrar 30</option>
