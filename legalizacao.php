@@ -248,7 +248,6 @@ if ($tabelasDisponiveis) {
                COALESCE(NULLIF(c.codigo, ''), p.cliente_codigo) AS cliente_codigo_exibicao,
                COALESCE(NULLIF(c.nome, ''), p.cliente_nome) AS cliente_nome_exibicao,
                COALESCE(NULLIF(c.documento, ''), p.cliente_documento) AS cliente_documento_exibicao,
-               SUM(CASE WHEN ck.status = 'pendente' THEN 1 ELSE 0 END) AS checklist_pendente,
                COUNT(ck.id) AS checklist_total
         FROM legalizacao_processos p
         LEFT JOIN legalizacao_checklist ck ON ck.processo_id = p.id
@@ -319,7 +318,7 @@ if ($tabelasDisponiveis) {
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
                 <div>
                     <h3 class="mb-1">Legalização</h3>
-                    <p class="text-muted mb-0">Controle de processos, etapas, checklist e histórico</p>
+                    <p class="text-muted mb-0">Controle de processos, etapas, documentação e histórico</p>
                 </div>
 
                 <div class="d-flex gap-2">
@@ -452,7 +451,7 @@ if ($tabelasDisponiveis) {
                                     <th>Etapa atual</th>
                                     <th>Responsável</th>
                                     <th>Prazo</th>
-                                    <th>Checklist</th>
+                                    <th>Documentação</th>
                                     <th>Status</th>
                                     <th class="text-end">Ações</th>
                                 </tr>
@@ -474,7 +473,6 @@ if ($tabelasDisponiveis) {
                                         && $processo['prazo'] < date('Y-m-d');
                                     $statusClasse = $processoVencido ? 'bg-danger' : legalizacaoClasseStatus($processo['status']);
                                     $statusTexto = $processoVencido ? $prazoInfo['texto'] : legalizacaoTextoStatus($processo['status']);
-                                    $checklistPendente = (int)($processo['checklist_pendente'] ?? 0);
                                     $checklistTotal = (int)($processo['checklist_total'] ?? 0);
                                 ?>
                                     <tr>
@@ -494,10 +492,9 @@ if ($tabelasDisponiveis) {
                                             <?php endif; ?>
                                         </td>
                                         <td>
-                                            <span class="badge <?= $checklistPendente > 0 ? 'bg-warning text-dark' : 'bg-success' ?>">
-                                                <?= $checklistPendente ?> pendente<?= $checklistPendente === 1 ? '' : 's' ?>
+                                            <span class="badge bg-secondary">
+                                                <?= $checklistTotal ?> item<?= $checklistTotal === 1 ? '' : 's' ?>
                                             </span>
-                                            <small><?= $checklistTotal ?> itens</small>
                                         </td>
                                         <td>
                                             <span class="badge <?= htmlspecialchars($statusClasse) ?>">
@@ -578,7 +575,7 @@ if ($tabelasDisponiveis) {
                         <div class="modal-header">
                             <div>
                                 <h5 class="modal-title">Novo processo</h5>
-                                <p class="text-muted small mb-0">O fluxo e o checklist serão criados automaticamente</p>
+                                <p class="text-muted small mb-0">O fluxo e a documentação exigida serão criados automaticamente</p>
                             </div>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                         </div>

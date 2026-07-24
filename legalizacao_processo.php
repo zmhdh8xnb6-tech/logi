@@ -21,6 +21,7 @@ $usuarios = legalizacaoListarUsuarios($pdo);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
+    $requisicaoAjax = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest';
 
     if ($acao === 'atualizar_dados') {
         $status = $_POST['status'] ?? 'em_andamento';
@@ -274,7 +275,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $statusChecklist = $_POST['status'] ?? 'pendente';
 
         if (!in_array($statusChecklist, ['pendente', 'recebido', 'dispensado'], true)) {
-            legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Status do checklist inválido.', 'danger');
+            legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Status da documentação inválido.', 'danger');
         }
 
         $stmtAntes = $pdo->prepare("
@@ -286,7 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $antesChecklist = $stmtAntes->fetch(PDO::FETCH_ASSOC);
 
         if (!$antesChecklist) {
-            legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Item do checklist não encontrado.', 'danger');
+            legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Item de documentação não encontrado.', 'danger');
         }
 
         $stmt = $pdo->prepare("
@@ -299,11 +300,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         legalizacaoRegistrarHistorico(
             $pdo,
             $processoId,
-            'checklist',
-            'Checklist "' . $antesChecklist['item'] . '" marcado como ' . legalizacaoStatusChecklist($statusChecklist) . '.'
+            'documentacao',
+            'Documentação "' . $antesChecklist['item'] . '" marcada como ' . ($statusChecklist === 'recebido' ? 'conferida' : 'não conferida') . '.'
         );
 
-        legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Checklist atualizado.');
+        if ($requisicaoAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'sucesso' => true,
+                'status' => $statusChecklist,
+                'mensagem' => 'Documentação atualizada.',
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        legalizacaoRedirect('legalizacao_processo.php?id=' . $processoId, 'Documentação atualizada.');
     }
 
     if ($acao === 'adicionar_historico') {
@@ -373,7 +384,6 @@ $stmt->execute([$processoId]);
 $historico = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $prazoInfo = legalizacaoPrazoTexto($processo['prazo'], $processo['status']);
-$pendentesChecklist = array_values(array_filter($checklist, static fn(array $item): bool => $item['status'] === 'pendente'));
 $ultimaOrdem = 0;
 
 foreach ($etapas as $etapa) {
@@ -472,8 +482,8 @@ $clienteDocumentoExibicao = $processo['cliente_documento_atual'] ?? $processo['c
                         <strong><?= htmlspecialchars($processo['responsavel_nome']) ?></strong>
                     </div>
                     <div>
-                        <span>Checklist</span>
-                        <strong><?= count($pendentesChecklist) ?> pendente<?= count($pendentesChecklist) === 1 ? '' : 's' ?></strong>
+                        <span>Documentação</span>
+                        <strong><?= count($checklist) ?> item<?= count($checklist) === 1 ? '' : 's' ?></strong>
                     </div>
                 </div>
             </section>
@@ -578,30 +588,30 @@ $clienteDocumentoExibicao = $processo['cliente_documento_atual'] ?? $processo['c
                 <section class="legalizacao-painel">
                     <div class="legalizacao-painel-titulo">
                         <div>
-                            <h5 class="mb-1">Checklist</h5>
-                            <p class="text-muted small mb-0">Itens pendentes, recebidos ou dispensados</p>
+                            <h5 class="mb-1">Documentação exigida</h5>
+                            <p class="text-muted small mb-0">Itens para solicitar ao cliente</p>
                         </div>
                     </div>
 
                     <div class="legalizacao-checklist">
                         <?php foreach ($checklist as $item): ?>
-                            <form method="post" class="legalizacao-checklist-item">
+                            <form method="post" class="legalizacao-checklist-item" data-documentacao-form>
                                 <input type="hidden" name="id" value="<?= $processoId ?>">
                                 <input type="hidden" name="acao" value="atualizar_checklist">
                                 <input type="hidden" name="checklist_id" value="<?= (int)$item['id'] ?>">
-                                <div>
-                                    <strong><?= htmlspecialchars($item['item']) ?></strong>
-                                    <span class="badge <?= htmlspecialchars(legalizacaoClasseChecklist($item['status'])) ?>">
-                                        <?= htmlspecialchars(legalizacaoStatusChecklist($item['status'])) ?>
-                                    </span>
+                                <input type="hidden" name="status" value="<?= $item['status'] === 'recebido' ? 'recebido' : 'pendente' ?>" data-documentacao-status>
+                                <strong><?= htmlspecialchars($item['item']) ?></strong>
+                                <div class="form-check form-switch legalizacao-checklist-switch">
+                                    <input
+                                        class="form-check-input"
+                                        type="checkbox"
+                                        role="switch"
+                                        id="checklist<?= (int)$item['id'] ?>"
+                                        <?= $item['status'] === 'recebido' ? 'checked' : '' ?>>
+                                    <label class="form-check-label" for="checklist<?= (int)$item['id'] ?>">
+                                        Conferido
+                                    </label>
                                 </div>
-                                <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
-                                    <?php foreach (['pendente', 'recebido', 'dispensado'] as $status): ?>
-                                        <option value="<?= htmlspecialchars($status) ?>" <?= $item['status'] === $status ? 'selected' : '' ?>>
-                                            <?= htmlspecialchars(legalizacaoStatusChecklist($status)) ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
                             </form>
                         <?php endforeach; ?>
                     </div>
@@ -695,7 +705,7 @@ $clienteDocumentoExibicao = $processo['cliente_documento_atual'] ?? $processo['c
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title">Excluir processo</h5>
-                        <p class="text-muted small mb-0">Essa ação remove o processo, etapas, checklist e histórico.</p>
+                        <p class="text-muted small mb-0">Essa ação remove o processo, etapas, documentação e histórico.</p>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                 </div>
@@ -798,6 +808,50 @@ $clienteDocumentoExibicao = $processo['cliente_documento_atual'] ?? $processo['c
 
         botaoCancelarDados?.addEventListener('click', function() {
             alternarEdicaoDadosProcesso(false);
+        });
+
+        document.querySelectorAll('[data-documentacao-form]').forEach(function(formulario) {
+            const chave = formulario.querySelector('input[type="checkbox"]');
+            const campoStatus = formulario.querySelector('[data-documentacao-status]');
+
+            if (!chave || !campoStatus) {
+                return;
+            }
+
+            chave.addEventListener('change', function() {
+                const marcadoAntes = !chave.checked;
+                const statusAntes = campoStatus.value;
+                campoStatus.value = chave.checked ? 'recebido' : 'pendente';
+                chave.disabled = true;
+
+                fetch(formulario.action || window.location.href, {
+                        method: 'POST',
+                        body: new FormData(formulario),
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                    .then(function(resposta) {
+                        if (!resposta.ok) {
+                            throw new Error('Falha ao atualizar documentação.');
+                        }
+
+                        return resposta.json();
+                    })
+                    .then(function(dados) {
+                        if (!dados.sucesso) {
+                            throw new Error(dados.mensagem || 'Falha ao atualizar documentação.');
+                        }
+                    })
+                    .catch(function() {
+                        chave.checked = marcadoAntes;
+                        campoStatus.value = statusAntes;
+                        alert('Não foi possível atualizar a documentação agora.');
+                    })
+                    .finally(function() {
+                        chave.disabled = false;
+                    });
+            });
         });
 
         document.addEventListener('click', function(evento) {

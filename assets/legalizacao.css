@@ -309,21 +309,32 @@
 .legalizacao-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr);
+    align-items: start;
     gap: 18px;
 }
 
 .legalizacao-checklist {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .legalizacao-checklist-item {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 150px;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
     border-bottom: 1px solid #edf0f3;
+    min-height: 54px;
     transition: background-color .18s ease;
+}
+
+.legalizacao-checklist-item:nth-last-child(2):nth-child(odd) {
+    border-bottom: 0;
+}
+
+.legalizacao-checklist-item:nth-child(odd) {
+    border-right: 1px solid #edf0f3;
 }
 
 .legalizacao-checklist-item:hover {
@@ -336,8 +347,26 @@
 
 .legalizacao-checklist-item strong {
     display: block;
-    margin-bottom: 5px;
     color: #172033;
+}
+
+.legalizacao-checklist-switch {
+    min-width: 118px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.legalizacao-checklist-switch .form-check-input {
+    cursor: pointer;
+    margin-top: 0;
+}
+
+.legalizacao-checklist-switch .form-check-label {
+    cursor: pointer;
 }
 
 .legalizacao-textarea-auto {
@@ -454,5 +483,13 @@
 
     .legalizacao-checklist-item {
         grid-template-columns: 1fr;
+    }
+
+    .legalizacao-checklist {
+        grid-template-columns: 1fr;
+    }
+
+    .legalizacao-checklist-item:nth-child(odd) {
+        border-right: 0;
     }
 }
