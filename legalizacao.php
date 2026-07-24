@@ -413,7 +413,7 @@ if ($tabelasDisponiveis) {
                             <i class="bi bi-funnel"></i> Filtrar
                         </button>
                         <?php if ($totalPaginasProcessos > 1): ?>
-                            <select class="form-select" name="por_pagina" onchange="this.form.submit()">
+                            <select class="form-select" name="por_pagina">
                                 <?php foreach ($opcoesPorPagina as $opcao): ?>
                                     <option value="<?= $opcao ?>" <?= $processosPorPagina === $opcao ? 'selected' : '' ?>>
                                         Mostrar <?= $opcao ?>
@@ -687,19 +687,117 @@ if ($tabelasDisponiveis) {
             const feedbackClienteLegalizacao = document.getElementById('clienteFeedbackLegalizacao');
             const avisoClienteVazioLegalizacao = document.getElementById('clienteVazioLegalizacao');
             const opcoesClientesLegalizacao = Array.from(document.querySelectorAll('#clienteOpcoesLegalizacao .cliente-seletor-opcao'));
-            const formFiltrosLegalizacao = document.getElementById('formFiltrosLegalizacao');
-            const buscaLegalizacao = document.getElementById('buscaLegalizacao');
             let timerBuscaLegalizacao = null;
+            let requisicaoLegalizacao = null;
 
-            buscaLegalizacao?.addEventListener('input', function() {
+            function montarUrlFiltrosLegalizacao(formulario, pagina = 1) {
+                const url = new URL(window.location.href);
+                const dados = new FormData(formulario);
+
+                for (const [chave, valor] of dados.entries()) {
+                    if (String(valor).trim() === '' || String(valor) === '0') {
+                        url.searchParams.delete(chave);
+                    } else {
+                        url.searchParams.set(chave, valor);
+                    }
+                }
+
+                if (pagina > 1) {
+                    url.searchParams.set('pagina', String(pagina));
+                } else {
+                    url.searchParams.delete('pagina');
+                }
+
+                return url;
+            }
+
+            function atualizarListaLegalizacao(url) {
+                if (requisicaoLegalizacao) {
+                    requisicaoLegalizacao.abort();
+                }
+
+                requisicaoLegalizacao = new AbortController();
+
+                fetch(url.toString(), {
+                        credentials: 'same-origin',
+                        signal: requisicaoLegalizacao.signal,
+                        headers: {
+                            'X-Requested-With': 'fetch'
+                        }
+                    })
+                    .then(function(resposta) {
+                        if (!resposta.ok) {
+                            throw new Error('Falha ao buscar processos.');
+                        }
+
+                        return resposta.text();
+                    })
+                    .then(function(html) {
+                        const documento = new DOMParser().parseFromString(html, 'text/html');
+                        const painelAtual = document.querySelector('.legalizacao-painel');
+                        const painelNovo = documento.querySelector('.legalizacao-painel');
+
+                        if (!painelAtual || !painelNovo) {
+                            window.location.href = url.toString();
+                            return;
+                        }
+
+                        painelAtual.innerHTML = painelNovo.innerHTML;
+                        window.history.pushState(null, '', url.toString());
+                    })
+                    .catch(function(erro) {
+                        if (erro.name === 'AbortError') {
+                            return;
+                        }
+
+                        window.location.href = url.toString();
+                    });
+            }
+
+            document.addEventListener('input', function(evento) {
+                if (evento.target?.id !== 'buscaLegalizacao') {
+                    return;
+                }
+
                 clearTimeout(timerBuscaLegalizacao);
 
                 timerBuscaLegalizacao = setTimeout(function() {
-                    const url = new URL(window.location.href);
-                    url.searchParams.delete('pagina');
-                    window.history.replaceState(null, '', url.toString());
-                    formFiltrosLegalizacao?.requestSubmit();
-                }, 500);
+                    const formulario = document.getElementById('formFiltrosLegalizacao');
+
+                    if (formulario) {
+                        atualizarListaLegalizacao(montarUrlFiltrosLegalizacao(formulario));
+                    }
+                }, 250);
+            });
+
+            document.addEventListener('change', function(evento) {
+                const formulario = evento.target?.closest?.('#formFiltrosLegalizacao');
+
+                if (!formulario || evento.target.id === 'buscaLegalizacao') {
+                    return;
+                }
+
+                atualizarListaLegalizacao(montarUrlFiltrosLegalizacao(formulario));
+            });
+
+            document.addEventListener('submit', function(evento) {
+                if (evento.target?.id !== 'formFiltrosLegalizacao') {
+                    return;
+                }
+
+                evento.preventDefault();
+                atualizarListaLegalizacao(montarUrlFiltrosLegalizacao(evento.target));
+            });
+
+            document.addEventListener('click', function(evento) {
+                const link = evento.target?.closest?.('.legalizacao-abas a, .legalizacao-painel .pagination a.page-link');
+
+                if (!link || link.closest('.disabled')) {
+                    return;
+                }
+
+                evento.preventDefault();
+                atualizarListaLegalizacao(new URL(link.href));
             });
 
             function normalizarBuscaClienteLegalizacao(texto) {
