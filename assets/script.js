@@ -1035,6 +1035,48 @@ function formatarCep(valor) {
     return cep.replace(/^(\d{5})(\d{3})$/, '$1-$2');
 }
 
+function formatarDataBr(valor) {
+    if (!valor || !/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+        return '-';
+    }
+
+    const partes = valor.split('-');
+    return `${partes[2]}/${partes[1]}/${partes[0]}`;
+}
+
+function renderizarQsaCliente(socios) {
+    const tabelaWrapper = $('#qsaClienteTabelaWrapper');
+    const tabelaCorpo = $('#qsaClienteTabelaCorpo');
+    const mensagemVazia = $('#qsaClienteVazio');
+
+    if (!tabelaWrapper.length || !tabelaCorpo.length || !mensagemVazia.length) {
+        return;
+    }
+
+    const listaSocios = Array.isArray(socios) ? socios : [];
+    tabelaCorpo.empty();
+
+    if (!listaSocios.length) {
+        tabelaWrapper.addClass('d-none');
+        mensagemVazia.removeClass('d-none');
+        return;
+    }
+
+    listaSocios.forEach(function (socio) {
+        tabelaCorpo.append(`
+            <tr>
+                <td>${escapeHtml(socio.nome || '')}</td>
+                <td>${escapeHtml(socio.qualificacao || '-')}</td>
+                <td>${escapeHtml(socio.documento || '-')}</td>
+                <td>${escapeHtml(formatarDataBr(socio.entrada_sociedade))}</td>
+            </tr>
+        `);
+    });
+
+    tabelaWrapper.removeClass('d-none');
+    mensagemVazia.addClass('d-none');
+}
+
 function consultarCnpjParaPreenchimento(cnpj) {
     const paginaCliente = window.location.pathname.includes('cliente_novo.php')
         || window.location.pathname.includes('cliente_editar.php');
@@ -1058,6 +1100,10 @@ function consultarCnpjParaPreenchimento(cnpj) {
             }
 
             dadosCnpjEncontrado = resposta.dados;
+            const sociosEncontrados = Array.isArray(dadosCnpjEncontrado.socios)
+                ? dadosCnpjEncontrado.socios
+                : [];
+
             $('#cnpjConsultaRazao').text(dadosCnpjEncontrado.nome || 'Razão social não informada');
             $('#cnpjConsultaDocumento').text(formatarCnpj(dadosCnpjEncontrado.documento));
             $('#cnpjConsultaEndereco').text([
@@ -1067,6 +1113,11 @@ function consultarCnpjParaPreenchimento(cnpj) {
                 dadosCnpjEncontrado.cidade,
                 dadosCnpjEncontrado.uf
             ].filter(Boolean).join(' - ') || 'Endereço não informado');
+            $('#cnpjConsultaQsa').text(
+                sociosEncontrados.length
+                    ? `QSA: ${sociosEncontrados.length} ${sociosEncontrados.length === 1 ? 'sócio encontrado' : 'sócios encontrados'}`
+                    : 'QSA não retornado pela consulta.'
+            );
 
             const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modalPreencherCnpj'));
             modal.show();
@@ -1101,6 +1152,9 @@ function preencherCadastroComCnpj() {
     preencherCampoSeExistir('#bairro', dadosCnpjEncontrado.bairro);
     preencherCampoSeExistir('#cidade', dadosCnpjEncontrado.cidade);
     preencherCampoSeExistir('#uf', String(dadosCnpjEncontrado.uf || '').toUpperCase());
+    const sociosEncontrados = Array.isArray(dadosCnpjEncontrado.socios) ? dadosCnpjEncontrado.socios : [];
+    $('#qsa_json').val(JSON.stringify(sociosEncontrados));
+    renderizarQsaCliente(sociosEncontrados);
 
     bootstrap.Modal.getOrCreateInstance(document.getElementById('modalPreencherCnpj')).hide();
     validarCampoInscricaoEstadual();

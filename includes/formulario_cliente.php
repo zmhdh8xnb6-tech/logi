@@ -11,10 +11,16 @@ $orgaosAlvara = [
 ];
 
 $alvarasCliente = $alvarasCliente ?? [];
+$sociosCliente = $sociosCliente ?? [];
 $clienteContabilAtual = (int)($cliente['cliente_contabil'] ?? $clienteContabilPadrao ?? 1);
 $servicoParcelamentoAtual = (int)($cliente['servico_parcelamento'] ?? (($cliente['possui_parcelamento'] ?? '') === 'possui'));
 $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
+$formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
+    return !empty($data) ? date('d/m/Y', strtotime($data)) : '-';
+};
 ?>
+
+<input type="hidden" name="qsa_json" id="qsa_json" value="">
 
 <!-- DADOS PRINCIPAIS -->
 <div class="border rounded p-3 mb-3">
@@ -197,6 +203,7 @@ $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
                 <option value="">Selecione</option>
                 <option value="possui">Possui</option>
                 <option value="nao_possui">Não possui</option>
+                <option value="nao_tem_funcionario">Não tem funcionário</option>
             </select>
         </div>
 
@@ -471,6 +478,39 @@ $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
         </div>
     </div>
 </div>
+
+<!-- QSA -->
+<div class="border rounded p-3 mb-3" id="qsaClienteBox">
+    <h6 class="mb-2 fw-bold">QSA - Quadro Societário</h6>
+    <p class="text-muted mb-3">Sócios encontrados pela consulta do CNPJ.</p>
+
+    <div class="table-responsive<?= empty($sociosCliente) ? ' d-none' : '' ?>" id="qsaClienteTabelaWrapper">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Qualificação</th>
+                    <th>Documento</th>
+                    <th>Entrada</th>
+                </tr>
+            </thead>
+            <tbody id="qsaClienteTabelaCorpo">
+                <?php foreach ($sociosCliente as $socioCliente): ?>
+                    <tr>
+                        <td><?= htmlspecialchars($socioCliente['nome'] ?? '') ?></td>
+                        <td><?= htmlspecialchars(trim((string)($socioCliente['qualificacao'] ?? '')) !== '' ? $socioCliente['qualificacao'] : '-') ?></td>
+                        <td><?= htmlspecialchars(trim((string)($socioCliente['documento'] ?? '')) !== '' ? $socioCliente['documento'] : '-') ?></td>
+                        <td><?= htmlspecialchars($formatarDataQsa($socioCliente['entrada_sociedade'] ?? null)) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-muted mb-0<?= !empty($sociosCliente) ? ' d-none' : '' ?>" id="qsaClienteVazio">
+        Nenhum sócio encontrado ainda. Ao consultar um CNPJ, os sócios aparecerão aqui antes de salvar.
+    </p>
+</div>
 </div>
 
 <div class="modal fade" id="modalPreencherCnpj" tabindex="-1" aria-hidden="true">
@@ -489,6 +529,7 @@ $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
                     <div class="fw-semibold" id="cnpjConsultaRazao">-</div>
                     <div class="text-muted small" id="cnpjConsultaDocumento">-</div>
                     <div class="text-muted small mt-2" id="cnpjConsultaEndereco">-</div>
+                    <div class="text-muted small mt-2" id="cnpjConsultaQsa">QSA não retornado pela consulta.</div>
                 </div>
 
                 <div class="form-text mt-2">

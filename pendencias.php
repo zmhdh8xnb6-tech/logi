@@ -82,6 +82,11 @@ function clienteEnderecoIncompleto(array $cliente): bool
     return false;
 }
 
+function clienteDocumentoEhCnpj(array $cliente): bool
+{
+    return strlen(preg_replace('/\D/', '', (string)($cliente['documento'] ?? ''))) === 14;
+}
+
 $orgaosAlvaraDf = [
     'ibram' => 'INSTITUTO BRASÍLIA AMBIENTAL - IBRAM',
     'cbmdf' => 'CORPO DE BOMBEIROS MILITAR DO DISTRITO FEDERAL - CBMDF',
@@ -104,6 +109,7 @@ $stmt = $pdo->query("
 $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $clientesPorId = [];
 $alvarasPorCliente = [];
+$sociosPorCliente = [];
 
 foreach ($clientes as $cliente) {
     if ((int)($cliente['cliente_contabil'] ?? 1) !== 1) {
@@ -131,6 +137,24 @@ try {
 } catch (Throwable $e) {
 }
 
+if (logiTabelaExiste($pdo, 'cliente_socios')) {
+    try {
+        $stmtTodosSocios = $pdo->query("
+            SELECT cs.cliente_id, COUNT(*) AS total_socios
+            FROM cliente_socios cs
+            INNER JOIN clientes c ON c.id = cs.cliente_id
+            WHERE 1 = 1
+            " . empresaFiltroClienteDireto($pdo, 'c') . "
+            GROUP BY cs.cliente_id
+        ");
+
+        foreach ($stmtTodosSocios->fetchAll(PDO::FETCH_ASSOC) as $sociosCliente) {
+            $sociosPorCliente[(int)$sociosCliente['cliente_id']] = (int)$sociosCliente['total_socios'];
+        }
+    } catch (Throwable $e) {
+    }
+}
+
 $pendencias = [];
 $resumo = [
     'Certificado' => 0,
@@ -138,6 +162,7 @@ $resumo = [
     'Alvará' => 0,
     'Controles internos' => 0,
 ];
+$qsaDisponivel = logiTabelaExiste($pdo, 'cliente_socios');
 
 $procuracoes = [
     [
@@ -190,6 +215,20 @@ foreach ($clientes as $cliente) {
         );
     }
 
+    if ($qsaDisponivel && $clienteContabil && clienteDocumentoEhCnpj($cliente) && (($sociosPorCliente[(int)$cliente['id']] ?? 0) <= 0)) {
+        adicionarPendencia(
+            $pendencias,
+            $resumo,
+            $cliente,
+            'Dados cadastrais',
+            'QSA não preenchido no cadastro do cliente',
+            'Não informado',
+            'warning',
+            null,
+            'cliente_editar.php?id=' . (int)$cliente['id']
+        );
+    }
+
     if ($controlaCertificado && !empty($cliente['pendencia_certificado_digital'])) {
         adicionarPendencia(
             $pendencias,
@@ -215,9 +254,13 @@ foreach ($clientes as $cliente) {
 
     foreach ($procuracoes as $procuracao) {
         $status = $cliente[$procuracao['status']] ?? '';
-        $opcoesProcuracao = $procuracao['status'] === 'procuracao_sefaz'
-            ? ['possui' => 'Possui', 'nao_possui' => 'Não possui', 'goias' => 'Goiás']
-            : ['possui' => 'Possui', 'nao_possui' => 'Não possui'];
+        if ($procuracao['status'] === 'procuracao_sefaz') {
+            $opcoesProcuracao = ['possui' => 'Possui', 'nao_possui' => 'Não possui', 'goias' => 'Goiás'];
+        } elseif ($procuracao['status'] === 'procuracao_empregador_web') {
+            $opcoesProcuracao = ['possui' => 'Possui', 'nao_possui' => 'Não possui', 'nao_tem_funcionario' => 'Não tem funcionário'];
+        } else {
+            $opcoesProcuracao = ['possui' => 'Possui', 'nao_possui' => 'Não possui'];
+        }
         $modalProcuracao = modalControle(
             $cliente,
             'Resolver ' . $procuracao['nome'],

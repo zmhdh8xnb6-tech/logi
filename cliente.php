@@ -51,12 +51,27 @@ $stmtParcelamentos = $pdo->prepare("
 $stmtParcelamentos->execute([$id]);
 $parcelamentosCliente = $stmtParcelamentos->fetchAll(PDO::FETCH_ASSOC);
 
+$sociosCliente = [];
+if (logiTabelaExiste($pdo, 'cliente_socios')) {
+    $stmtSocios = $pdo->prepare("
+        SELECT cs.nome, cs.qualificacao, cs.documento, cs.entrada_sociedade
+        FROM cliente_socios cs
+        INNER JOIN clientes c ON c.id = cs.cliente_id
+        WHERE cs.cliente_id = ?
+        " . empresaFiltroClienteDireto($pdo, 'c') . "
+        ORDER BY cs.nome
+    ");
+    $stmtSocios->execute([$id]);
+    $sociosCliente = $stmtSocios->fetchAll(PDO::FETCH_ASSOC);
+}
+
 $rotulosControle = [
     'possui' => 'Possui',
     'nao_possui' => 'Não possui',
     'goias' => 'Goiás',
     'cadastrado' => 'Cadastrado',
     'nao_cadastrado' => 'Não cadastrado',
+    'nao_tem_funcionario' => 'Não tem funcionário',
     'sim' => 'Sim',
     'nao' => 'Não',
     'simples_nacional' => 'Simples Nacional',
@@ -459,6 +474,36 @@ if ($clienteContabil) {
             </div>
 
             <div class="clientes-box mt-4">
+                <h5>QSA - Quadro Societário</h5>
+                <?php if (!empty($sociosCliente)): ?>
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Qualificação</th>
+                                    <th>Documento</th>
+                                    <th>Entrada</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($sociosCliente as $socioCliente): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($socioCliente['nome'] ?? '') ?></td>
+                                        <td><?= htmlspecialchars($valorOuNaoInformado($socioCliente['qualificacao'] ?? '')) ?></td>
+                                        <td><?= htmlspecialchars($valorOuNaoInformado($socioCliente['documento'] ?? '')) ?></td>
+                                        <td><?= htmlspecialchars($formatarData($socioCliente['entrada_sociedade'] ?? null)) ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php else: ?>
+                    <p class="text-muted mb-0">Nenhum sócio cadastrado pelo CNPJ.</p>
+                <?php endif; ?>
+            </div>
+
+            <div class="clientes-box mt-4">
                 <h5>Endereço</h5>
                 <div class="row">
                     <div class="col-md-3 mb-2">
@@ -566,6 +611,32 @@ if ($clienteContabil) {
                         <?php endif; ?>
                     </div>
                 </section>
+
+                <?php if (!empty($sociosCliente)): ?>
+                    <section class="ficha-impressao-secao">
+                        <h2>QSA - Quadro Societário</h2>
+                        <table class="ficha-impressao-tabela">
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Qualificação</th>
+                                    <th>Documento</th>
+                                    <th>Entrada</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($sociosCliente as $socioCliente): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($socioCliente['nome'] ?? '') ?></td>
+                                        <td><?= htmlspecialchars($valorOuNaoInformado($socioCliente['qualificacao'] ?? '')) ?></td>
+                                        <td><?= htmlspecialchars($valorOuNaoInformado($socioCliente['documento'] ?? '')) ?></td>
+                                        <td><?= htmlspecialchars($formatarData($socioCliente['entrada_sociedade'] ?? null)) ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </section>
+                <?php endif; ?>
 
                 <?php if ($clienteContabil): ?>
                     <section class="ficha-impressao-secao">

@@ -253,6 +253,115 @@ function atualizarPendenciaControleDados(PDO $pdo, int $clienteId, string $colun
     $stmt->execute([$pendente ? 1 : 0, $clienteId]);
 }
 
+function normalizarSociosCnpj(array $dados, array $dadosComplementares): array
+{
+    $sociosOrigem = [];
+
+    if (isset($dadosComplementares['socios']) && is_array($dadosComplementares['socios'])) {
+        $sociosOrigem = $dadosComplementares['socios'];
+    } elseif (isset($dados['qsa']) && is_array($dados['qsa'])) {
+        $sociosOrigem = $dados['qsa'];
+    }
+
+    $socios = [];
+
+    foreach ($sociosOrigem as $socio) {
+        if (!is_array($socio)) {
+            continue;
+        }
+
+        $nome = trim((string)(
+            $socio['nome'] ??
+            $socio['nome_socio'] ??
+            $socio['nome_socio_razao_social'] ??
+            ''
+        ));
+
+        if ($nome === '') {
+            continue;
+        }
+
+        $qualificacao = trim((string)(
+            $socio['qualificacao_socio']['descricao'] ??
+            $socio['qualificacao_socio'] ??
+            $socio['qualificacao'] ??
+            ''
+        ));
+        $documento = trim((string)(
+            $socio['cpf_cnpj_socio'] ??
+            $socio['cnpj_cpf_do_socio'] ??
+            $socio['documento'] ??
+            ''
+        ));
+        $entrada = trim((string)(
+            $socio['data_entrada_sociedade'] ??
+            $socio['data_entrada'] ??
+            ''
+        ));
+
+        $socios[] = [
+            'nome' => $nome,
+            'qualificacao' => $qualificacao,
+            'documento' => $documento,
+            'entrada_sociedade' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $entrada) ? $entrada : null,
+        ];
+    }
+
+    return $socios;
+}
+
+function salvarSociosCliente(PDO $pdo, int $clienteId, array $socios): void
+{
+    if ($clienteId <= 0 || !logiTabelaExiste($pdo, 'cliente_socios')) {
+        return;
+    }
+
+    $stmtDelete = $pdo->prepare("
+        DELETE cs
+        FROM cliente_socios cs
+        INNER JOIN clientes c ON c.id = cs.cliente_id
+        WHERE cs.cliente_id = ?
+        " . empresaFiltroClienteDireto($pdo, 'c') . "
+    ");
+    $stmtDelete->execute([$clienteId]);
+
+    if ($socios === []) {
+        return;
+    }
+
+    $stmtInsert = $pdo->prepare("
+        INSERT INTO cliente_socios (
+            " . empresaInsertColuna($pdo, 'cliente_socios') . "
+            cliente_id,
+            nome,
+            qualificacao,
+            documento,
+            entrada_sociedade,
+            criado_em,
+            atualizado_em
+        ) VALUES (" . empresaInsertPlaceholder($pdo, 'cliente_socios') . "?, ?, ?, ?, ?, NOW(), NOW())
+    ");
+
+    foreach ($socios as $socio) {
+        $nome = trim((string)($socio['nome'] ?? ''));
+
+        if ($nome === '') {
+            continue;
+        }
+
+        $stmtInsert->execute(array_merge(
+            empresaInsertValores($pdo, 'cliente_socios'),
+            [
+                $clienteId,
+                $nome,
+                trim((string)($socio['qualificacao'] ?? '')),
+                trim((string)($socio['documento'] ?? '')),
+                !empty($socio['entrada_sociedade']) ? $socio['entrada_sociedade'] : null,
+            ]
+        ));
+    }
+}
+
 function consultarJsonExterno(string $url): array
 {
     $resposta = false;
@@ -464,6 +573,7 @@ if ($action === 'consultar_cnpj') {
         $dados['descricao_tipo_de_logradouro'] ?? '',
         $dados['logradouro'] ?? '',
     ])));
+    $socios = normalizarSociosCnpj($dados, $dadosComplementares);
 
     echo json_encode([
         'ok' => true,
@@ -480,6 +590,7 @@ if ($action === 'consultar_cnpj') {
             'bairro' => $dados['bairro'] ?? '',
             'cidade' => $dados['municipio'] ?? '',
             'uf' => strtoupper($dados['uf'] ?? ''),
+            'socios' => $socios,
         ],
     ]);
     exit;
@@ -528,6 +639,13 @@ if ($action === 'create' || $action === 'update') {
         true
     ) ? $_POST['possui_parcelamento'] : '';
     $alvaras = is_array($_POST['alvaras'] ?? null) ? $_POST['alvaras'] : [];
+    $qsaJson = trim((string)($_POST['qsa_json'] ?? ''));
+    $qsaSocios = [];
+
+    if ($qsaJson !== '') {
+        $qsaDecodificado = json_decode($qsaJson, true);
+        $qsaSocios = is_array($qsaDecodificado) ? $qsaDecodificado : [];
+    }
 
     $vencimento_certificado = !empty($_POST['vencimento_certificado'])
         ? $_POST['vencimento_certificado']
@@ -606,20 +724,24 @@ if ($action === 'create' || $action === 'update') {
         }
     }
 
-    $procuracoesObrigatorias = [
-        $procuracao_receita_federal,
-        $procuracao_conectividade,
-        $procuracao_empregador_web,
-        $procuracao_fgts,
-        $procuracao_particular,
-    ];
-
     if ($cliente_contabil === 1) {
-        foreach ($procuracoesObrigatorias as $situacao) {
+        foreach (
+            [
+                $procuracao_receita_federal,
+                $procuracao_conectividade,
+                $procuracao_fgts,
+                $procuracao_particular,
+            ] as $situacao
+        ) {
             if (!in_array($situacao, ['possui', 'nao_possui'], true)) {
                 echo 'procuracoes_incompletas';
                 exit;
             }
+        }
+
+        if (!in_array($procuracao_empregador_web, ['possui', 'nao_possui', 'nao_tem_funcionario'], true)) {
+            echo 'procuracoes_incompletas';
+            exit;
         }
     }
 
@@ -938,6 +1060,10 @@ if ($action === 'create' || $action === 'update') {
         }
 
         salvarAlvarasCliente($pdo, $clienteIdSalvo, $alvara, $alvaras);
+
+        if ($qsaJson !== '') {
+            salvarSociosCliente($pdo, $clienteIdSalvo, $qsaSocios);
+        }
 
         atualizarPendenciaControleDados(
             $pdo,

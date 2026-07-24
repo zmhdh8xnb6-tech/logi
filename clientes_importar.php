@@ -283,7 +283,7 @@ function importarClientePreparar(array $linha): array
         'vencimento_procuracao_receita_federal' => importarClienteData(importarClienteValor($linha, ['vencimento_procuracao_receita_federal', 'vencimento_rf'])),
         'procuracao_conectividade' => importarClienteOpcao(importarClienteValor($linha, ['procuracao_conectividade']), ['possui', 'nao_possui'], ''),
         'vencimento_procuracao_conectividade' => importarClienteData(importarClienteValor($linha, ['vencimento_procuracao_conectividade'])),
-        'procuracao_empregador_web' => importarClienteOpcao(importarClienteValor($linha, ['procuracao_empregador_web', 'empregador_web']), ['possui', 'nao_possui'], ''),
+        'procuracao_empregador_web' => importarClienteOpcao(importarClienteValor($linha, ['procuracao_empregador_web', 'empregador_web']), ['possui', 'nao_possui', 'nao_tem_funcionario'], ''),
         'procuracao_fgts' => importarClienteOpcao(importarClienteValor($linha, ['procuracao_fgts']), ['possui', 'nao_possui'], ''),
         'vencimento_procuracao_fgts' => importarClienteData(importarClienteValor($linha, ['vencimento_procuracao_fgts'])),
         'procuracao_particular' => importarClienteOpcao(importarClienteValor($linha, ['procuracao_particular']), ['possui', 'nao_possui'], ''),

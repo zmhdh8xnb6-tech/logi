@@ -38,6 +38,21 @@ $alvarasCliente = [];
 foreach ($stmtAlvaras->fetchAll(PDO::FETCH_ASSOC) as $alvaraCliente) {
     $alvarasCliente[$alvaraCliente['orgao_codigo']] = $alvaraCliente;
 }
+
+$sociosCliente = [];
+if (logiTabelaExiste($pdo, 'cliente_socios')) {
+    $stmtSocios = $pdo->prepare("
+        SELECT cs.nome, cs.qualificacao, cs.documento, cs.entrada_sociedade
+        FROM cliente_socios cs
+        INNER JOIN clientes c ON c.id = cs.cliente_id
+        WHERE cs.cliente_id = ?
+        " . empresaFiltroClienteDireto($pdo, 'c') . "
+        ORDER BY cs.nome
+    ");
+    $stmtSocios->execute([$id]);
+    $sociosCliente = $stmtSocios->fetchAll(PDO::FETCH_ASSOC);
+}
+
 ?>
 
 <!DOCTYPE html>

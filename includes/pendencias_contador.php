@@ -20,6 +20,29 @@ function contarPendenciasSistema(PDO $pdo): int
 
         return false;
     };
+    $clienteDocumentoEhCnpj = static function (array $cliente): bool {
+        return strlen(preg_replace('/\D/', '', (string)($cliente['documento'] ?? ''))) === 14;
+    };
+
+    $sociosPorCliente = [];
+    $qsaDisponivel = logiTabelaExiste($pdo, 'cliente_socios');
+    if ($qsaDisponivel) {
+        try {
+            $stmtSocios = $pdo->query("
+                SELECT cs.cliente_id, COUNT(*) AS total_socios
+                FROM cliente_socios cs
+                INNER JOIN clientes c ON c.id = cs.cliente_id
+                WHERE 1 = 1
+                {$filtroEmpresaClientesAlias}
+                GROUP BY cs.cliente_id
+            ");
+
+            foreach ($stmtSocios->fetchAll(PDO::FETCH_ASSOC) as $sociosCliente) {
+                $sociosPorCliente[(int)$sociosCliente['cliente_id']] = (int)$sociosCliente['total_socios'];
+            }
+        } catch (Throwable $e) {
+        }
+    }
 
     $procuracoes = [
         ['status' => 'procuracao_receita_federal', 'vencimento' => 'vencimento_procuracao_receita_federal'],
@@ -35,6 +58,10 @@ function contarPendenciasSistema(PDO $pdo): int
         $controlaCertificado = $clienteContabil || (int)($cliente['servico_certificado'] ?? 1) === 1;
 
         if ($clienteContabil && $clienteEnderecoIncompleto($cliente)) {
+            $total++;
+        }
+
+        if ($qsaDisponivel && $clienteContabil && $clienteDocumentoEhCnpj($cliente) && (($sociosPorCliente[(int)$cliente['id']] ?? 0) <= 0)) {
             $total++;
         }
 
