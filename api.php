@@ -214,8 +214,14 @@ function normalizarValorClienteComparacao(?string $valor): string
 
 function valorClienteMudou(array $clienteAtual, string $campo, ?string $novoValor): bool
 {
-    return normalizarValorClienteComparacao($clienteAtual[$campo] ?? '')
-        !== normalizarValorClienteComparacao($novoValor);
+    $valorAtualNormalizado = normalizarValorClienteComparacao($clienteAtual[$campo] ?? '');
+    $novoValorNormalizado = normalizarValorClienteComparacao($novoValor);
+
+    if ($valorAtualNormalizado === '' || $novoValorNormalizado === '') {
+        return false;
+    }
+
+    return $valorAtualNormalizado !== $novoValorNormalizado;
 }
 
 function conferenciaDadosIncorreta(array $dados, string $prefixo, bool $verificarSocio = false): bool
