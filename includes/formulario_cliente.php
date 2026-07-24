@@ -481,8 +481,16 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
 
 <!-- QSA -->
 <div class="border rounded p-3 mb-3" id="qsaClienteBox">
-    <h6 class="mb-2 fw-bold">QSA - Quadro Societário</h6>
-    <p class="text-muted mb-3">Sócios encontrados pela consulta do CNPJ.</p>
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+        <div>
+            <h6 class="mb-1 fw-bold">QSA - Quadro Societário</h6>
+            <p class="text-muted mb-0">Sócios encontrados pela consulta do CNPJ.</p>
+        </div>
+
+        <button type="button" class="btn btn-outline-primary btn-sm" id="btnAtualizarQsaReceita">
+            <i class="bi bi-arrow-clockwise"></i> Atualizar pela Receita
+        </button>
+    </div>
 
     <div class="table-responsive<?= empty($sociosCliente) ? ' d-none' : '' ?>" id="qsaClienteTabelaWrapper">
         <table class="table align-middle mb-0">
@@ -510,6 +518,7 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
     <p class="text-muted mb-0<?= !empty($sociosCliente) ? ' d-none' : '' ?>" id="qsaClienteVazio">
         Nenhum sócio encontrado ainda. Ao consultar um CNPJ, os sócios aparecerão aqui antes de salvar.
     </p>
+    <small class="text-muted d-block mt-2" id="qsaClienteStatus"></small>
 </div>
 </div>
 

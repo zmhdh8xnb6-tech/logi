@@ -1209,6 +1209,31 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
             });
         }
 
+        function atualizarTotalPendenciasServidor() {
+            return fetch('api_notificacoes.php?_=' + Date.now(), {
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                })
+                .then(function(resposta) {
+                    if (!resposta.ok) {
+                        return null;
+                    }
+
+                    return resposta.json();
+                })
+                .then(function(dados) {
+                    if (!dados || dados.total === undefined) {
+                        return;
+                    }
+
+                    const total = document.getElementById('totalPendenciasNumero');
+                    if (total) {
+                        total.textContent = String(Number(dados.total || 0));
+                    }
+                })
+                .catch(function() {});
+        }
+
         let renderizarPendenciasLista = function() {};
 
         function removerLinhaPendencia(botao) {
@@ -1217,6 +1242,7 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
             linha.remove();
             renderizarPendenciasLista();
             window.dispatchEvent(new Event('pendencias:atualizar'));
+            atualizarTotalPendenciasServidor();
 
             if (document.querySelectorAll('.linha-pendencia').length === 0) {
                 const tbody = document.querySelector('table tbody');
@@ -1485,10 +1511,12 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
                         focarCampoDataPendencia(campoData);
                     } else {
                         botaoSalvarModalPendencia.innerHTML = 'Erro';
+                        document.getElementById('textoAjudaModalPendencia').textContent = resp.trim() || 'Não foi possível salvar essa pendência.';
                     }
                 })
                 .catch(() => {
                     botaoSalvarModalPendencia.innerHTML = 'Erro';
+                    document.getElementById('textoAjudaModalPendencia').textContent = 'Não foi possível comunicar com o servidor.';
                 })
                 .finally(() => {
                     setTimeout(() => {

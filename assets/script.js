@@ -117,6 +117,8 @@ $(document).ready(function () {
                 const clienteContabil = $('#cliente_contabil').val() === '1';
 
                 if (cadastroSalvo) {
+                    sessionStorage.setItem('logi_forcar_atualizar_pendencias', '1');
+                    window.dispatchEvent(new Event('pendencias:atualizar'));
 
                     $('#btnSalvarCliente')
                         .prop('disabled', false)
@@ -261,6 +263,10 @@ $(document).ready(function () {
 
     $('#btnPreencherDadosCnpj').on('click', function () {
         preencherCadastroComCnpj();
+    });
+
+    $('#btnAtualizarQsaReceita').on('click', function () {
+        atualizarQsaPelaReceita();
     });
 
     $('#documento').on('input', function () {
@@ -1075,6 +1081,62 @@ function renderizarQsaCliente(socios) {
 
     tabelaWrapper.removeClass('d-none');
     mensagemVazia.addClass('d-none');
+}
+
+function atualizarQsaPelaReceita() {
+    const botao = $('#btnAtualizarQsaReceita');
+    const status = $('#qsaClienteStatus');
+    const documento = $('#documento').val().replace(/\D/g, '');
+
+    if (documento.length !== 14) {
+        $('#documento').addClass('is-invalid');
+        mostrarAviso('Informe um CNPJ válido para atualizar o QSA.');
+        return;
+    }
+
+    botao
+        .prop('disabled', true)
+        .html('<span class="spinner-border spinner-border-sm me-1"></span> Atualizando...');
+    status
+        .removeClass('text-danger text-success')
+        .addClass('text-muted')
+        .text('Consultando dados públicos do CNPJ...');
+
+    $.getJSON('api.php?action=consultar_cnpj', { cnpj: documento })
+        .done(function (resposta) {
+            if (!resposta.ok || !resposta.dados) {
+                status
+                    .removeClass('text-muted text-success')
+                    .addClass('text-danger')
+                    .text('Não foi possível consultar o QSA agora.');
+                return;
+            }
+
+            const sociosEncontrados = Array.isArray(resposta.dados.socios) ? resposta.dados.socios : [];
+            dadosCnpjEncontrado = resposta.dados;
+            $('#qsa_json').val(JSON.stringify(sociosEncontrados));
+            renderizarQsaCliente(sociosEncontrados);
+
+            status
+                .removeClass('text-muted text-danger')
+                .addClass('text-success')
+                .text(
+                    sociosEncontrados.length
+                        ? 'QSA atualizado. Clique em Salvar para gravar.'
+                        : 'A consulta não retornou sócios. Clique em Salvar para gravar essa conferência.'
+                );
+        })
+        .fail(function () {
+            status
+                .removeClass('text-muted text-success')
+                .addClass('text-danger')
+                .text('Erro ao consultar o QSA. Tente novamente em instantes.');
+        })
+        .always(function () {
+            botao
+                .prop('disabled', false)
+                .html('<i class="bi bi-arrow-clockwise"></i> Atualizar pela Receita');
+        });
 }
 
 function consultarCnpjParaPreenchimento(cnpj) {

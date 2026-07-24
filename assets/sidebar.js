@@ -107,7 +107,16 @@ if (notificationCenter) {
         }
     }
 
-    const totalEmCache = Number(localStorage.getItem(`${storagePrefix}_total`) || 0);
+    const forcarAtualizacaoPendencias = sessionStorage.getItem('logi_forcar_atualizar_pendencias') === '1';
+
+    if (forcarAtualizacaoPendencias) {
+        sessionStorage.removeItem('logi_forcar_atualizar_pendencias');
+        localStorage.removeItem(`${storagePrefix}_total`);
+    }
+
+    const totalEmCache = forcarAtualizacaoPendencias
+        ? 0
+        : Number(localStorage.getItem(`${storagePrefix}_total`) || 0);
 
     if (Number.isFinite(totalEmCache) && totalEmCache >= 0) {
         atualizarInterface(totalEmCache);
