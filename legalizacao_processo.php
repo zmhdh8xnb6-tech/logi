@@ -159,6 +159,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ");
         $stmt->execute([$processoId]);
         $etapasAcao = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($etapasAcao as &$etapaAcao) {
+            $etapaAcao['nome'] = legalizacaoNormalizarNomeEtapa((string)$etapaAcao['nome']);
+        }
+        unset($etapaAcao);
         $indiceAtual = null;
 
         foreach ($etapasAcao as $indice => $etapa) {
@@ -233,7 +237,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $stmt->execute([
                 (int)$novaEtapa['ordem'],
-                $novaEtapa['nome'],
+                legalizacaoNormalizarNomeEtapa((string)$novaEtapa['nome']),
                 $novoStatus,
                 $concluidoEm,
                 $processoId,
@@ -247,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo,
                 $processoId,
                 $acao === 'avancar_etapa' ? 'avancar' : 'voltar',
-                ($acao === 'avancar_etapa' ? 'Avançou' : 'Voltou') . ' da etapa "' . $etapaAtual['nome'] . '" para "' . $novaEtapa['nome'] . '".'
+                ($acao === 'avancar_etapa' ? 'Avançou' : 'Voltou') . ' da etapa "' . legalizacaoNormalizarNomeEtapa((string)$etapaAtual['nome']) . '" para "' . legalizacaoNormalizarNomeEtapa((string)$novaEtapa['nome']) . '".'
             );
 
             $pdo->commit();
@@ -343,6 +347,10 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$processoId]);
 $etapas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+foreach ($etapas as &$etapa) {
+    $etapa['nome'] = legalizacaoNormalizarNomeEtapa((string)$etapa['nome']);
+}
+unset($etapa);
 
 $stmt = $pdo->prepare("
     SELECT *

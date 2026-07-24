@@ -99,6 +99,11 @@ $clienteContabil = (int)($cliente['cliente_contabil'] ?? 1) === 1;
 $servicoParcelamento = (int)($cliente['servico_parcelamento'] ?? 0) === 1;
 $servicoCertificado = (int)($cliente['servico_certificado'] ?? 1) === 1;
 $paginaRetorno = $clienteContabil ? 'clientes.php' : 'servicos_avulsos.php';
+$documentoSomenteNumeros = preg_replace('/\D+/', '', (string)($cliente['documento'] ?? ''));
+$clienteTemCnpj = strlen($documentoSomenteNumeros) === 14;
+$urlComprovanteCnpj = $clienteTemCnpj
+    ? 'https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/cnpjreva_Solicitacao.asp?cnpj=' . $documentoSomenteNumeros
+    : '';
 $valorOuNaoInformado = static function ($valor): string {
     $valor = trim((string)$valor);
 
@@ -314,7 +319,20 @@ if ($clienteContabil) {
             <a href="<?= $paginaRetorno ?>" class="btn btn-outline-secondary mb-3 nao-imprimir">Voltar</a>
 
             <h3><?= htmlspecialchars($cliente['nome']) ?></h3>
-            <p class="text-muted"><?= htmlspecialchars($cliente['documento']) ?></p>
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <p class="text-muted mb-0"><?= htmlspecialchars($cliente['documento']) ?></p>
+                <?php if ($clienteTemCnpj): ?>
+                    <a
+                        href="<?= htmlspecialchars($urlComprovanteCnpj) ?>"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="btn btn-outline-primary btn-sm nao-imprimir"
+                        data-cnpj-receita="<?= htmlspecialchars($documentoSomenteNumeros) ?>"
+                        title="Abrir emissão do comprovante de inscrição e situação cadastral na Receita Federal">
+                        <i class="bi bi-box-arrow-up-right"></i> Tirar CNPJ
+                    </a>
+                <?php endif; ?>
+            </div>
             <span class="badge <?= $clienteContabil ? 'bg-success' : 'bg-info text-dark' ?> mb-3">
                 <?= $clienteContabil ? 'Cliente contábil' : 'Serviço avulso' ?>
             </span>
@@ -816,6 +834,16 @@ if ($clienteContabil) {
 
     <script>
         const clienteAtual = <?= json_encode($cliente, JSON_UNESCAPED_UNICODE) ?>;
+
+        document.querySelectorAll('[data-cnpj-receita]').forEach(function(link) {
+            link.addEventListener('click', function() {
+                const cnpj = link.dataset.cnpjReceita || '';
+
+                if (cnpj && navigator.clipboard) {
+                    navigator.clipboard.writeText(cnpj).catch(function() {});
+                }
+            });
+        });
 
         document.getElementById('btnExcluirClienteDefinitivo').addEventListener('click', function() {
             const botao = this;

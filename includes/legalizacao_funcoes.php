@@ -154,6 +154,15 @@ function legalizacaoFluxoPorTipo(string $tipo): array
     return $fluxos[$tipo] ?? $fluxos['default'];
 }
 
+function legalizacaoNormalizarNomeEtapa(string $nome): string
+{
+    $nomeLimpo = trim($nome);
+
+    return strcasecmp($nomeLimpo, 'Baixa Prefeitura') === 0
+        ? 'Baixa Prefeitura / DF Legal'
+        : $nome;
+}
+
 function legalizacaoFluxoPorTipoECliente(string $tipo, array $cliente): array
 {
     $fluxo = legalizacaoFluxoPorTipo($tipo);
@@ -379,6 +388,11 @@ function legalizacaoBuscarProcesso(PDO $pdo, int $processoId): ?array
     ");
     $stmt->execute([$processoId]);
     $processo = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($processo && isset($processo['etapa_atual_nome'])) {
+        $processo['etapa_atual_nome'] = legalizacaoNormalizarNomeEtapa((string)$processo['etapa_atual_nome']);
+    }
+
     return $processo ?: null;
 }
 

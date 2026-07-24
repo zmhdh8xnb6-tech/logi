@@ -481,7 +481,7 @@ if ($tabelasDisponiveis) {
                                             <small><?= htmlspecialchars($clienteDocumentoExibicao ?: '-') ?></small>
                                         </td>
                                         <td><?= htmlspecialchars(legalizacaoTextoTipo($processo['tipo'])) ?></td>
-                                        <td><?= htmlspecialchars($processo['etapa_atual_nome']) ?></td>
+                                        <td><?= htmlspecialchars(legalizacaoNormalizarNomeEtapa((string)$processo['etapa_atual_nome'])) ?></td>
                                         <td><?= htmlspecialchars($processo['responsavel_nome']) ?></td>
                                         <td>
                                             <span class="legalizacao-prazo legalizacao-prazo-neutro">
