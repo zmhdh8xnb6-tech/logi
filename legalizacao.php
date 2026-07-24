@@ -734,15 +734,32 @@ if ($tabelasDisponiveis) {
                     })
                     .then(function(html) {
                         const documento = new DOMParser().parseFromString(html, 'text/html');
-                        const painelAtual = document.querySelector('.legalizacao-painel');
-                        const painelNovo = documento.querySelector('.legalizacao-painel');
+                        const seletoresAtualizar = [
+                            '.legalizacao-abas',
+                            '.legalizacao-painel .table-responsive',
+                            '.legalizacao-painel nav[aria-label="Paginação dos processos"]'
+                        ];
 
-                        if (!painelAtual || !painelNovo) {
-                            window.location.href = url.toString();
-                            return;
-                        }
+                        seletoresAtualizar.forEach(function(seletor) {
+                            const atual = document.querySelector(seletor);
+                            const novo = documento.querySelector(seletor);
 
-                        painelAtual.innerHTML = painelNovo.innerHTML;
+                            if (atual && novo) {
+                                atual.replaceWith(novo);
+                                return;
+                            }
+
+                            if (atual && !novo) {
+                                atual.remove();
+                                return;
+                            }
+
+                            if (!atual && novo && seletor.includes('nav')) {
+                                const tabela = document.querySelector('.legalizacao-painel .table-responsive');
+                                tabela?.insertAdjacentElement('afterend', novo);
+                            }
+                        });
+
                         window.history.pushState(null, '', url.toString());
                     })
                     .catch(function(erro) {
