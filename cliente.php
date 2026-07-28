@@ -99,6 +99,28 @@ $clienteContabil = (int)($cliente['cliente_contabil'] ?? 1) === 1;
 $servicoParcelamento = (int)($cliente['servico_parcelamento'] ?? 0) === 1;
 $servicoCertificado = (int)($cliente['servico_certificado'] ?? 1) === 1;
 $paginaRetorno = $clienteContabil ? 'clientes.php' : 'servicos_avulsos.php';
+$colunasParalisacao = [
+    'paralisacao_status',
+    'paralisacao_inicio',
+    'paralisacao_fim',
+    'paralisacao_reativada_em',
+    'paralisacao_bloqueio_ate',
+];
+$estruturaParalisacao = true;
+
+foreach ($colunasParalisacao as $colunaParalisacao) {
+    if (!logiColunaExiste($pdo, 'clientes', $colunaParalisacao)) {
+        $estruturaParalisacao = false;
+        break;
+    }
+}
+
+$clienteParalisado = $estruturaParalisacao && (($cliente['paralisacao_status'] ?? 'ativa') === 'paralisada');
+$paralisacaoBloqueada = $estruturaParalisacao
+    && !$clienteParalisado
+    && !empty($cliente['paralisacao_bloqueio_ate'])
+    && $cliente['paralisacao_bloqueio_ate'] >= date('Y-m-d');
+$podeAlterarParalisacao = $clienteContabil && !$clienteConsulta && $estruturaParalisacao && usuarioPode('paralisacoes');
 $documentoSomenteNumeros = preg_replace('/\D+/', '', (string)($cliente['documento'] ?? ''));
 $clienteTemCnpj = strlen($documentoSomenteNumeros) === 14;
 $urlComprovanteCnpj = $clienteTemCnpj
@@ -341,12 +363,32 @@ if ($clienteContabil) {
                     <?= $clienteBaixado ? 'Cliente baixado' : 'Cliente devolvido' ?>
                 </span>
             <?php endif; ?>
+            <?php if ($clienteParalisado): ?>
+                <span class="badge bg-secondary mb-3 ms-1">
+                    Paralisada até <?= htmlspecialchars($formatarData($cliente['paralisacao_fim'] ?? null)) ?>
+                </span>
+            <?php elseif ($paralisacaoBloqueada): ?>
+                <span class="badge bg-warning text-dark mb-3 ms-1">
+                    Nova paralisação bloqueada até <?= htmlspecialchars($formatarData($cliente['paralisacao_bloqueio_ate'] ?? null)) ?>
+                </span>
+            <?php endif; ?>
 
             <div class="d-flex gap-2 mb-4 nao-imprimir">
                 <?php if (!$clienteConsulta): ?>
                     <a href="cliente_editar.php?id=<?= (int)$cliente['id'] ?>" class="btn btn-primary">
                         <i class="bi bi-pencil-square"></i> Editar
                     </a>
+                    <?php if ($podeAlterarParalisacao): ?>
+                        <button
+                            type="button"
+                            class="btn <?= $clienteParalisado ? 'btn-outline-success' : 'btn-outline-secondary' ?>"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalParalisacaoCliente"
+                            <?= $paralisacaoBloqueada ? 'disabled title="Cliente bloqueado para nova paralisação até ' . htmlspecialchars($formatarData($cliente['paralisacao_bloqueio_ate'] ?? null)) . '"' : '' ?>>
+                            <i class="bi <?= $clienteParalisado ? 'bi-arrow-counterclockwise' : 'bi-pause-circle' ?>"></i>
+                            <?= $clienteParalisado ? 'Reativar' : 'Paralisar' ?>
+                        </button>
+                    <?php endif; ?>
                     <button
                         class="btn btn-warning"
                         onclick="excluirCliente(
@@ -801,6 +843,80 @@ if ($clienteContabil) {
 
     <?php include 'includes/modal_confirmar.php'; ?>
 
+    <?php if ($podeAlterarParalisacao): ?>
+        <div class="modal fade" id="modalParalisacaoCliente" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form id="formParalisacaoCliente" novalidate>
+                        <div class="modal-header">
+                            <div>
+                                <h5 class="modal-title">
+                                    <?= $clienteParalisado ? 'Reativar empresa' : 'Paralisar empresa' ?>
+                                </h5>
+                                <p class="text-muted mb-0">
+                                    <?= htmlspecialchars(($cliente['codigo'] ?? '') . ' - ' . ($cliente['nome'] ?? '')) ?>
+                                </p>
+                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+
+                        <div class="modal-body">
+                            <input type="hidden" name="cliente_id" value="<?= (int)$cliente['id'] ?>">
+                            <input type="hidden" name="acao" value="<?= $clienteParalisado ? 'reativar' : 'paralisar' ?>">
+
+                            <div class="alert alert-info">
+                                <?php if ($clienteParalisado): ?>
+                                    Ao reativar, a empresa ficará bloqueada para nova paralisação por 3 anos.
+                                <?php else: ?>
+                                    A empresa ficará com atividades interrompidas por 5 anos. Durante esse período, os controles dispensados de empresa paralisada não entram em pendências.
+                                <?php endif; ?>
+                            </div>
+                            <div class="alert alert-danger d-none" id="alertaParalisacaoCliente"></div>
+
+                            <div class="mb-3">
+                                <label for="dataParalisacaoCliente" class="form-label">
+                                    <?= $clienteParalisado ? 'Data da reativação' : 'Data da paralisação' ?>
+                                </label>
+                                <input
+                                    type="date"
+                                    class="form-control"
+                                    name="data"
+                                    id="dataParalisacaoCliente"
+                                    value="<?= date('Y-m-d') ?>"
+                                    required>
+                                <div class="invalid-feedback">Informe a data.</div>
+                            </div>
+
+                            <?php if ($clienteParalisado): ?>
+                                <div class="mb-3">
+                                    <label for="senhaAdminDesfazerParalisacaoCliente" class="form-label">Senha do administrador para desfazer</label>
+                                    <input
+                                        type="password"
+                                        class="form-control"
+                                        id="senhaAdminDesfazerParalisacaoCliente"
+                                        autocomplete="new-password"
+                                        placeholder="Digite a senha do administrador">
+                                </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="modal-footer">
+                            <?php if ($clienteParalisado): ?>
+                                <button type="button" class="btn btn-outline-danger me-auto" id="btnDesfazerParalisacaoCliente">
+                                    <i class="bi bi-x-circle"></i> Desfazer paralisação
+                                </button>
+                            <?php endif; ?>
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-success" id="btnSalvarParalisacaoCliente">
+                                <i class="bi bi-check-lg"></i> Salvar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
+
     <div class="modal fade" id="modalExcluirClienteDefinitivo" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -844,6 +960,86 @@ if ($clienteContabil) {
                 }
             });
         });
+
+        const formParalisacaoCliente = document.getElementById('formParalisacaoCliente');
+        if (formParalisacaoCliente) {
+            formParalisacaoCliente.addEventListener('submit', async function(evento) {
+                evento.preventDefault();
+
+                if (!formParalisacaoCliente.checkValidity()) {
+                    formParalisacaoCliente.classList.add('was-validated');
+                    return;
+                }
+
+                const botao = document.getElementById('btnSalvarParalisacaoCliente');
+                const alerta = document.getElementById('alertaParalisacaoCliente');
+                alerta.classList.add('d-none');
+                botao.disabled = true;
+                botao.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Salvando...';
+
+                try {
+                    const resposta = await fetch('api_paralisacoes.php', {
+                        method: 'POST',
+                        body: new FormData(formParalisacaoCliente)
+                    });
+                    const dados = await resposta.json();
+
+                    if (!dados.sucesso) {
+                        alerta.textContent = dados.mensagem || 'Não foi possível salvar.';
+                        alerta.classList.remove('d-none');
+                        return;
+                    }
+
+                    window.location.reload();
+                } catch (erro) {
+                    alerta.textContent = 'Não foi possível comunicar com o servidor.';
+                    alerta.classList.remove('d-none');
+                } finally {
+                    botao.disabled = false;
+                    botao.innerHTML = '<i class="bi bi-check-lg"></i> Salvar';
+                }
+            });
+        }
+
+        const btnDesfazerParalisacaoCliente = document.getElementById('btnDesfazerParalisacaoCliente');
+        if (btnDesfazerParalisacaoCliente) {
+            btnDesfazerParalisacaoCliente.addEventListener('click', async function() {
+                const alerta = document.getElementById('alertaParalisacaoCliente');
+                const dadosEnvio = new FormData();
+                dadosEnvio.append('cliente_id', '<?= (int)$cliente['id'] ?>');
+                dadosEnvio.append('acao', 'desfazer');
+                dadosEnvio.append(
+                    'senha_admin',
+                    document.getElementById('senhaAdminDesfazerParalisacaoCliente').value || ''
+                );
+
+                alerta.classList.add('d-none');
+                btnDesfazerParalisacaoCliente.disabled = true;
+                btnDesfazerParalisacaoCliente.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Desfazendo...';
+
+                try {
+                    const resposta = await fetch('api_paralisacoes.php', {
+                        method: 'POST',
+                        body: dadosEnvio
+                    });
+                    const dados = await resposta.json();
+
+                    if (!dados.sucesso) {
+                        alerta.textContent = dados.mensagem || 'Não foi possível desfazer.';
+                        alerta.classList.remove('d-none');
+                        return;
+                    }
+
+                    window.location.reload();
+                } catch (erro) {
+                    alerta.textContent = 'Não foi possível comunicar com o servidor.';
+                    alerta.classList.remove('d-none');
+                } finally {
+                    btnDesfazerParalisacaoCliente.disabled = false;
+                    btnDesfazerParalisacaoCliente.innerHTML = '<i class="bi bi-x-circle"></i> Desfazer paralisação';
+                }
+            });
+        }
 
         document.getElementById('btnExcluirClienteDefinitivo').addEventListener('click', function() {
             const botao = this;

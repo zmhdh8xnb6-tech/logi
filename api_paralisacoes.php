@@ -20,6 +20,28 @@ function dataParalisacaoValida(string $data): bool
     return $objeto !== false && $objeto->format('Y-m-d') === $data;
 }
 
+function senhaAdministradorValida(PDO $pdoUsuarios, string $senha): bool
+{
+    if ($senha === '') {
+        return false;
+    }
+
+    $stmt = $pdoUsuarios->query("
+        SELECT senha
+        FROM usuarios
+        WHERE tipo = 'admin'
+          AND COALESCE(ativo, 1) = 1
+    ");
+
+    while ($usuario = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        if (password_verify($senha, (string)($usuario['senha'] ?? ''))) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 if (!usuarioPode('paralisacoes')) {
     http_response_code(403);
     responderParalisacao(false, 'Você não possui permissão para alterar paralisações.');
@@ -46,9 +68,18 @@ foreach ($colunasObrigatorias as $coluna) {
 $clienteId = filter_var($_POST['cliente_id'] ?? null, FILTER_VALIDATE_INT);
 $acao = $_POST['acao'] ?? '';
 $data = $_POST['data'] ?? '';
+$senhaAdmin = (string)($_POST['senha_admin'] ?? '');
 
-if (!$clienteId || !in_array($acao, ['paralisar', 'reativar'], true) || !dataParalisacaoValida($data)) {
+if (!$clienteId || !in_array($acao, ['paralisar', 'reativar', 'desfazer'], true)) {
     responderParalisacao(false, 'Dados inválidos.');
+}
+
+if (in_array($acao, ['paralisar', 'reativar'], true) && !dataParalisacaoValida($data)) {
+    responderParalisacao(false, 'Dados inválidos.');
+}
+
+if ($acao === 'desfazer' && !senhaAdministradorValida($authPdo ?? $pdo, $senhaAdmin)) {
+    responderParalisacao(false, 'Informe a senha de um administrador para desfazer a paralisação.');
 }
 
 $stmtCliente = $pdo->prepare("
@@ -67,7 +98,17 @@ if (!$clienteAntes) {
 $statusAtual = $clienteAntes['paralisacao_status'] ?? 'ativa';
 $bloqueioAtual = $clienteAntes['paralisacao_bloqueio_ate'] ?? '';
 
-if ($acao === 'paralisar') {
+if ($acao === 'desfazer') {
+    if ($statusAtual !== 'paralisada') {
+        responderParalisacao(false, 'Só é possível desfazer uma empresa que está paralisada.');
+    }
+
+    $inicio = null;
+    $fim = null;
+    $reativadaEm = null;
+    $bloqueioAte = null;
+    $novoStatus = 'ativa';
+} elseif ($acao === 'paralisar') {
     if ($statusAtual === 'paralisada') {
         responderParalisacao(false, 'Esta empresa já está paralisada.');
     }
@@ -133,7 +174,11 @@ try {
         $acao,
         'cliente',
         $clienteId,
-        ($acao === 'paralisar' ? 'Paralisou ' : 'Reativou ') . ($clienteAntes['codigo'] ?? '') . ' - ' . ($clienteAntes['nome'] ?? ''),
+        (
+            $acao === 'paralisar'
+            ? 'Paralisou '
+            : ($acao === 'reativar' ? 'Reativou ' : 'Desfez paralisação de ')
+        ) . ($clienteAntes['codigo'] ?? '') . ' - ' . ($clienteAntes['nome'] ?? ''),
         $mudancas['antes'],
         $mudancas['depois']
     );

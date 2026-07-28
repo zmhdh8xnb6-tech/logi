@@ -184,9 +184,22 @@ function paralisacaoBadge(array $cliente): string
                                 <input type="date" class="form-control" name="data" id="paralisacaoData" required>
                                 <div class="invalid-feedback">Informe a data.</div>
                             </div>
+
+                            <div class="mb-3 d-none" id="grupoSenhaDesfazerParalisacao">
+                                <label for="senhaAdminDesfazerParalisacao" class="form-label">Senha do administrador para desfazer</label>
+                                <input
+                                    type="password"
+                                    class="form-control"
+                                    id="senhaAdminDesfazerParalisacao"
+                                    autocomplete="new-password"
+                                    placeholder="Digite a senha do administrador">
+                            </div>
                         </div>
 
                         <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-danger me-auto d-none" id="btnDesfazerParalisacao">
+                                <i class="bi bi-x-circle"></i> Desfazer paralisação
+                            </button>
                             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                             <button type="submit" class="btn btn-success" id="btnSalvarParalisacao">Salvar</button>
                         </div>
@@ -204,6 +217,7 @@ function paralisacaoBadge(array $cliente): string
             const paralisacaoVazio = document.getElementById('paralisacaoVazio');
             const modalParalisacao = bootstrap.Modal.getOrCreateInstance(document.getElementById('modalParalisacao'));
             const formParalisacao = document.getElementById('formParalisacao');
+            const btnDesfazerParalisacao = document.getElementById('btnDesfazerParalisacao');
             let paralisacaoPorPagina = Number(localStorage.getItem('paralisacaoPorPagina') || 15);
             paralisacaoPorPagina = [15, 30, 60, 90].includes(paralisacaoPorPagina) ? paralisacaoPorPagina : 15;
             let paginaParalisacao = 1;
@@ -274,11 +288,28 @@ function paralisacaoBadge(array $cliente): string
                 lista.className = 'pagination justify-content-center mt-3';
                 adicionarPagina(lista, 'Anterior', Math.max(1, paginaParalisacao - 1), paginaParalisacao <= 1, false);
 
+                const paginasVisiveis = [];
+                let ultimaPagina = 0;
+
                 for (let pagina = 1; pagina <= totalPaginas; pagina++) {
                     if (pagina === 1 || pagina === totalPaginas || Math.abs(pagina - paginaParalisacao) <= 2) {
-                        adicionarPagina(lista, String(pagina), pagina, false, pagina === paginaParalisacao);
+                        if (ultimaPagina && pagina - ultimaPagina > 1) {
+                            paginasVisiveis.push('...');
+                        }
+
+                        paginasVisiveis.push(pagina);
+                        ultimaPagina = pagina;
                     }
                 }
+
+                paginasVisiveis.forEach((pagina) => {
+                    if (pagina === '...') {
+                        adicionarPagina(lista, '...', paginaParalisacao, true, false);
+                        return;
+                    }
+
+                    adicionarPagina(lista, String(pagina), pagina, false, pagina === paginaParalisacao);
+                });
 
                 adicionarPagina(lista, 'Próxima', Math.min(totalPaginas, paginaParalisacao + 1), paginaParalisacao >= totalPaginas, false);
                 nav.appendChild(lista);
@@ -296,6 +327,9 @@ function paralisacaoBadge(array $cliente): string
                     document.getElementById('paralisacaoClienteId').value = linhaParalisacaoAtual.dataset.id;
                     document.getElementById('paralisacaoAcao').value = acao;
                     document.getElementById('paralisacaoData').value = hojeParalisacao;
+                    document.getElementById('senhaAdminDesfazerParalisacao').value = '';
+                    btnDesfazerParalisacao.classList.toggle('d-none', acao !== 'reativar');
+                    document.getElementById('grupoSenhaDesfazerParalisacao').classList.toggle('d-none', acao !== 'reativar');
                     document.getElementById('clienteModalParalisacao').textContent =
                         linhaParalisacaoAtual.dataset.codigo + ' - ' + linhaParalisacaoAtual.dataset.nome;
 
@@ -311,6 +345,48 @@ function paralisacaoBadge(array $cliente): string
                             'Após reativar, a empresa ficará bloqueada para nova paralisação por 3 anos.';
                     }
                 });
+            });
+
+            btnDesfazerParalisacao.addEventListener('click', async () => {
+                if (!linhaParalisacaoAtual) return;
+
+                const alerta = document.getElementById('alertaParalisacao');
+                alerta.classList.add('d-none');
+                btnDesfazerParalisacao.disabled = true;
+
+                const dadosEnvio = new FormData();
+                dadosEnvio.append('cliente_id', linhaParalisacaoAtual.dataset.id);
+                dadosEnvio.append('acao', 'desfazer');
+                dadosEnvio.append('senha_admin', document.getElementById('senhaAdminDesfazerParalisacao').value || '');
+
+                try {
+                    const resposta = await fetch('api_paralisacoes.php', {
+                        method: 'POST',
+                        body: dadosEnvio
+                    });
+                    const dados = await resposta.json();
+
+                    if (!dados.sucesso) {
+                        alerta.textContent = dados.mensagem || 'Não foi possível desfazer.';
+                        alerta.classList.remove('d-none');
+                        return;
+                    }
+
+                    linhaParalisacaoAtual.dataset.status = dados.paralisacao.status;
+                    linhaParalisacaoAtual.dataset.bloqueio = dados.paralisacao.bloqueio_ate || '';
+                    linhaParalisacaoAtual.querySelector('.status-paralisacao').innerHTML = '<span class="badge bg-success">Ativa</span>';
+                    linhaParalisacaoAtual.querySelector('.inicio-paralisacao').textContent = '-';
+                    linhaParalisacaoAtual.querySelector('.fim-paralisacao').textContent = '-';
+                    linhaParalisacaoAtual.querySelector('.reativada-paralisacao').textContent = '-';
+                    linhaParalisacaoAtual.querySelector('.bloqueio-paralisacao').textContent = '-';
+                    linhaParalisacaoAtual.querySelector('.btn-paralisacao i').className = 'bi bi-pause-circle';
+                    modalParalisacao.hide();
+                } catch (erro) {
+                    alerta.textContent = 'Não foi possível comunicar com o servidor.';
+                    alerta.classList.remove('d-none');
+                } finally {
+                    btnDesfazerParalisacao.disabled = false;
+                }
             });
 
             formParalisacao.addEventListener('submit', async (evento) => {
