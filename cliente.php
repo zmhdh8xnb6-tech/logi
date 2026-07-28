@@ -116,6 +116,9 @@ foreach ($colunasParalisacao as $colunaParalisacao) {
 }
 
 $clienteParalisado = $estruturaParalisacao && (($cliente['paralisacao_status'] ?? 'ativa') === 'paralisada');
+$clienteParalisacaoVencida = $clienteParalisado
+    && !empty($cliente['paralisacao_fim'])
+    && $cliente['paralisacao_fim'] < date('Y-m-d');
 $paralisacaoBloqueada = $estruturaParalisacao
     && !$clienteParalisado
     && !empty($cliente['paralisacao_bloqueio_ate'])
@@ -364,8 +367,9 @@ if ($clienteContabil) {
                 </span>
             <?php endif; ?>
             <?php if ($clienteParalisado): ?>
-                <span class="badge bg-secondary mb-3 ms-1">
-                    Paralisada até <?= htmlspecialchars($formatarData($cliente['paralisacao_fim'] ?? null)) ?>
+                <span class="badge <?= $clienteParalisacaoVencida ? 'bg-danger' : 'bg-secondary' ?> mb-3 ms-1">
+                    <?= $clienteParalisacaoVencida ? 'Paralisação vencida em ' : 'Paralisada até ' ?>
+                    <?= htmlspecialchars($formatarData($cliente['paralisacao_fim'] ?? null)) ?>
                 </span>
             <?php elseif ($paralisacaoBloqueada): ?>
                 <span class="badge bg-warning text-dark mb-3 ms-1">

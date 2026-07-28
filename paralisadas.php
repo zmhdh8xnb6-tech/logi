@@ -29,6 +29,13 @@ if ($estruturaParalisacao) {
         WHERE cliente_contabil = 1
           " . clientesFiltroAtivos($pdo) . "
           " . empresaFiltroClienteDireto($pdo) . "
+          AND (
+              COALESCE(paralisacao_status, 'ativa') = 'paralisada'
+              OR paralisacao_inicio IS NOT NULL
+              OR paralisacao_fim IS NOT NULL
+              OR paralisacao_reativada_em IS NOT NULL
+              OR paralisacao_bloqueio_ate IS NOT NULL
+          )
         ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
     ");
     $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -42,6 +49,12 @@ function paralisacaoData(?string $data): string
 function paralisacaoBadge(array $cliente): string
 {
     if (($cliente['paralisacao_status'] ?? '') === 'paralisada') {
+        $fim = $cliente['paralisacao_fim'] ?? '';
+
+        if ($fim !== '' && $fim < date('Y-m-d')) {
+            return '<span class="badge bg-danger">Vencida</span>';
+        }
+
         return '<span class="badge bg-secondary">Paralisada</span>';
     }
 
@@ -114,6 +127,9 @@ function paralisacaoBadge(array $cliente): string
                                     <?php
                                     $busca = strtolower(($cliente['codigo'] ?? '') . ' ' . ($cliente['nome'] ?? '') . ' ' . ($cliente['documento'] ?? ''));
                                     $paralisada = ($cliente['paralisacao_status'] ?? '') === 'paralisada';
+                                    $paralisacaoVencida = $paralisada
+                                        && !empty($cliente['paralisacao_fim'])
+                                        && $cliente['paralisacao_fim'] < date('Y-m-d');
                                     $bloqueada = !$paralisada
                                         && !empty($cliente['paralisacao_bloqueio_ate'])
                                         && $cliente['paralisacao_bloqueio_ate'] >= date('Y-m-d');
@@ -125,6 +141,7 @@ function paralisacaoBadge(array $cliente): string
                                         data-codigo="<?= htmlspecialchars($cliente['codigo'] ?? '') ?>"
                                         data-nome="<?= htmlspecialchars($cliente['nome'] ?? '') ?>"
                                         data-status="<?= htmlspecialchars($cliente['paralisacao_status'] ?? 'ativa') ?>"
+                                        data-vencida="<?= $paralisacaoVencida ? '1' : '0' ?>"
                                         data-bloqueio="<?= htmlspecialchars($cliente['paralisacao_bloqueio_ate'] ?? '') ?>">
                                         <td><?= htmlspecialchars($cliente['codigo'] ?? '') ?></td>
                                         <td><?= htmlspecialchars($cliente['nome'] ?? '') ?></td>
@@ -320,6 +337,7 @@ function paralisacaoBadge(array $cliente): string
                 botao.addEventListener('click', () => {
                     linhaParalisacaoAtual = botao.closest('.linha-paralisacao');
                     const status = linhaParalisacaoAtual.dataset.status;
+                    const vencida = linhaParalisacaoAtual.dataset.vencida === '1';
                     const bloqueada = (linhaParalisacaoAtual.dataset.bloqueio || '') >= hojeParalisacao;
                     const acao = status === 'paralisada' ? 'reativar' : 'paralisar';
                     const podeDesfazer = status === 'paralisada' || bloqueada;
@@ -350,9 +368,11 @@ function paralisacaoBadge(array $cliente): string
                         document.getElementById('textoRegraParalisacao').textContent =
                             'A empresa ficará com atividades interrompidas por 5 anos. Durante esse período, CRF, certificado, alvarás, DF Legal e procurações dispensadas não entrarão em pendências.';
                     } else {
-                        document.getElementById('tituloModalParalisacao').textContent = 'Reativar empresa';
+                        document.getElementById('tituloModalParalisacao').textContent = vencida ? 'Reativar paralisação vencida' : 'Reativar empresa';
                         document.getElementById('labelDataParalisacao').textContent = 'Data da reativação';
                         document.getElementById('textoRegraParalisacao').textContent =
+                            vencida ?
+                            'A paralisação já passou dos 5 anos. Ao reativar, a empresa ficará bloqueada para nova paralisação por 3 anos.' :
                             'Após reativar, a empresa ficará bloqueada para nova paralisação por 3 anos.';
                     }
                 });
@@ -383,15 +403,12 @@ function paralisacaoBadge(array $cliente): string
                         return;
                     }
 
-                    linhaParalisacaoAtual.dataset.status = dados.paralisacao.status;
-                    linhaParalisacaoAtual.dataset.bloqueio = dados.paralisacao.bloqueio_ate || '';
-                    linhaParalisacaoAtual.querySelector('.status-paralisacao').innerHTML = '<span class="badge bg-success">Ativa</span>';
-                    linhaParalisacaoAtual.querySelector('.inicio-paralisacao').textContent = '-';
-                    linhaParalisacaoAtual.querySelector('.fim-paralisacao').textContent = '-';
-                    linhaParalisacaoAtual.querySelector('.reativada-paralisacao').textContent = '-';
-                    linhaParalisacaoAtual.querySelector('.bloqueio-paralisacao').textContent = '-';
-                    linhaParalisacaoAtual.querySelector('.btn-paralisacao i').className = 'bi bi-pause-circle';
-                    linhaParalisacaoAtual.querySelector('.btn-paralisacao').removeAttribute('title');
+                    const indice = linhasParalisacao.indexOf(linhaParalisacaoAtual);
+                    if (indice > -1) {
+                        linhasParalisacao.splice(indice, 1);
+                    }
+                    linhaParalisacaoAtual.remove();
+                    renderizarParalisacao();
                     modalParalisacao.hide();
                 } catch (erro) {
                     alerta.textContent = 'Não foi possível comunicar com o servidor.';
@@ -426,6 +443,7 @@ function paralisacaoBadge(array $cliente): string
                     }
 
                     linhaParalisacaoAtual.dataset.status = dados.paralisacao.status;
+                    linhaParalisacaoAtual.dataset.vencida = '0';
                     linhaParalisacaoAtual.dataset.bloqueio = dados.paralisacao.bloqueio_ate || '';
                     linhaParalisacaoAtual.querySelector('.status-paralisacao').innerHTML =
                         dados.paralisacao.status === 'paralisada' ?

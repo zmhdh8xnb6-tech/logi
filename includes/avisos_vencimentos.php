@@ -27,7 +27,8 @@ function listarAvisosVencimentosSistema(PDO $pdo): array
     $hoje = date('Y-m-d');
     $limiteAlerta = date('Y-m-d', strtotime('+30 days'));
     $avisos = [];
-    $paralisacaoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status');
+    $paralisacaoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status')
+        && logiColunaExiste($pdo, 'clientes', 'paralisacao_fim');
 
     $stmt = $pdo->query("
         SELECT *
@@ -62,7 +63,8 @@ function listarAvisosVencimentosSistema(PDO $pdo): array
         $controlaCertificado = $clienteContabil || (int)($cliente['servico_certificado'] ?? 1) === 1;
         $clienteNome = trim(($cliente['codigo'] ?? '') . ' - ' . ($cliente['nome'] ?? ''));
         $clienteParalisado = $paralisacaoDisponivel
-            && ($cliente['paralisacao_status'] ?? '') === 'paralisada';
+            && ($cliente['paralisacao_status'] ?? '') === 'paralisada'
+            && (empty($cliente['paralisacao_fim']) || $cliente['paralisacao_fim'] >= $hoje);
 
         if (!$clienteParalisado && $controlaCertificado) {
             $vencimentoCertificado = $cliente['vencimento_certificado'] ?? '';
@@ -134,7 +136,7 @@ function listarAvisosVencimentosSistema(PDO $pdo): array
               AND c.cliente_contabil = 1
               " . clientesFiltroAtivos($pdo, 'c') . "
               " . empresaFiltroClienteDireto($pdo, 'c') . "
-              " . ($paralisacaoDisponivel ? " AND COALESCE(c.paralisacao_status, 'ativa') <> 'paralisada' " : "") . "
+              " . ($paralisacaoDisponivel ? " AND NOT (COALESCE(c.paralisacao_status, 'ativa') = 'paralisada' AND (c.paralisacao_fim IS NULL OR c.paralisacao_fim >= CURDATE())) " : "") . "
             ORDER BY ca.vencimento ASC
         ");
 
@@ -173,7 +175,7 @@ function listarAvisosVencimentosSistema(PDO $pdo): array
                   AND c.cliente_contabil = 1
                   " . clientesFiltroAtivos($pdo, 'c') . "
                   " . empresaFiltroClienteDireto($pdo, 'c') . "
-                  " . ($paralisacaoDisponivel ? " AND COALESCE(c.paralisacao_status, 'ativa') <> 'paralisada' " : "") . "
+                  " . ($paralisacaoDisponivel ? " AND NOT (COALESCE(c.paralisacao_status, 'ativa') = 'paralisada' AND (c.paralisacao_fim IS NULL OR c.paralisacao_fim >= CURDATE())) " : "") . "
                 ORDER BY ag.vencimento ASC
             ");
 

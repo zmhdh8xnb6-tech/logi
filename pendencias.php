@@ -110,7 +110,8 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $clientesPorId = [];
 $alvarasPorCliente = [];
 $sociosPorCliente = [];
-$paralisacaoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status');
+$paralisacaoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status')
+    && logiColunaExiste($pdo, 'clientes', 'paralisacao_fim');
 $alvaraGoiasDisponivel = logiTabelaExiste($pdo, 'cliente_alvaras_goias');
 $alvarasGoiasPorCliente = [];
 
@@ -224,7 +225,8 @@ foreach ($clientes as $cliente) {
     $clienteContabil = (int)($cliente['cliente_contabil'] ?? 1) === 1;
     $controlaCertificado = $clienteContabil || (int)($cliente['servico_certificado'] ?? 1) === 1;
     $clienteParalisado = $paralisacaoDisponivel
-        && ($cliente['paralisacao_status'] ?? '') === 'paralisada';
+        && ($cliente['paralisacao_status'] ?? '') === 'paralisada'
+        && (empty($cliente['paralisacao_fim']) || $cliente['paralisacao_fim'] >= $hoje);
 
     if ($clienteContabil && clienteEnderecoIncompleto($cliente)) {
         adicionarPendencia(
@@ -438,7 +440,7 @@ try {
           AND c.cliente_contabil = 1
           " . clientesFiltroAtivos($pdo, 'c') . "
           " . empresaFiltroClienteDireto($pdo, 'c') . "
-          " . ($paralisacaoDisponivel ? " AND COALESCE(c.paralisacao_status, 'ativa') <> 'paralisada' " : "") . "
+          " . ($paralisacaoDisponivel ? " AND NOT (COALESCE(c.paralisacao_status, 'ativa') = 'paralisada' AND (c.paralisacao_fim IS NULL OR c.paralisacao_fim >= CURDATE())) " : "") . "
         GROUP BY c.id, c.codigo, c.nome, c.documento
         HAVING total_preenchido < 8
         ORDER BY CAST(c.codigo AS UNSIGNED) ASC, c.nome ASC
@@ -475,7 +477,7 @@ try {
           AND c.cliente_contabil = 1
           " . clientesFiltroAtivos($pdo, 'c') . "
           " . empresaFiltroClienteDireto($pdo, 'c') . "
-          " . ($paralisacaoDisponivel ? " AND COALESCE(c.paralisacao_status, 'ativa') <> 'paralisada' " : "") . "
+          " . ($paralisacaoDisponivel ? " AND NOT (COALESCE(c.paralisacao_status, 'ativa') = 'paralisada' AND (c.paralisacao_fim IS NULL OR c.paralisacao_fim >= CURDATE())) " : "") . "
         ORDER BY ca.vencimento ASC
     ");
 

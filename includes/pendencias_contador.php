@@ -26,7 +26,8 @@ function contarPendenciasSistema(PDO $pdo): int
 
     $sociosPorCliente = [];
     $qsaDisponivel = logiTabelaExiste($pdo, 'cliente_socios');
-    $paralisacaoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status');
+    $paralisacaoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status')
+        && logiColunaExiste($pdo, 'clientes', 'paralisacao_fim');
     $alvaraGoiasDisponivel = logiTabelaExiste($pdo, 'cliente_alvaras_goias');
     if ($qsaDisponivel) {
         try {
@@ -59,7 +60,8 @@ function contarPendenciasSistema(PDO $pdo): int
         $clienteContabil = (int)($cliente['cliente_contabil'] ?? 1) === 1;
         $controlaCertificado = $clienteContabil || (int)($cliente['servico_certificado'] ?? 1) === 1;
         $clienteParalisado = $paralisacaoDisponivel
-            && ($cliente['paralisacao_status'] ?? '') === 'paralisada';
+            && ($cliente['paralisacao_status'] ?? '') === 'paralisada'
+            && (empty($cliente['paralisacao_fim']) || $cliente['paralisacao_fim'] >= $hoje);
 
         if ($clienteContabil && $clienteEnderecoIncompleto($cliente)) {
             $total++;
@@ -199,7 +201,7 @@ function contarPendenciasSistema(PDO $pdo): int
                   AND c.cliente_contabil = 1
                   " . clientesFiltroAtivos($pdo, 'c') . "
                   {$filtroEmpresaClientesAlias}
-                  " . ($paralisacaoDisponivel ? " AND COALESCE(c.paralisacao_status, 'ativa') <> 'paralisada' " : "") . "
+                  " . ($paralisacaoDisponivel ? " AND NOT (COALESCE(c.paralisacao_status, 'ativa') = 'paralisada' AND (c.paralisacao_fim IS NULL OR c.paralisacao_fim >= CURDATE())) " : "") . "
                 GROUP BY c.id
                 HAVING COUNT(DISTINCT CASE
                     WHEN ca.orgao_codigo IN ('ibram', 'cbmdf', 'df_legal', 'pcdf', 'seagri', 'seedf', 'sudesc', 'visadf')
@@ -223,7 +225,7 @@ function contarPendenciasSistema(PDO $pdo): int
               AND c.cliente_contabil = 1
               " . clientesFiltroAtivos($pdo, 'c') . "
               {$filtroEmpresaClientesAlias}
-              " . ($paralisacaoDisponivel ? " AND COALESCE(c.paralisacao_status, 'ativa') <> 'paralisada' " : "") . "
+              " . ($paralisacaoDisponivel ? " AND NOT (COALESCE(c.paralisacao_status, 'ativa') = 'paralisada' AND (c.paralisacao_fim IS NULL OR c.paralisacao_fim >= CURDATE())) " : "") . "
         ");
         $stmt->execute([$hoje]);
         $total += (int)$stmt->fetchColumn();
