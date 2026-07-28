@@ -763,6 +763,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 financeiroRedirecionar($urlRetorno, 'Informe corretamente a parcela atual e o total de parcelas.', 'danger');
             }
 
+            $quantidadeGerada = $parcelasTotal - $parcelaInicial + 1;
+            $valorTotalCentavos = (int)round($valorPrevisto * 100);
+            $valorBaseCentavos = intdiv($valorTotalCentavos, $quantidadeGerada);
+            $centavosRestantes = $valorTotalCentavos - ($valorBaseCentavos * $quantidadeGerada);
             $grupoParcelamento = bin2hex(random_bytes(16));
             $stmt = $pdo->prepare("
                 INSERT INTO financeiro_contas (
@@ -784,11 +788,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 for ($numero = $parcelaInicial; $numero <= $parcelasTotal; $numero++) {
                     $mesesDepois = $numero - $parcelaInicial;
+                    $indiceParcelaGerada = $numero - $parcelaInicial + 1;
                     $vencimentoParcela = financeiroSomarMeses($vencimento, $mesesDepois);
+                    $valorParcelaCentavos = $valorBaseCentavos + ($indiceParcelaGerada <= $centavosRestantes ? 1 : 0);
+                    $valorParcela = $valorParcelaCentavos / 100;
                     $stmt->execute([
                         $usuarioId,
                         $descricao,
-                        $valorPrevisto,
+                        $valorParcela,
                         $vencimentoParcela,
                         $categoriaId,
                         $grupoParcelamento,
@@ -803,7 +810,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 financeiroRedirecionar($urlRetorno, 'Não foi possível gerar as parcelas.', 'danger');
             }
 
-            $quantidadeGerada = $parcelasTotal - $parcelaInicial + 1;
             registrarAuditoria(
                 $pdo,
                 'Financeiro',
@@ -814,7 +820,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 null,
                 [
                     'descricao' => $descricao,
-                    'valor_parcela' => $valorPrevisto,
+                    'valor_total' => $valorPrevisto,
+                    'valor_parcela_base' => $valorBaseCentavos / 100,
                     'primeiro_vencimento' => $vencimento,
                     'parcela_inicial' => $parcelaInicial,
                     'parcelas_total' => $parcelasTotal,
@@ -2220,7 +2227,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                             </div>
                             <div class="row">
                                 <div class="col-md-6 mb-3">
-                                    <label for="contaValor" class="form-label">Valor previsto</label>
+                                    <label for="contaValor" class="form-label" id="contaValorLabel">Valor previsto</label>
                                     <input type="text" inputmode="decimal" class="form-control campo-moeda" name="valor_previsto" id="contaValor" placeholder="0,00" required>
                                     <div class="invalid-feedback">Informe o valor.</div>
                                 </div>
@@ -2243,7 +2250,7 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                                 </div>
                                 <div class="col-12">
                                     <small class="text-muted">
-                                        Exemplo: informe parcela atual 17 e total 48 para gerar da 17/48 até a 48/48.
+                                        O valor informado será dividido pelas parcelas geradas. Exemplo: R$ 1.600,00 em 16 parcelas gera 16 parcelas de R$ 100,00.
                                     </small>
                                 </div>
                             </div>
@@ -2793,11 +2800,15 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                 const camposRecorrencia = document.getElementById('camposRecorrenciaConta');
                 const parcelaInicial = document.getElementById('contaParcelaInicial');
                 const parcelasTotal = document.getElementById('contaParcelasTotal');
+                const contaValorLabel = document.getElementById('contaValorLabel');
 
                 campos.classList.toggle('d-none', !parcelada);
                 camposRecorrencia.classList.toggle('d-none', !recorrente);
                 parcelaInicial.required = parcelada;
                 parcelasTotal.required = parcelada;
+                contaValorLabel.textContent = parcelada ?
+                    'Valor total a dividir' :
+                    (recorrente ? 'Valor mensal' : 'Valor previsto');
 
                 if (parcelada) {
                     parcelaInicial.focus();
