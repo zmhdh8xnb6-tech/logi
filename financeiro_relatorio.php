@@ -57,6 +57,8 @@ $categoriasDespesas = [];
 $lancamentosPorCategoria = [];
 $totalReceitasMes = 0.0;
 $totalDespesasMes = 0.0;
+$totalGastosCartaoPeriodo = 0.0;
+$totalDespesasCategorias = 0.0;
 $totalSemCategoria = 0;
 
 if ($estruturaDisponivel) {
@@ -99,35 +101,56 @@ if ($estruturaDisponivel) {
     }
 
     $stmt = $pdo->prepare("
-        SELECT DATE_FORMAT(vencimento, '%Y-%m') AS competencia, SUM(valor_previsto) AS total
+        SELECT valor_previsto, valor_pago, vencimento, status, data_pagamento
         FROM financeiro_contas
         WHERE usuario_id = ?
-          AND vencimento >= ?
-          AND vencimento < ?
-          AND cartao_id IS NULL
-        GROUP BY DATE_FORMAT(vencimento, '%Y-%m')
+          AND (
+                (
+                    status = 'pago'
+                    AND data_pagamento IS NOT NULL
+                    AND data_pagamento >= ?
+                    AND data_pagamento < ?
+                )
+                OR (
+                    status <> 'pago'
+                    AND vencimento >= ?
+                    AND vencimento < ?
+                )
+          )
     ");
-    $stmt->execute([$usuarioId, $inicioPeriodo, $fimPeriodo]);
+    $stmt->execute([$usuarioId, $inicioPeriodo, $fimPeriodo, $inicioPeriodo, $fimPeriodo]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
-        if (isset($competencias[$linha['competencia']])) {
-            $competencias[$linha['competencia']]['despesas'] += (float)$linha['total'];
+        $pagaNoPeriodo = $linha['status'] === 'pago' && !empty($linha['data_pagamento']);
+        $competenciaConta = date(
+            'Y-m',
+            strtotime($pagaNoPeriodo ? $linha['data_pagamento'] : $linha['vencimento'])
+        );
+
+        if (isset($competencias[$competenciaConta])) {
+            $valorPrevistoConta = (float)$linha['valor_previsto'];
+            $valorPagoConta = (float)($linha['valor_pago'] ?? 0);
+
+            if ($pagaNoPeriodo) {
+                $valorDespesa = $valorPagoConta;
+            } elseif ($valorPagoConta > 0 && $valorPagoConta < $valorPrevistoConta) {
+                $valorDespesa = $valorPrevistoConta - $valorPagoConta;
+            } else {
+                $valorDespesa = $valorPrevistoConta;
+            }
+
+            $competencias[$competenciaConta]['despesas'] += $valorDespesa;
         }
     }
 
     $stmt = $pdo->prepare("
-        SELECT {$expressaoCompetenciaCartao} AS competencia, SUM(valor) AS total
+        SELECT COALESCE(SUM(valor), 0) AS total
         FROM financeiro_cartao_lancamentos
         WHERE usuario_id = ?
           AND {$expressaoDataCompetenciaCartao} >= ?
           AND {$expressaoDataCompetenciaCartao} < ?
-        GROUP BY {$expressaoCompetenciaCartao}
     ");
     $stmt->execute([$usuarioId, $inicioPeriodo, $fimPeriodo]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $linha) {
-        if (isset($competencias[$linha['competencia']])) {
-            $competencias[$linha['competencia']]['despesas'] += (float)$linha['total'];
-        }
-    }
+    $totalGastosCartaoPeriodo = (float)$stmt->fetchColumn();
 
     foreach ($competencias as &$dadosCompetencia) {
         $dadosCompetencia['resultado'] = $dadosCompetencia['receitas']
@@ -332,6 +355,8 @@ if ($estruturaDisponivel) {
         return $b['total'] <=> $a['total'];
     });
 
+    $totalDespesasCategorias = array_sum(array_column($categoriasDespesas, 'total'));
+
     foreach ($categoriasDespesas as $categoria) {
         if ($categoria['nome'] === 'Sem categoria') {
             $totalSemCategoria += $categoria['quantidade'];
@@ -445,8 +470,12 @@ foreach ($categoriasDespesas as $categoria) {
                         <strong><?= financeiroMoeda($totalReceitasMes) ?></strong>
                     </div>
                     <div class="financeiro-metrica metrica-despesa">
-                        <span>Despesas do período</span>
+                        <span>Contas e faturas</span>
                         <strong><?= financeiroMoeda($totalDespesasMes) ?></strong>
+                    </div>
+                    <div class="financeiro-metrica metrica-pendente">
+                        <span>Compras no cartão</span>
+                        <strong><?= financeiroMoeda($totalGastosCartaoPeriodo) ?></strong>
                     </div>
                     <div class="financeiro-metrica <?= $resultadoMes < 0 ? 'metrica-negativa' : 'metrica-saldo' ?>">
                         <span>Resultado do período</span>
@@ -462,7 +491,7 @@ foreach ($categoriasDespesas as $categoria) {
                     <section class="financeiro-painel financeiro-grafico">
                         <div class="financeiro-painel-titulo">
                             <div>
-                                <h5 class="mb-1">Receitas x despesas</h5>
+                                <h5 class="mb-1">Receitas x contas/faturas</h5>
                                 <p class="text-muted small mb-0"><?= htmlspecialchars($nomePeriodo) ?></p>
                             </div>
                         </div>
@@ -488,7 +517,7 @@ foreach ($categoriasDespesas as $categoria) {
                     <div class="financeiro-painel-titulo">
                         <div>
                             <h5 class="mb-1">Resultado por mês</h5>
-                            <p class="text-muted small mb-0">Compras do cartão já incluídas, sem duplicar a fatura</p>
+                            <p class="text-muted small mb-0">Contas e faturas seguem o mês do pagamento ou vencimento</p>
                         </div>
                     </div>
                     <div class="table-responsive">
@@ -497,7 +526,7 @@ foreach ($categoriasDespesas as $categoria) {
                                 <tr>
                                     <th>Mês</th>
                                     <th class="text-end">Receitas</th>
-                                    <th class="text-end">Despesas</th>
+                                    <th class="text-end">Contas/faturas</th>
                                     <th class="text-end">Resultado</th>
                                 </tr>
                             </thead>
@@ -541,7 +570,7 @@ foreach ($categoriasDespesas as $categoria) {
                                     </tr>
                                 <?php endif; ?>
                                 <?php foreach ($categoriasDespesas as $categoria): ?>
-                                    <?php $participacao = $totalDespesasMes > 0 ? ($categoria['total'] / $totalDespesasMes) * 100 : 0; ?>
+                                    <?php $participacao = $totalDespesasCategorias > 0 ? ($categoria['total'] / $totalDespesasCategorias) * 100 : 0; ?>
                                     <tr
                                         class="financeiro-categoria-clicavel"
                                         data-categoria-id="<?= (int)$categoria['id'] ?>"
@@ -722,7 +751,7 @@ foreach ($categoriasDespesas as $categoria) {
                             backgroundColor: '#198754'
                         },
                         {
-                            label: 'Despesas',
+                            label: 'Contas/faturas',
                             data: dadosDespesas,
                             backgroundColor: '#dc3545'
                         }
