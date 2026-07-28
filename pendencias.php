@@ -110,6 +110,9 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $clientesPorId = [];
 $alvarasPorCliente = [];
 $sociosPorCliente = [];
+$paralisacaoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status');
+$alvaraGoiasDisponivel = logiTabelaExiste($pdo, 'cliente_alvaras_goias');
+$alvarasGoiasPorCliente = [];
 
 foreach ($clientes as $cliente) {
     if ((int)($cliente['cliente_contabil'] ?? 1) !== 1) {
@@ -135,6 +138,26 @@ try {
         ];
     }
 } catch (Throwable $e) {
+}
+
+if ($alvaraGoiasDisponivel) {
+    try {
+        $stmtAlvarasGoias = $pdo->query("
+            SELECT ag.cliente_id, ag.orgao_codigo, ag.situacao, ag.vencimento
+            FROM cliente_alvaras_goias ag
+            INNER JOIN clientes c ON c.id = ag.cliente_id
+            WHERE 1 = 1
+            " . empresaFiltroClienteDireto($pdo, 'c') . "
+        ");
+
+        foreach ($stmtAlvarasGoias->fetchAll(PDO::FETCH_ASSOC) as $alvaraGoias) {
+            $alvarasGoiasPorCliente[(int)$alvaraGoias['cliente_id']][$alvaraGoias['orgao_codigo']] = [
+                'situacao' => $alvaraGoias['situacao'],
+                'vencimento' => $alvaraGoias['vencimento'] ?? '',
+            ];
+        }
+    } catch (Throwable $e) {
+    }
 }
 
 if (logiTabelaExiste($pdo, 'cliente_socios')) {
@@ -200,6 +223,8 @@ $procuracoes = [
 foreach ($clientes as $cliente) {
     $clienteContabil = (int)($cliente['cliente_contabil'] ?? 1) === 1;
     $controlaCertificado = $clienteContabil || (int)($cliente['servico_certificado'] ?? 1) === 1;
+    $clienteParalisado = $paralisacaoDisponivel
+        && ($cliente['paralisacao_status'] ?? '') === 'paralisada';
 
     if ($clienteContabil && clienteEnderecoIncompleto($cliente)) {
         adicionarPendencia(
@@ -229,7 +254,7 @@ foreach ($clientes as $cliente) {
         );
     }
 
-    if ($controlaCertificado && !empty($cliente['pendencia_certificado_digital'])) {
+    if (!$clienteParalisado && $controlaCertificado && !empty($cliente['pendencia_certificado_digital'])) {
         adicionarPendencia(
             $pendencias,
             $resumo,
@@ -242,9 +267,9 @@ foreach ($clientes as $cliente) {
         );
     }
 
-    if ($controlaCertificado && empty($cliente['vencimento_certificado'])) {
+    if (!$clienteParalisado && $controlaCertificado && empty($cliente['vencimento_certificado'])) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado digital não informado', 'Não possui', 'danger', null, null, modalCertificado($cliente));
-    } elseif ($controlaCertificado && $cliente['vencimento_certificado'] < $hoje) {
+    } elseif (!$clienteParalisado && $controlaCertificado && $cliente['vencimento_certificado'] < $hoje) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado digital vencido em ' . dataBr($cliente['vencimento_certificado']), 'Vencido', 'danger', null, null, modalCertificado($cliente));
     }
 
@@ -253,6 +278,17 @@ foreach ($clientes as $cliente) {
     }
 
     foreach ($procuracoes as $procuracao) {
+        if (
+            $clienteParalisado
+            && in_array($procuracao['status'], [
+                'procuracao_conectividade',
+                'procuracao_empregador_web',
+                'procuracao_sefaz',
+            ], true)
+        ) {
+            continue;
+        }
+
         $status = $cliente[$procuracao['status']] ?? '';
         if ($procuracao['status'] === 'procuracao_sefaz') {
             $opcoesProcuracao = ['possui' => 'Possui', 'nao_possui' => 'Não possui', 'goias' => 'Goiás'];
@@ -293,7 +329,11 @@ foreach ($clientes as $cliente) {
         $alvarasPorCliente[(int)$cliente['id']] ?? []
     );
 
-    if ($alvara === '' || $alvara === 'nao_possui') {
+    $clienteGoias = strtoupper((string)($cliente['uf'] ?? '')) === 'GO'
+        || ($cliente['alvara'] ?? '') === 'goias'
+        || ($cliente['cadastro_df_legal'] ?? '') === 'goias';
+
+    if (!$clienteParalisado && !$clienteGoias && ($alvara === '' || $alvara === 'nao_possui')) {
         adicionarPendencia(
             $pendencias,
             $resumo,
@@ -304,11 +344,11 @@ foreach ($clientes as $cliente) {
             'danger',
             null,
             null,
-            strtoupper($cliente['uf'] ?? '') === 'GO' ? [] : $modalAlvaraCliente
+            $modalAlvaraCliente
         );
     }
 
-    if (!empty($cliente['pendencia_alvara_funcionamento'])) {
+    if (!$clienteParalisado && !empty($cliente['pendencia_alvara_funcionamento'])) {
         adicionarPendencia(
             $pendencias,
             $resumo,
@@ -319,27 +359,52 @@ foreach ($clientes as $cliente) {
             'warning',
             null,
             null,
-            strtoupper($cliente['uf'] ?? '') === 'GO' ? [] : $modalAlvaraCliente
+            $clienteGoias ? [] : $modalAlvaraCliente
         );
+    }
+
+    if (!$clienteParalisado && $clienteGoias && $alvaraGoiasDisponivel) {
+        $orgaosGoias = [
+            'bombeiros' => 'Bombeiros',
+            'vigilancia' => 'Vigilância',
+            'prefeitura' => 'Prefeitura',
+        ];
+        $alvarasGoiasCliente = $alvarasGoiasPorCliente[(int)$cliente['id']] ?? [];
+
+        foreach ($orgaosGoias as $codigoOrgao => $nomeOrgao) {
+            $alvaraGoias = $alvarasGoiasCliente[$codigoOrgao] ?? [];
+            $situacaoGoias = $alvaraGoias['situacao'] ?? '';
+            $vencimentoGoias = $alvaraGoias['vencimento'] ?? '';
+
+            if (in_array($situacaoGoias, ['', 'nao_informado'], true)) {
+                adicionarPendencia($pendencias, $resumo, $cliente, 'Alvará Goiás', $nomeOrgao . ' não informado', 'Pendente', 'danger', null, 'alvaras_goias.php');
+            } elseif ($situacaoGoias === 'em_estudo') {
+                adicionarPendencia($pendencias, $resumo, $cliente, 'Alvará Goiás', $nomeOrgao . ' em estudo', 'A resolver', 'warning', null, 'alvaras_goias.php');
+            } elseif ($situacaoGoias === 'com_vencimento' && empty($vencimentoGoias)) {
+                adicionarPendencia($pendencias, $resumo, $cliente, 'Alvará Goiás', $nomeOrgao . ' sem vencimento', 'Sem data', 'danger', null, 'alvaras_goias.php');
+            } elseif ($situacaoGoias === 'com_vencimento' && $vencimentoGoias < $hoje) {
+                adicionarPendencia($pendencias, $resumo, $cliente, 'Alvará Goiás', $nomeOrgao . ' vencido em ' . dataBr($vencimentoGoias), 'Vencido', 'danger', null, 'alvaras_goias.php');
+            }
+        }
     }
 
     if (($cliente['contador'] ?? '') === '' || ($cliente['contador'] ?? '') === 'nao') {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Contador não informado ou marcado como sem contador', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver contador', 'contador', ['sim' => 'Contador ativo', 'nao' => 'Sem contador']));
     }
 
-    if (($cliente['cadastro_crf'] ?? '') === '' || ($cliente['cadastro_crf'] ?? '') === 'nao_cadastrado') {
+    if (!$clienteParalisado && (($cliente['cadastro_crf'] ?? '') === '' || ($cliente['cadastro_crf'] ?? '') === 'nao_cadastrado')) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro CRF não cadastrado', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro CRF', 'cadastro_crf', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado'], null, true));
     }
 
-    if (!empty($cliente['pendencia_crf_dados'])) {
+    if (!$clienteParalisado && !empty($cliente['pendencia_crf_dados'])) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro CRF com razão social ou endereço incorreto', 'A resolver', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro CRF', 'cadastro_crf', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado'], null, true));
     }
 
-    if (($cliente['cadastro_df_legal'] ?? '') === '' || ($cliente['cadastro_df_legal'] ?? '') === 'nao_cadastrado') {
+    if (!$clienteParalisado && (($cliente['cadastro_df_legal'] ?? '') === '' || ($cliente['cadastro_df_legal'] ?? '') === 'nao_cadastrado')) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro DF Legal não cadastrado', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro DF Legal', 'cadastro_df_legal', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado', 'goias' => 'Goiás'], null, true));
     }
 
-    if (!empty($cliente['pendencia_df_legal_dados'])) {
+    if (!$clienteParalisado && !empty($cliente['pendencia_df_legal_dados'])) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro DF Legal com razão social ou endereço incorreto', 'A resolver', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro DF Legal', 'cadastro_df_legal', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado', 'goias' => 'Goiás'], null, true));
     }
 
@@ -373,6 +438,7 @@ try {
           AND c.cliente_contabil = 1
           " . clientesFiltroAtivos($pdo, 'c') . "
           " . empresaFiltroClienteDireto($pdo, 'c') . "
+          " . ($paralisacaoDisponivel ? " AND COALESCE(c.paralisacao_status, 'ativa') <> 'paralisada' " : "") . "
         GROUP BY c.id, c.codigo, c.nome, c.documento
         HAVING total_preenchido < 8
         ORDER BY CAST(c.codigo AS UNSIGNED) ASC, c.nome ASC
@@ -409,6 +475,7 @@ try {
           AND c.cliente_contabil = 1
           " . clientesFiltroAtivos($pdo, 'c') . "
           " . empresaFiltroClienteDireto($pdo, 'c') . "
+          " . ($paralisacaoDisponivel ? " AND COALESCE(c.paralisacao_status, 'ativa') <> 'paralisada' " : "") . "
         ORDER BY ca.vencimento ASC
     ");
 

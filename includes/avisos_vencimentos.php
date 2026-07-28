@@ -27,6 +27,7 @@ function listarAvisosVencimentosSistema(PDO $pdo): array
     $hoje = date('Y-m-d');
     $limiteAlerta = date('Y-m-d', strtotime('+30 days'));
     $avisos = [];
+    $paralisacaoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status');
 
     $stmt = $pdo->query("
         SELECT *
@@ -60,8 +61,10 @@ function listarAvisosVencimentosSistema(PDO $pdo): array
         $clienteContabil = (int)($cliente['cliente_contabil'] ?? 1) === 1;
         $controlaCertificado = $clienteContabil || (int)($cliente['servico_certificado'] ?? 1) === 1;
         $clienteNome = trim(($cliente['codigo'] ?? '') . ' - ' . ($cliente['nome'] ?? ''));
+        $clienteParalisado = $paralisacaoDisponivel
+            && ($cliente['paralisacao_status'] ?? '') === 'paralisada';
 
-        if ($controlaCertificado) {
+        if (!$clienteParalisado && $controlaCertificado) {
             $vencimentoCertificado = $cliente['vencimento_certificado'] ?? '';
 
             if ($vencimentoCertificado >= $hoje && $vencimentoCertificado <= $limiteAlerta) {
@@ -89,6 +92,10 @@ function listarAvisosVencimentosSistema(PDO $pdo): array
         }
 
         foreach ($procuracoes as $procuracao) {
+            if ($clienteParalisado && $procuracao['status'] === 'procuracao_conectividade') {
+                continue;
+            }
+
             $status = $cliente[$procuracao['status']] ?? '';
             $vencimento = $cliente[$procuracao['vencimento']] ?? '';
 
@@ -127,6 +134,7 @@ function listarAvisosVencimentosSistema(PDO $pdo): array
               AND c.cliente_contabil = 1
               " . clientesFiltroAtivos($pdo, 'c') . "
               " . empresaFiltroClienteDireto($pdo, 'c') . "
+              " . ($paralisacaoDisponivel ? " AND COALESCE(c.paralisacao_status, 'ativa') <> 'paralisada' " : "") . "
             ORDER BY ca.vencimento ASC
         ");
 
@@ -150,6 +158,36 @@ function listarAvisosVencimentosSistema(PDO $pdo): array
             );
         }
     } catch (Throwable $e) {
+    }
+
+    if (logiTabelaExiste($pdo, 'cliente_alvaras_goias')) {
+        try {
+            $stmtAlvarasGoias = $pdo->query("
+                SELECT ag.cliente_id, ag.orgao_codigo, ag.orgao_nome, ag.vencimento, c.codigo, c.nome
+                FROM cliente_alvaras_goias ag
+                INNER JOIN clientes c ON c.id = ag.cliente_id
+                WHERE ag.situacao = 'com_vencimento'
+                  AND ag.vencimento IS NOT NULL
+                  AND ag.vencimento >= " . $pdo->quote($hoje) . "
+                  AND ag.vencimento <= " . $pdo->quote($limiteAlerta) . "
+                  AND c.cliente_contabil = 1
+                  " . clientesFiltroAtivos($pdo, 'c') . "
+                  " . empresaFiltroClienteDireto($pdo, 'c') . "
+                  " . ($paralisacaoDisponivel ? " AND COALESCE(c.paralisacao_status, 'ativa') <> 'paralisada' " : "") . "
+                ORDER BY ag.vencimento ASC
+            ");
+
+            foreach ($stmtAlvarasGoias->fetchAll(PDO::FETCH_ASSOC) as $alvara) {
+                adicionarAvisoVencimento(
+                    $avisos,
+                    'Alvará Goiás a vencer',
+                    trim(($alvara['codigo'] ?? '') . ' - ' . ($alvara['nome'] ?? '')) . ' | ' . ($alvara['orgao_nome'] ?? 'Órgão') . ' vence em ' . avisoVencimentoDataBr($alvara['vencimento'] ?? ''),
+                    'alvaras_goias.php',
+                    'bi-buildings'
+                );
+            }
+        } catch (Throwable $e) {
+        }
     }
 
     return $avisos;

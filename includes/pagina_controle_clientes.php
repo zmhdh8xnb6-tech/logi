@@ -69,6 +69,88 @@ if (!function_exists('controleClienteTemColuna')) {
     }
 }
 
+if (!controleClienteTemColuna($pdo, $campoStatus)) {
+    $sqlSugerido = $sqlSugerido ?? 'Rode o SQL de atualizacao deste controle no banco de dados.';
+?>
+    <!DOCTYPE html>
+    <html lang="pt-br">
+
+    <head>
+        <?php include 'includes/head.php'; ?>
+        <title><?= htmlspecialchars($titulo) ?></title>
+    </head>
+
+    <body class="app-layout">
+        <?php include 'includes/sidebar.php'; ?>
+        <main class="app-main">
+            <div class="container-fluid">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h3 class="mb-1"><?= htmlspecialchars($titulo) ?></h3>
+                        <p class="text-muted mb-0"><?= htmlspecialchars($subtitulo) ?></p>
+                    </div>
+
+                    <a href="<?= htmlspecialchars($voltarUrl) ?>" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Voltar
+                    </a>
+                </div>
+
+                <div class="clientes-box">
+                    <div class="alert alert-warning mb-0">
+                        <strong>Controle ainda sem coluna no banco.</strong><br>
+                        <?= htmlspecialchars($sqlSugerido) ?>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </body>
+
+    </html>
+<?php
+    return;
+}
+
+if ($campoVencimento !== null && !controleClienteTemColuna($pdo, $campoVencimento)) {
+    $sqlSugerido = $sqlSugerido ?? 'Rode o SQL de atualizacao deste controle no banco de dados.';
+?>
+    <!DOCTYPE html>
+    <html lang="pt-br">
+
+    <head>
+        <?php include 'includes/head.php'; ?>
+        <title><?= htmlspecialchars($titulo) ?></title>
+    </head>
+
+    <body class="app-layout">
+        <?php include 'includes/sidebar.php'; ?>
+        <main class="app-main">
+            <div class="container-fluid">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h3 class="mb-1"><?= htmlspecialchars($titulo) ?></h3>
+                        <p class="text-muted mb-0"><?= htmlspecialchars($subtitulo) ?></p>
+                    </div>
+
+                    <a href="<?= htmlspecialchars($voltarUrl) ?>" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Voltar
+                    </a>
+                </div>
+
+                <div class="clientes-box">
+                    <div class="alert alert-warning mb-0">
+                        <strong>Controle ainda sem coluna de vencimento no banco.</strong><br>
+                        <?= htmlspecialchars($sqlSugerido) ?>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </body>
+
+    </html>
+<?php
+    return;
+}
+
 $colunas = "id, codigo, documento, nome, {$campoStatus} AS status_controle";
 
 if ($mostrarVencimento) {
@@ -92,6 +174,7 @@ $stmt = $pdo->query("
     WHERE cliente_contabil = 1
     " . clientesFiltroAtivos($pdo) . "
     " . empresaFiltroClienteDireto($pdo) . "
+    " . ($filtroClientesExtra ?? '') . "
     ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC
 ");
 
@@ -111,16 +194,24 @@ if (!function_exists('controleFormatarStatus')) {
 if (!function_exists('controleClasseStatus')) {
     function controleClasseStatus(?string $valor): string
     {
-        if (in_array($valor, ['sim', 'possui', 'cadastrado'], true)) {
+        if (in_array($valor, ['sim', 'possui', 'cadastrado', 'ativa'], true)) {
             return 'bg-success';
+        }
+
+        if ($valor === 'paralisada') {
+            return 'bg-secondary';
         }
 
         if (in_array($valor, ['nao', 'nao_possui', 'nao_cadastrado'], true)) {
             return 'bg-danger';
         }
 
-        if ($valor === 'goias') {
+        if (in_array($valor, ['goias', 'nao_tem_funcionario', 'dispensado'], true)) {
             return 'bg-info text-dark';
+        }
+
+        if ($valor === 'em_estudo') {
+            return 'bg-warning text-dark';
         }
 
         return 'bg-warning text-dark';
@@ -420,16 +511,24 @@ if (!function_exists('controleFormatarPrazo')) {
         let controleVencimentoInicial = '';
 
         function controleClasseStatus(status) {
-            if (['sim', 'possui', 'cadastrado'].includes(status)) {
+            if (['sim', 'possui', 'cadastrado', 'ativa'].includes(status)) {
                 return 'badge status-badge bg-success';
+            }
+
+            if (status === 'paralisada') {
+                return 'badge status-badge bg-secondary';
             }
 
             if (['nao', 'nao_possui', 'nao_cadastrado'].includes(status)) {
                 return 'badge status-badge bg-danger';
             }
 
-            if (status === 'goias') {
+            if (['goias', 'nao_tem_funcionario', 'dispensado'].includes(status)) {
                 return 'badge status-badge bg-info text-dark';
+            }
+
+            if (status === 'em_estudo') {
+                return 'badge status-badge bg-warning text-dark';
             }
 
             return 'badge status-badge bg-warning text-dark';

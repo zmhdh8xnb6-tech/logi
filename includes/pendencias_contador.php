@@ -26,6 +26,8 @@ function contarPendenciasSistema(PDO $pdo): int
 
     $sociosPorCliente = [];
     $qsaDisponivel = logiTabelaExiste($pdo, 'cliente_socios');
+    $paralisacaoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status');
+    $alvaraGoiasDisponivel = logiTabelaExiste($pdo, 'cliente_alvaras_goias');
     if ($qsaDisponivel) {
         try {
             $stmtSocios = $pdo->query("
@@ -56,6 +58,8 @@ function contarPendenciasSistema(PDO $pdo): int
     foreach ($clientes as $cliente) {
         $clienteContabil = (int)($cliente['cliente_contabil'] ?? 1) === 1;
         $controlaCertificado = $clienteContabil || (int)($cliente['servico_certificado'] ?? 1) === 1;
+        $clienteParalisado = $paralisacaoDisponivel
+            && ($cliente['paralisacao_status'] ?? '') === 'paralisada';
 
         if ($clienteContabil && $clienteEnderecoIncompleto($cliente)) {
             $total++;
@@ -65,11 +69,11 @@ function contarPendenciasSistema(PDO $pdo): int
             $total++;
         }
 
-        if ($controlaCertificado && !empty($cliente['pendencia_certificado_digital'])) {
+        if (!$clienteParalisado && $controlaCertificado && !empty($cliente['pendencia_certificado_digital'])) {
             $total++;
         }
 
-        if ($controlaCertificado) {
+        if (!$clienteParalisado && $controlaCertificado) {
             $vencimentoCertificado = $cliente['vencimento_certificado'] ?? '';
 
             if (
@@ -85,6 +89,17 @@ function contarPendenciasSistema(PDO $pdo): int
         }
 
         foreach ($procuracoes as $procuracao) {
+            if (
+                $clienteParalisado
+                && in_array($procuracao['status'], [
+                    'procuracao_conectividade',
+                    'procuracao_empregador_web',
+                    'procuracao_sefaz',
+                ], true)
+            ) {
+                continue;
+            }
+
             $status = $cliente[$procuracao['status']] ?? '';
 
             if ($status === '' || $status === 'nao_possui') {
@@ -101,31 +116,64 @@ function contarPendenciasSistema(PDO $pdo): int
             }
         }
 
-        if (($cliente['alvara'] ?? '') === '' || ($cliente['alvara'] ?? '') === 'nao_possui') {
+        $clienteGoias = strtoupper((string)($cliente['uf'] ?? '')) === 'GO'
+            || ($cliente['alvara'] ?? '') === 'goias'
+            || ($cliente['cadastro_df_legal'] ?? '') === 'goias';
+
+        if (!$clienteParalisado && !$clienteGoias && (($cliente['alvara'] ?? '') === '' || ($cliente['alvara'] ?? '') === 'nao_possui')) {
             $total++;
         }
 
-        if (!empty($cliente['pendencia_alvara_funcionamento'])) {
+        if (!$clienteParalisado && !empty($cliente['pendencia_alvara_funcionamento'])) {
             $total++;
+        }
+
+        if (!$clienteParalisado && $clienteGoias && $alvaraGoiasDisponivel) {
+            try {
+                $stmtGoias = $pdo->prepare("
+                    SELECT orgao_codigo, situacao, vencimento
+                    FROM cliente_alvaras_goias
+                    WHERE cliente_id = ?
+                ");
+                $stmtGoias->execute([(int)$cliente['id']]);
+                $orgaosGoias = [];
+
+                foreach ($stmtGoias->fetchAll(PDO::FETCH_ASSOC) as $orgaoGoias) {
+                    $orgaosGoias[$orgaoGoias['orgao_codigo']] = $orgaoGoias;
+                }
+
+                foreach (['bombeiros', 'vigilancia', 'prefeitura'] as $codigoOrgao) {
+                    $orgao = $orgaosGoias[$codigoOrgao] ?? [];
+                    $situacao = $orgao['situacao'] ?? '';
+                    $vencimento = $orgao['vencimento'] ?? '';
+
+                    if (in_array($situacao, ['', 'nao_informado', 'em_estudo'], true)) {
+                        $total++;
+                    } elseif ($situacao === 'com_vencimento' && ($vencimento === '' || $vencimento < $hoje)) {
+                        $total++;
+                    }
+                }
+            } catch (Throwable $e) {
+            }
         }
 
         if (($cliente['contador'] ?? '') === '' || ($cliente['contador'] ?? '') === 'nao') {
             $total++;
         }
 
-        if (($cliente['cadastro_crf'] ?? '') === '' || ($cliente['cadastro_crf'] ?? '') === 'nao_cadastrado') {
+        if (!$clienteParalisado && (($cliente['cadastro_crf'] ?? '') === '' || ($cliente['cadastro_crf'] ?? '') === 'nao_cadastrado')) {
             $total++;
         }
 
-        if (!empty($cliente['pendencia_crf_dados'])) {
+        if (!$clienteParalisado && !empty($cliente['pendencia_crf_dados'])) {
             $total++;
         }
 
-        if (($cliente['cadastro_df_legal'] ?? '') === '' || ($cliente['cadastro_df_legal'] ?? '') === 'nao_cadastrado') {
+        if (!$clienteParalisado && (($cliente['cadastro_df_legal'] ?? '') === '' || ($cliente['cadastro_df_legal'] ?? '') === 'nao_cadastrado')) {
             $total++;
         }
 
-        if (!empty($cliente['pendencia_df_legal_dados'])) {
+        if (!$clienteParalisado && !empty($cliente['pendencia_df_legal_dados'])) {
             $total++;
         }
 
@@ -151,6 +199,7 @@ function contarPendenciasSistema(PDO $pdo): int
                   AND c.cliente_contabil = 1
                   " . clientesFiltroAtivos($pdo, 'c') . "
                   {$filtroEmpresaClientesAlias}
+                  " . ($paralisacaoDisponivel ? " AND COALESCE(c.paralisacao_status, 'ativa') <> 'paralisada' " : "") . "
                 GROUP BY c.id
                 HAVING COUNT(DISTINCT CASE
                     WHEN ca.orgao_codigo IN ('ibram', 'cbmdf', 'df_legal', 'pcdf', 'seagri', 'seedf', 'sudesc', 'visadf')
@@ -174,6 +223,7 @@ function contarPendenciasSistema(PDO $pdo): int
               AND c.cliente_contabil = 1
               " . clientesFiltroAtivos($pdo, 'c') . "
               {$filtroEmpresaClientesAlias}
+              " . ($paralisacaoDisponivel ? " AND COALESCE(c.paralisacao_status, 'ativa') <> 'paralisada' " : "") . "
         ");
         $stmt->execute([$hoje]);
         $total += (int)$stmt->fetchColumn();
