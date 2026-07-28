@@ -99,8 +99,10 @@ $statusAtual = $clienteAntes['paralisacao_status'] ?? 'ativa';
 $bloqueioAtual = $clienteAntes['paralisacao_bloqueio_ate'] ?? '';
 
 if ($acao === 'desfazer') {
-    if ($statusAtual !== 'paralisada') {
-        responderParalisacao(false, 'Só é possível desfazer uma empresa que está paralisada.');
+    $temBloqueio = !empty($bloqueioAtual) && $bloqueioAtual >= date('Y-m-d');
+
+    if ($statusAtual !== 'paralisada' && !$temBloqueio) {
+        responderParalisacao(false, 'Só é possível desfazer uma paralisação ou um bloqueio de paralisação.');
     }
 
     $inicio = null;

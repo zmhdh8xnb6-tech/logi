@@ -381,12 +381,11 @@ if ($clienteContabil) {
                     <?php if ($podeAlterarParalisacao): ?>
                         <button
                             type="button"
-                            class="btn <?= $clienteParalisado ? 'btn-outline-success' : 'btn-outline-secondary' ?>"
+                            class="btn <?= $clienteParalisado ? 'btn-outline-success' : ($paralisacaoBloqueada ? 'btn-outline-warning' : 'btn-outline-secondary') ?>"
                             data-bs-toggle="modal"
-                            data-bs-target="#modalParalisacaoCliente"
-                            <?= $paralisacaoBloqueada ? 'disabled title="Cliente bloqueado para nova paralisação até ' . htmlspecialchars($formatarData($cliente['paralisacao_bloqueio_ate'] ?? null)) . '"' : '' ?>>
-                            <i class="bi <?= $clienteParalisado ? 'bi-arrow-counterclockwise' : 'bi-pause-circle' ?>"></i>
-                            <?= $clienteParalisado ? 'Reativar' : 'Paralisar' ?>
+                            data-bs-target="#modalParalisacaoCliente">
+                            <i class="bi <?= $clienteParalisado ? 'bi-arrow-counterclockwise' : ($paralisacaoBloqueada ? 'bi-unlock' : 'bi-pause-circle') ?>"></i>
+                            <?= $clienteParalisado ? 'Reativar' : ($paralisacaoBloqueada ? 'Limpar bloqueio' : 'Paralisar') ?>
                         </button>
                     <?php endif; ?>
                     <button
@@ -851,7 +850,7 @@ if ($clienteContabil) {
                         <div class="modal-header">
                             <div>
                                 <h5 class="modal-title">
-                                    <?= $clienteParalisado ? 'Reativar empresa' : 'Paralisar empresa' ?>
+                                    <?= $clienteParalisado ? 'Reativar empresa' : ($paralisacaoBloqueada ? 'Limpar bloqueio de paralisação' : 'Paralisar empresa') ?>
                                 </h5>
                                 <p class="text-muted mb-0">
                                     <?= htmlspecialchars(($cliente['codigo'] ?? '') . ' - ' . ($cliente['nome'] ?? '')) ?>
@@ -867,29 +866,33 @@ if ($clienteContabil) {
                             <div class="alert alert-info">
                                 <?php if ($clienteParalisado): ?>
                                     Ao reativar, a empresa ficará bloqueada para nova paralisação por 3 anos.
+                                <?php elseif ($paralisacaoBloqueada): ?>
+                                    Use esta opção quando a reativação foi feita por engano. Ela limpa o bloqueio de 3 anos e remove os dados da paralisação.
                                 <?php else: ?>
                                     A empresa ficará com atividades interrompidas por 5 anos. Durante esse período, os controles dispensados de empresa paralisada não entram em pendências.
                                 <?php endif; ?>
                             </div>
                             <div class="alert alert-danger d-none" id="alertaParalisacaoCliente"></div>
 
-                            <div class="mb-3">
-                                <label for="dataParalisacaoCliente" class="form-label">
-                                    <?= $clienteParalisado ? 'Data da reativação' : 'Data da paralisação' ?>
-                                </label>
-                                <input
-                                    type="date"
-                                    class="form-control"
-                                    name="data"
-                                    id="dataParalisacaoCliente"
-                                    value="<?= date('Y-m-d') ?>"
-                                    required>
-                                <div class="invalid-feedback">Informe a data.</div>
-                            </div>
-
-                            <?php if ($clienteParalisado): ?>
+                            <?php if (!$paralisacaoBloqueada): ?>
                                 <div class="mb-3">
-                                    <label for="senhaAdminDesfazerParalisacaoCliente" class="form-label">Senha do administrador para desfazer</label>
+                                    <label for="dataParalisacaoCliente" class="form-label">
+                                        <?= $clienteParalisado ? 'Data da reativação' : 'Data da paralisação' ?>
+                                    </label>
+                                    <input
+                                        type="date"
+                                        class="form-control"
+                                        name="data"
+                                        id="dataParalisacaoCliente"
+                                        value="<?= date('Y-m-d') ?>"
+                                        required>
+                                    <div class="invalid-feedback">Informe a data.</div>
+                                </div>
+                            <?php endif; ?>
+
+                            <?php if ($clienteParalisado || $paralisacaoBloqueada): ?>
+                                <div class="mb-3">
+                                    <label for="senhaAdminDesfazerParalisacaoCliente" class="form-label">Senha do administrador</label>
                                     <input
                                         type="password"
                                         class="form-control"
@@ -901,15 +904,18 @@ if ($clienteContabil) {
                         </div>
 
                         <div class="modal-footer">
-                            <?php if ($clienteParalisado): ?>
+                            <?php if ($clienteParalisado || $paralisacaoBloqueada): ?>
                                 <button type="button" class="btn btn-outline-danger me-auto" id="btnDesfazerParalisacaoCliente">
-                                    <i class="bi bi-x-circle"></i> Desfazer paralisação
+                                    <i class="bi <?= $paralisacaoBloqueada ? 'bi-unlock' : 'bi-x-circle' ?>"></i>
+                                    <?= $paralisacaoBloqueada ? 'Limpar bloqueio' : 'Desfazer paralisação' ?>
                                 </button>
                             <?php endif; ?>
                             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                            <button type="submit" class="btn btn-success" id="btnSalvarParalisacaoCliente">
-                                <i class="bi bi-check-lg"></i> Salvar
-                            </button>
+                            <?php if (!$paralisacaoBloqueada): ?>
+                                <button type="submit" class="btn btn-success" id="btnSalvarParalisacaoCliente">
+                                    <i class="bi bi-check-lg"></i> <?= $clienteParalisado ? 'Reativar' : 'Paralisar' ?>
+                                </button>
+                            <?php endif; ?>
                         </div>
                     </form>
                 </div>
@@ -962,7 +968,7 @@ if ($clienteContabil) {
         });
 
         const formParalisacaoCliente = document.getElementById('formParalisacaoCliente');
-        if (formParalisacaoCliente) {
+        if (formParalisacaoCliente && document.getElementById('btnSalvarParalisacaoCliente')) {
             formParalisacaoCliente.addEventListener('submit', async function(evento) {
                 evento.preventDefault();
 
@@ -1006,6 +1012,7 @@ if ($clienteContabil) {
             btnDesfazerParalisacaoCliente.addEventListener('click', async function() {
                 const alerta = document.getElementById('alertaParalisacaoCliente');
                 const dadosEnvio = new FormData();
+                const textoOriginal = btnDesfazerParalisacaoCliente.innerHTML;
                 dadosEnvio.append('cliente_id', '<?= (int)$cliente['id'] ?>');
                 dadosEnvio.append('acao', 'desfazer');
                 dadosEnvio.append(
@@ -1036,7 +1043,7 @@ if ($clienteContabil) {
                     alerta.classList.remove('d-none');
                 } finally {
                     btnDesfazerParalisacaoCliente.disabled = false;
-                    btnDesfazerParalisacaoCliente.innerHTML = '<i class="bi bi-x-circle"></i> Desfazer paralisação';
+                    btnDesfazerParalisacaoCliente.innerHTML = textoOriginal;
                 }
             });
         }

@@ -140,8 +140,8 @@ function paralisacaoBadge(array $cliente): string
                                                 class="btn btn-outline-primary btn-sm btn-paralisacao"
                                                 data-bs-toggle="modal"
                                                 data-bs-target="#modalParalisacao"
-                                                <?= $bloqueada ? 'title="Cliente bloqueado para nova paralisação até ' . htmlspecialchars(paralisacaoData($cliente['paralisacao_bloqueio_ate'])) . '"' : '' ?>>
-                                                <i class="bi <?= $paralisada ? 'bi-arrow-counterclockwise' : 'bi-pause-circle' ?>"></i>
+                                                <?= $bloqueada ? 'title="Limpar bloqueio de paralisação"' : '' ?>>
+                                                <i class="bi <?= $paralisada ? 'bi-arrow-counterclockwise' : ($bloqueada ? 'bi-unlock' : 'bi-pause-circle') ?>"></i>
                                             </button>
                                         </td>
                                     </tr>
@@ -179,7 +179,7 @@ function paralisacaoBadge(array $cliente): string
                             <div class="alert alert-info" id="textoRegraParalisacao"></div>
                             <div class="alert alert-danger d-none" id="alertaParalisacao"></div>
 
-                            <div class="mb-3">
+                            <div class="mb-3" id="grupoDataParalisacao">
                                 <label for="paralisacaoData" class="form-label" id="labelDataParalisacao">Data da paralisação</label>
                                 <input type="date" class="form-control" name="data" id="paralisacaoData" required>
                                 <div class="invalid-feedback">Informe a data.</div>
@@ -320,7 +320,9 @@ function paralisacaoBadge(array $cliente): string
                 botao.addEventListener('click', () => {
                     linhaParalisacaoAtual = botao.closest('.linha-paralisacao');
                     const status = linhaParalisacaoAtual.dataset.status;
+                    const bloqueada = (linhaParalisacaoAtual.dataset.bloqueio || '') >= hojeParalisacao;
                     const acao = status === 'paralisada' ? 'reativar' : 'paralisar';
+                    const podeDesfazer = status === 'paralisada' || bloqueada;
 
                     formParalisacao.classList.remove('was-validated');
                     document.getElementById('alertaParalisacao').classList.add('d-none');
@@ -328,12 +330,21 @@ function paralisacaoBadge(array $cliente): string
                     document.getElementById('paralisacaoAcao').value = acao;
                     document.getElementById('paralisacaoData').value = hojeParalisacao;
                     document.getElementById('senhaAdminDesfazerParalisacao').value = '';
-                    btnDesfazerParalisacao.classList.toggle('d-none', acao !== 'reativar');
-                    document.getElementById('grupoSenhaDesfazerParalisacao').classList.toggle('d-none', acao !== 'reativar');
+                    btnDesfazerParalisacao.classList.toggle('d-none', !podeDesfazer);
+                    btnDesfazerParalisacao.innerHTML = bloqueada ?
+                        '<i class="bi bi-unlock"></i> Limpar bloqueio' :
+                        '<i class="bi bi-x-circle"></i> Desfazer paralisação';
+                    document.getElementById('grupoSenhaDesfazerParalisacao').classList.toggle('d-none', !podeDesfazer);
+                    document.getElementById('grupoDataParalisacao').classList.toggle('d-none', bloqueada);
+                    document.getElementById('btnSalvarParalisacao').classList.toggle('d-none', bloqueada);
                     document.getElementById('clienteModalParalisacao').textContent =
                         linhaParalisacaoAtual.dataset.codigo + ' - ' + linhaParalisacaoAtual.dataset.nome;
 
-                    if (acao === 'paralisar') {
+                    if (bloqueada) {
+                        document.getElementById('tituloModalParalisacao').textContent = 'Limpar bloqueio de paralisação';
+                        document.getElementById('textoRegraParalisacao').textContent =
+                            'Use esta opção quando a reativação foi feita por engano. Ela limpa o bloqueio de 3 anos e remove os dados da paralisação.';
+                    } else if (acao === 'paralisar') {
                         document.getElementById('tituloModalParalisacao').textContent = 'Paralisar empresa';
                         document.getElementById('labelDataParalisacao').textContent = 'Data da paralisação';
                         document.getElementById('textoRegraParalisacao').textContent =
@@ -380,6 +391,7 @@ function paralisacaoBadge(array $cliente): string
                     linhaParalisacaoAtual.querySelector('.reativada-paralisacao').textContent = '-';
                     linhaParalisacaoAtual.querySelector('.bloqueio-paralisacao').textContent = '-';
                     linhaParalisacaoAtual.querySelector('.btn-paralisacao i').className = 'bi bi-pause-circle';
+                    linhaParalisacaoAtual.querySelector('.btn-paralisacao').removeAttribute('title');
                     modalParalisacao.hide();
                 } catch (erro) {
                     alerta.textContent = 'Não foi possível comunicar com o servidor.';
