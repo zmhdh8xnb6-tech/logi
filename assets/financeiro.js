@@ -1,6 +1,22 @@
 document.querySelectorAll('.campo-moeda').forEach(function (campo) {
+    function formatarCampoMoedaAoDigitar() {
+        const digitos = this.value.replace(/\D/g, '');
+
+        if (digitos === '') {
+            this.value = '';
+            return;
+        }
+
+        const numero = Number(digitos) / 100;
+
+        this.value = numero.toLocaleString('pt-BR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+    }
+
     campo.addEventListener('input', function () {
-        this.value = this.value.replace(/[^0-9.,]/g, '');
+        formatarCampoMoedaAoDigitar.call(this);
     });
 
     campo.addEventListener('blur', function () {
