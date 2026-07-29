@@ -17,6 +17,12 @@ $voltarUrl = $voltarUrl ?? (strpos($campoStatus, 'procuracao_') === 0 ? 'procura
 $mostrarConferenciaDados = in_array($campoStatus, ['cadastro_crf', 'procuracao_particular'], true);
 $mostrarConferenciaSocio = $campoStatus === 'procuracao_particular';
 $itensPorPagina = 15;
+$controleDispensadoPorParalisacao = in_array($campoStatus, [
+    'cadastro_crf',
+    'procuracao_conectividade',
+    'procuracao_empregador_web',
+    'procuracao_sefaz',
+], true);
 
 $camposPermitidos = [
     'contador',
@@ -151,7 +157,14 @@ if ($campoVencimento !== null && !controleClienteTemColuna($pdo, $campoVenciment
     return;
 }
 
+$controleParalisacaoDisponivel = controleClienteTemColuna($pdo, 'paralisacao_status')
+    && controleClienteTemColuna($pdo, 'paralisacao_fim');
+
 $colunas = "id, codigo, documento, nome, {$campoStatus} AS status_controle";
+
+if ($controleParalisacaoDisponivel) {
+    $colunas .= ", paralisacao_status, paralisacao_fim";
+}
 
 if ($mostrarVencimento) {
     $colunas .= ", {$campoVencimento} AS vencimento_controle";
@@ -183,11 +196,27 @@ $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 if (!function_exists('controleFormatarStatus')) {
     function controleFormatarStatus(?string $valor, array $opcoesStatus): string
     {
+        if ($valor === 'paralisada') {
+            return 'Empresa paralisada';
+        }
+
+        if ($valor === 'vencido') {
+            return 'Vencido';
+        }
+
         if ($valor === null || $valor === '') {
             return 'Nao informado';
         }
 
         return $opcoesStatus[$valor] ?? $valor;
+    }
+}
+
+if (!function_exists('controleClienteParalisado')) {
+    function controleClienteParalisado(array $cliente): bool
+    {
+        return ($cliente['paralisacao_status'] ?? '') === 'paralisada'
+            && (empty($cliente['paralisacao_fim']) || $cliente['paralisacao_fim'] >= date('Y-m-d'));
     }
 }
 
@@ -200,6 +229,10 @@ if (!function_exists('controleClasseStatus')) {
 
         if ($valor === 'paralisada') {
             return 'bg-secondary';
+        }
+
+        if ($valor === 'vencido') {
+            return 'bg-danger';
         }
 
         if (in_array($valor, ['nao', 'nao_possui', 'nao_cadastrado'], true)) {
@@ -333,6 +366,14 @@ if (!function_exists('controleFormatarPrazo')) {
                                 <?php
                                 $statusAtual = $cliente['status_controle'] ?? '';
                                 $vencimentoAtual = $cliente['vencimento_controle'] ?? '';
+                                $clienteParalisado = $controleDispensadoPorParalisacao
+                                    && $controleParalisacaoDisponivel
+                                    && controleClienteParalisado($cliente);
+                                $controleVencido = $mostrarVencimento
+                                    && $statusAtual === 'possui'
+                                    && $vencimentoAtual !== ''
+                                    && $vencimentoAtual < date('Y-m-d');
+                                $statusExibicao = $clienteParalisado ? 'paralisada' : ($controleVencido ? 'vencido' : $statusAtual);
                                 $textoBusca = strtolower(
                                     ($cliente['codigo'] ?? '') . ' ' .
                                         ($cliente['nome'] ?? '') . ' ' .
@@ -345,13 +386,14 @@ if (!function_exists('controleFormatarPrazo')) {
                                     data-codigo="<?= htmlspecialchars($cliente['codigo'] ?? '') ?>"
                                     data-nome="<?= htmlspecialchars($cliente['nome'] ?? '') ?>"
                                     data-status="<?= htmlspecialchars($statusAtual) ?>"
+                                    data-paralisada="<?= $clienteParalisado ? '1' : '0' ?>"
                                     data-vencimento="<?= htmlspecialchars($vencimentoAtual) ?>">
                                     <td><?= htmlspecialchars($cliente['codigo'] ?? '') ?></td>
                                     <td><?= htmlspecialchars($cliente['nome'] ?? '') ?></td>
                                     <td><?= htmlspecialchars($cliente['documento'] ?? '') ?></td>
                                     <td>
-                                        <span class="badge status-badge <?= controleClasseStatus($statusAtual) ?>">
-                                            <?= htmlspecialchars(controleFormatarStatus($statusAtual, $opcoesStatus)) ?>
+                                        <span class="badge status-badge <?= controleClasseStatus($statusExibicao) ?>">
+                                            <?= htmlspecialchars(controleFormatarStatus($statusExibicao, $opcoesStatus)) ?>
                                         </span>
                                     </td>
                                     <?php if ($mostrarVencimento): ?>
@@ -519,6 +561,10 @@ if (!function_exists('controleFormatarPrazo')) {
                 return 'badge status-badge bg-secondary';
             }
 
+            if (status === 'vencido') {
+                return 'badge status-badge bg-danger';
+            }
+
             if (['nao', 'nao_possui', 'nao_cadastrado'].includes(status)) {
                 return 'badge status-badge bg-danger';
             }
@@ -535,7 +581,38 @@ if (!function_exists('controleFormatarPrazo')) {
         }
 
         function controleTextoStatus(status) {
+            if (status === 'paralisada') {
+                return 'Empresa paralisada';
+            }
+
+            if (status === 'vencido') {
+                return 'Vencido';
+            }
+
             return controleOpcoesStatus[status] || 'Nao informado';
+        }
+
+        function controleStatusExibicao(linha, status) {
+            if (linha && linha.dataset.paralisada === '1') {
+                return 'paralisada';
+            }
+
+            if (controlePossuiVencimento && status === 'possui') {
+                const vencimento = linha?.dataset.vencimento || '';
+                const hoje = new Date();
+                hoje.setHours(0, 0, 0, 0);
+                const partes = vencimento.split('-');
+
+                if (partes.length === 3) {
+                    const data = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+
+                    if (data < hoje) {
+                        return 'vencido';
+                    }
+                }
+            }
+
+            return status;
         }
 
         function controleDataBr(data) {
@@ -774,6 +851,7 @@ if (!function_exists('controleFormatarPrazo')) {
                 }
 
                 const status = controleStatus.value;
+                const statusExibicao = controleStatusExibicao(controleLinhaAtual, status);
                 const vencimento = controlePossuiVencimento && controleVencimento ? controleVencimento.value : '';
                 controleVencimentoInicial = vencimento;
 
@@ -781,8 +859,8 @@ if (!function_exists('controleFormatarPrazo')) {
                 controleLinhaAtual.dataset.vencimento = vencimento;
 
                 const badge = controleLinhaAtual.querySelector('.status-badge');
-                badge.className = controleClasseStatus(status);
-                badge.textContent = controleTextoStatus(status);
+                badge.className = controleClasseStatus(statusExibicao);
+                badge.textContent = controleTextoStatus(statusExibicao);
 
                 if (controlePossuiVencimento) {
                     controleLinhaAtual.querySelector('.vencimento-controle').textContent = controleDataBr(vencimento);

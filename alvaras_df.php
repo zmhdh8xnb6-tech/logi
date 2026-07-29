@@ -48,6 +48,8 @@ function textoSituacaoAlvaraDf(string $situacao): string
     return [
         'possui' => 'Possui',
         'nao_possui' => 'Não possui',
+        'paralisada' => 'Empresa paralisada',
+        'vencido' => 'Vencido',
         'goias' => 'Goiás',
     ][$situacao] ?? 'Não informado';
 }
@@ -57,6 +59,8 @@ function classeSituacaoAlvaraDf(string $situacao): string
     return [
         'possui' => 'bg-success',
         'nao_possui' => 'bg-danger',
+        'paralisada' => 'bg-secondary',
+        'vencido' => 'bg-danger',
         'goias' => 'bg-info text-dark',
     ][$situacao] ?? 'bg-warning text-dark';
 }
@@ -66,6 +70,7 @@ function textoCadastroDfLegal(string $situacao): string
     return [
         'cadastrado' => 'Cadastrado',
         'nao_cadastrado' => 'Não cadastrado',
+        'paralisada' => 'Empresa paralisada',
         'goias' => 'Goiás',
     ][$situacao] ?? 'Não informado';
 }
@@ -80,11 +85,29 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
         return 'bg-danger';
     }
 
+    if ($situacao === 'paralisada') {
+        return 'bg-secondary';
+    }
+
     if ($situacao === 'goias') {
         return 'bg-info text-dark';
     }
 
     return 'bg-warning text-dark';
+}
+
+function alvaraDfPossuiVencido(array $alvarasCliente): bool
+{
+    foreach ($alvarasCliente as $alvara) {
+        if (($alvara['situacao'] ?? '') === 'com_vencimento'
+            && !empty($alvara['vencimento'])
+            && $alvara['vencimento'] < date('Y-m-d')
+        ) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 ?>
@@ -233,6 +256,7 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                     <select id="filtroAlvaraDf" class="form-select">
                         <option value="">Todos os alvarás</option>
                         <option value="possui">Possui</option>
+                        <option value="vencido">Vencido</option>
                         <option value="nao_possui">Não possui</option>
                         <option value="nao_informado">Não informado</option>
                     </select>
@@ -261,10 +285,15 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                             <?php else: ?>
                                 <?php foreach ($clientes as $cliente):
                                     $clienteId = (int)$cliente['id'];
-                                    $situacaoAlvara = $cliente['alvara'] ?? '';
-                                    $cadastroDfLegal = $cliente['cadastro_df_legal'] ?? '';
-                                    $dadosDfLegalPendentes = !empty($cliente['pendencia_df_legal_dados']);
+                                    $clienteParalisado = ($cliente['paralisacao_status'] ?? '') === 'paralisada'
+                                        && (empty($cliente['paralisacao_fim']) || $cliente['paralisacao_fim'] >= date('Y-m-d'));
+                                    $situacaoAlvaraOriginal = $cliente['alvara'] ?? '';
+                                    $cadastroDfLegalOriginal = $cliente['cadastro_df_legal'] ?? '';
                                     $alvarasCliente = $alvarasPorCliente[$clienteId] ?? [];
+                                    $alvaraVencido = !$clienteParalisado && $situacaoAlvaraOriginal === 'possui' && alvaraDfPossuiVencido($alvarasCliente);
+                                    $situacaoAlvara = $clienteParalisado ? 'paralisada' : ($alvaraVencido ? 'vencido' : $situacaoAlvaraOriginal);
+                                    $cadastroDfLegal = $clienteParalisado ? 'paralisada' : $cadastroDfLegalOriginal;
+                                    $dadosDfLegalPendentes = !$clienteParalisado && !empty($cliente['pendencia_df_legal_dados']);
                                 ?>
                                     <tr
                                         class="linha-cliente-alvara"
@@ -298,9 +327,10 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                                                 title="Editar alvarás"
                                                 data-id="<?= $clienteId ?>"
                                                 data-cliente="<?= htmlspecialchars($cliente['codigo'] . ' - ' . $cliente['nome'], ENT_QUOTES, 'UTF-8') ?>"
-                                                data-alvara="<?= htmlspecialchars($situacaoAlvara) ?>"
-                                                data-df-legal="<?= htmlspecialchars($cadastroDfLegal) ?>"
+                                                data-alvara="<?= htmlspecialchars($situacaoAlvaraOriginal) ?>"
+                                                data-df-legal="<?= htmlspecialchars($cadastroDfLegalOriginal) ?>"
                                                 data-df-legal-pendente="<?= $dadosDfLegalPendentes ? '1' : '0' ?>"
+                                                data-paralisada="<?= $clienteParalisado ? '1' : '0' ?>"
                                                 data-alvaras="<?= htmlspecialchars(json_encode($alvarasCliente, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>">
                                                 <i class="bi bi-pencil"></i>
                                             </button>
@@ -619,6 +649,8 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
             return {
                 possui: 'Possui',
                 nao_possui: 'Não possui',
+                paralisada: 'Empresa paralisada',
+                vencido: 'Vencido',
                 goias: 'Goiás'
             } [status] || 'Não informado';
         }
@@ -627,6 +659,8 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
             return {
                 possui: 'badge badge-alvara bg-success',
                 nao_possui: 'badge badge-alvara bg-danger',
+                paralisada: 'badge badge-alvara bg-secondary',
+                vencido: 'badge badge-alvara bg-danger',
                 goias: 'badge badge-alvara bg-info text-dark'
             } [status] || 'badge badge-alvara bg-warning text-dark';
         }
@@ -639,6 +673,7 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
             return {
                 cadastrado: 'Cadastrado',
                 nao_cadastrado: 'Não cadastrado',
+                paralisada: 'Empresa paralisada',
                 goias: 'Goiás'
             } [status] || 'Não informado';
         }
@@ -651,8 +686,38 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
             return {
                 cadastrado: 'badge badge-df-legal bg-success',
                 nao_cadastrado: 'badge badge-df-legal bg-danger',
+                paralisada: 'badge badge-df-legal bg-secondary',
                 goias: 'badge badge-df-legal bg-info text-dark'
             } [status] || 'badge badge-df-legal bg-warning text-dark';
+        }
+
+        function statusAlvaraExibicao(linha, status) {
+            if (linha && linha.querySelector('.btn-editar-alvara')?.dataset.paralisada === '1') {
+                return 'paralisada';
+            }
+
+            if (status === 'possui') {
+                const botao = linha?.querySelector('.btn-editar-alvara');
+                const alvaras = JSON.parse(botao?.dataset.alvaras || '{}');
+                const hoje = new Date();
+                hoje.setHours(0, 0, 0, 0);
+
+                const vencido = Object.values(alvaras).some(function(alvara) {
+                    if (!alvara || alvara.situacao !== 'com_vencimento' || !alvara.vencimento) {
+                        return false;
+                    }
+
+                    const partes = alvara.vencimento.split('-');
+                    const data = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+                    return data < hoje;
+                });
+
+                if (vencido) {
+                    return 'vencido';
+                }
+            }
+
+            return status;
         }
 
         function formatarData(data) {
@@ -994,18 +1059,21 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
                         const badgeAlvara = linhaAlvaraAtual.querySelector('.badge-alvara');
                         const badgeDfLegal = linhaAlvaraAtual.querySelector('.badge-df-legal');
                         const botaoConsultar = linhaAlvaraAtual.querySelector('.btn-consultar-orgaos');
-
-                        badgeAlvara.className = classeAlvara(resposta.alvara);
-                        badgeAlvara.textContent = textoAlvara(resposta.alvara);
-                        badgeDfLegal.className = classeDfLegal(resposta.cadastro_df_legal, dfLegalPendente);
-                        badgeDfLegal.textContent = textoDfLegal(resposta.cadastro_df_legal, dfLegalPendente);
-                        linhaAlvaraAtual.dataset.alvaraFiltro = resposta.alvara || 'nao_informado';
                         botaoConsultar.dataset.alvaras = JSON.stringify(resposta.alvaras || {});
 
                         botaoAlvaraAtual.dataset.alvara = resposta.alvara;
                         botaoAlvaraAtual.dataset.dfLegal = resposta.cadastro_df_legal;
                         botaoAlvaraAtual.dataset.dfLegalPendente = dfLegalPendente ? '1' : '0';
                         botaoAlvaraAtual.dataset.alvaras = JSON.stringify(resposta.alvaras || {});
+
+                        const alvaraExibicao = statusAlvaraExibicao(linhaAlvaraAtual, resposta.alvara);
+                        const dfLegalExibicao = statusAlvaraExibicao(linhaAlvaraAtual, resposta.cadastro_df_legal);
+
+                        badgeAlvara.className = classeAlvara(alvaraExibicao);
+                        badgeAlvara.textContent = textoAlvara(alvaraExibicao);
+                        badgeDfLegal.className = classeDfLegal(dfLegalExibicao, dfLegalExibicao !== 'paralisada' && dfLegalPendente);
+                        badgeDfLegal.textContent = textoDfLegal(dfLegalExibicao, dfLegalExibicao !== 'paralisada' && dfLegalPendente);
+                        linhaAlvaraAtual.dataset.alvaraFiltro = alvaraExibicao || 'nao_informado';
                     }
 
                     modalAlvarasDf.hide();

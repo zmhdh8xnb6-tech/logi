@@ -4,6 +4,8 @@ require 'config.php';
 exigirPermissao('alvaras');
 
 $estruturaGoias = logiTabelaExiste($pdo, 'cliente_alvaras_goias');
+$paralisacaoGoiasDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status')
+    && logiColunaExiste($pdo, 'clientes', 'paralisacao_fim');
 $orgaosGoias = [
     'bombeiros' => 'Bombeiros',
     'vigilancia' => 'Vigilância',
@@ -13,8 +15,12 @@ $clientesGoias = [];
 $alvarasPorCliente = [];
 
 if ($estruturaGoias) {
+    $colunasParalisacaoGoias = $paralisacaoGoiasDisponivel
+        ? ', paralisacao_status, paralisacao_fim'
+        : '';
+
     $stmt = $pdo->query("
-        SELECT id, codigo, documento, nome, uf, alvara, cadastro_df_legal
+        SELECT id, codigo, documento, nome, uf, alvara, cadastro_df_legal{$colunasParalisacaoGoias}
         FROM clientes
         WHERE cliente_contabil = 1
           " . clientesFiltroAtivos($pdo) . "
@@ -48,6 +54,12 @@ function alvaraGoiasData(?string $data): string
 
 function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): string
 {
+    if (($cliente['paralisacao_status'] ?? '') === 'paralisada'
+        && (empty($cliente['paralisacao_fim']) || $cliente['paralisacao_fim'] >= date('Y-m-d'))
+    ) {
+        return '<span class="badge bg-secondary">Empresa paralisada</span>';
+    }
+
     $pendentes = 0;
     $vencidos = 0;
     $hoje = date('Y-m-d');
@@ -134,6 +146,8 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                                     $clienteId = (int)$cliente['id'];
                                     $alvarasCliente = $alvarasPorCliente[$clienteId] ?? [];
                                     $busca = strtolower(($cliente['codigo'] ?? '') . ' ' . ($cliente['nome'] ?? '') . ' ' . ($cliente['documento'] ?? ''));
+                                    $clienteParalisado = ($cliente['paralisacao_status'] ?? '') === 'paralisada'
+                                        && (empty($cliente['paralisacao_fim']) || $cliente['paralisacao_fim'] >= date('Y-m-d'));
                                     $vencimentos = [];
 
                                     foreach ($alvarasCliente as $alvara) {
@@ -150,13 +164,14 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                                         data-id="<?= $clienteId ?>"
                                         data-codigo="<?= htmlspecialchars($cliente['codigo'] ?? '') ?>"
                                         data-nome="<?= htmlspecialchars($cliente['nome'] ?? '') ?>"
+                                        data-paralisada="<?= $clienteParalisado ? '1' : '0' ?>"
                                         data-alvaras="<?= htmlspecialchars(json_encode($alvarasCliente, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>">
                                         <td><?= htmlspecialchars($cliente['codigo'] ?? '') ?></td>
                                         <td><?= htmlspecialchars($cliente['nome'] ?? '') ?></td>
                                         <td><?= htmlspecialchars($cliente['documento'] ?? '') ?></td>
                                         <td><?= htmlspecialchars($cliente['uf'] ?: 'GO') ?></td>
                                         <td class="status-goias"><?= alvaraGoiasResumo($cliente, $alvarasCliente, $orgaosGoias) ?></td>
-                                        <td class="vencimento-goias"><?= alvaraGoiasData($vencimentos[0] ?? '') ?></td>
+                                        <td class="vencimento-goias"><?= $clienteParalisado ? '-' : alvaraGoiasData($vencimentos[0] ?? '') ?></td>
                                         <td class="text-end">
                                             <button type="button" class="btn btn-outline-primary btn-sm btn-editar-goias" data-bs-toggle="modal" data-bs-target="#modalAlvaraGoias">
                                                 <i class="bi bi-pencil"></i>
@@ -293,6 +308,10 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
             }
 
             function resumoGoias(alvaras) {
+                if (linhaGoiasAtual && linhaGoiasAtual.dataset.paralisada === '1') {
+                    return '<span class="badge bg-secondary">Empresa paralisada</span>';
+                }
+
                 let pendentes = 0;
                 let vencidos = 0;
                 const hoje = <?= json_encode(date('Y-m-d')) ?>;
@@ -442,7 +461,8 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                         .filter((alvara) => alvara.situacao === 'com_vencimento' && alvara.vencimento)
                         .map((alvara) => alvara.vencimento)
                         .sort();
-                    linhaGoiasAtual.querySelector('.vencimento-goias').textContent = dataBr(vencimentos[0] || '');
+                    linhaGoiasAtual.querySelector('.vencimento-goias').textContent =
+                        linhaGoiasAtual.dataset.paralisada === '1' ? '-' : dataBr(vencimentos[0] || '');
                     modalGoias.hide();
                 } catch (erro) {
                     alerta.textContent = 'Não foi possível comunicar com o servidor.';

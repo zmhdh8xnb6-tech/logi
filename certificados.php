@@ -3,6 +3,9 @@ require 'config.php';
 
 exigirPermissao('certificados');
 
+$paralisacaoCertificadoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status')
+    && logiColunaExiste($pdo, 'clientes', 'paralisacao_fim');
+
 $stmt = $pdo->query("
     SELECT *
     FROM clientes
@@ -14,6 +17,12 @@ $stmt = $pdo->query("
 ");
 
 $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+function certificadoClienteParalisado(array $cliente): bool
+{
+    return ($cliente['paralisacao_status'] ?? '') === 'paralisada'
+        && (empty($cliente['paralisacao_fim']) || $cliente['paralisacao_fim'] >= date('Y-m-d'));
+}
 ?>
 
 <!DOCTYPE html>
@@ -77,7 +86,9 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <?php foreach ($certificados as $cliente):
 
                                 $temCertificado = !empty($cliente['vencimento_certificado']);
+                                $clienteParalisado = $paralisacaoCertificadoDisponivel && certificadoClienteParalisado($cliente);
                                 $diasRestantes = null;
+                                $certificadoVencido = false;
 
                                 if ($temCertificado) {
                                     $hoje = new DateTime(date('Y-m-d'));
@@ -85,6 +96,7 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                     $dias = $hoje->diff($vencimento);
                                     $diasRestantes = (int)$dias->format('%r%a');
+                                    $certificadoVencido = $diasRestantes < 0;
                                 }
 
                             ?>
@@ -110,8 +122,8 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     </td>
 
                                     <td>
-                                        <span class="badge certificado-status <?= $temCertificado ? 'bg-success' : 'bg-danger' ?>">
-                                            <?= $temCertificado ? 'Possui' : 'Não possui' ?>
+                                        <span class="badge certificado-status <?= $clienteParalisado ? 'bg-secondary' : ($certificadoVencido ? 'bg-danger' : ($temCertificado ? 'bg-success' : 'bg-danger')) ?>">
+                                            <?= $clienteParalisado ? 'Empresa paralisada' : ($certificadoVencido ? 'Vencido' : ($temCertificado ? 'Possui' : 'Não possui')) ?>
                                         </span>
                                     </td>
 
@@ -120,7 +132,13 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     </td>
 
                                     <td class="dias-certificado">
-                                        <?php if (!$temCertificado): ?>
+                                        <?php if ($clienteParalisado): ?>
+
+                                            <span class="badge bg-secondary">
+                                                Não se aplica
+                                            </span>
+
+                                        <?php elseif (!$temCertificado): ?>
 
                                             <span class="badge bg-secondary">
                                                 Sem vencimento
@@ -168,7 +186,8 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                             class="btn btn-outline-primary btn-sm btn-editar-certificado"
                                             data-id="<?= (int)$cliente['id'] ?>"
                                             data-cliente="<?= htmlspecialchars($cliente['codigo'] . ' - ' . $cliente['nome'], ENT_QUOTES, 'UTF-8') ?>"
-                                            data-vencimento="<?= htmlspecialchars($cliente['vencimento_certificado'] ?? '') ?>">
+                                            data-vencimento="<?= htmlspecialchars($cliente['vencimento_certificado'] ?? '') ?>"
+                                            data-paralisada="<?= $clienteParalisado ? '1' : '0' ?>">
                                             <i class="bi bi-pencil"></i>
                                         </button>
                                     </td>
@@ -409,6 +428,19 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
             return partes[2] + '/' + partes[1] + '/' + partes[0];
         }
 
+        function certificadoEstaVencido(vencimento) {
+            if (!vencimento) {
+                return false;
+            }
+
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+            const partes = vencimento.split('-');
+            const data = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+
+            return data < hoje;
+        }
+
         document.querySelectorAll('.btn-editar-certificado').forEach(function(botao) {
             botao.addEventListener('click', function() {
                 linhaCertificadoAtual = this.closest('tr');
@@ -455,8 +487,15 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         const status = linhaCertificadoAtual.querySelector('.certificado-status');
                         const vencimentoTexto = linhaCertificadoAtual.querySelector('.vencimento-certificado');
                         const dias = linhaCertificadoAtual.querySelector('.dias-certificado');
+                        const clienteParalisado = botaoCertificadoAtual.dataset.paralisada === '1';
 
-                        if (vencimento) {
+                        if (clienteParalisado) {
+                            status.className = 'badge certificado-status bg-secondary';
+                            status.textContent = 'Empresa paralisada';
+                        } else if (certificadoEstaVencido(vencimento)) {
+                            status.className = 'badge certificado-status bg-danger';
+                            status.textContent = 'Vencido';
+                        } else if (vencimento) {
                             status.className = 'badge certificado-status bg-success';
                             status.textContent = 'Possui';
                         } else {
@@ -466,7 +505,9 @@ $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                         vencimentoTexto.dataset.valor = vencimento;
                         vencimentoTexto.textContent = formatarDataCertificado(vencimento);
-                        dias.innerHTML = textoDiasCertificado(vencimento);
+                        dias.innerHTML = clienteParalisado ?
+                            '<span class="badge bg-secondary">Não se aplica</span>' :
+                            textoDiasCertificado(vencimento);
                         botaoCertificadoAtual.dataset.vencimento = vencimento;
                         vencimentoCertificadoInicial = vencimento;
 
