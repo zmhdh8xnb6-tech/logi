@@ -265,6 +265,10 @@ function normalizarSociosCnpj(array $dados, array $dadosComplementares): array
 
     if (isset($dados['qsa']) && is_array($dados['qsa'])) {
         $sociosOrigem = $dados['qsa'];
+    } elseif (isset($dados['socios']) && is_array($dados['socios'])) {
+        $sociosOrigem = $dados['socios'];
+    } elseif (isset($dadosComplementares['qsa']) && is_array($dadosComplementares['qsa'])) {
+        $sociosOrigem = $dadosComplementares['qsa'];
     } elseif (isset($dadosComplementares['socios']) && is_array($dadosComplementares['socios'])) {
         $sociosOrigem = $dadosComplementares['socios'];
     }
@@ -290,6 +294,7 @@ function normalizarSociosCnpj(array $dados, array $dadosComplementares): array
         $qualificacao = trim((string)(
             $socio['qualificacao_socio']['descricao'] ??
             $socio['qualificacao_socio'] ??
+            $socio['qualificacao']['descricao'] ??
             $socio['qualificacao'] ??
             $socio['qual'] ??
             ''
@@ -327,6 +332,36 @@ function primeiroValorCnpj(array $dados, array $chaves): string
     }
 
     return '';
+}
+
+function valorCnpjWsEstabelecimento(array $estabelecimento, array $chaves): string
+{
+    foreach ($chaves as $chave) {
+        if ($chave === 'cidade' && isset($estabelecimento['cidade']) && is_array($estabelecimento['cidade'])) {
+            $valor = trim((string)($estabelecimento['cidade']['nome'] ?? ''));
+        } elseif ($chave === 'uf' && isset($estabelecimento['estado']) && is_array($estabelecimento['estado'])) {
+            $valor = trim((string)($estabelecimento['estado']['sigla'] ?? ''));
+        } else {
+            $valor = trim((string)($estabelecimento[$chave] ?? ''));
+        }
+
+        if ($valor !== '') {
+            return $valor;
+        }
+    }
+
+    return '';
+}
+
+function primeiroValorCnpjComEstabelecimento(array $dados, array $estabelecimento, array $chavesDados, array $chavesEstabelecimento = []): string
+{
+    $valor = primeiroValorCnpj($dados, $chavesDados);
+
+    if ($valor !== '') {
+        return $valor;
+    }
+
+    return valorCnpjWsEstabelecimento($estabelecimento, $chavesEstabelecimento !== [] ? $chavesEstabelecimento : $chavesDados);
 }
 
 function dadosCnpjConsultaOk(array $dados): bool
@@ -471,6 +506,13 @@ function consultarCnpjReceitaWsComercial(string $cnpj): array
 function consultarCnpjPublico(string $cnpj): array
 {
     $dados = consultarJsonExterno('https://brasilapi.com.br/api/cnpj/v1/' . $cnpj);
+
+    return dadosCnpjConsultaOk($dados) ? $dados : [];
+}
+
+function consultarCnpjReceitaWsPublica(string $cnpj): array
+{
+    $dados = consultarJsonExterno('https://receitaws.com.br/v1/cnpj/' . $cnpj);
 
     return dadosCnpjConsultaOk($dados) ? $dados : [];
 }
@@ -622,57 +664,94 @@ if ($action === 'consultar_cnpj') {
     }
 
     $dadosReceitaWs = consultarCnpjReceitaWsComercial($cnpj);
-    $dadosBrasilApi = $dadosReceitaWs === [] ? consultarCnpjPublico($cnpj) : [];
-    $dados = $dadosReceitaWs !== [] ? $dadosReceitaWs : $dadosBrasilApi;
-    $fonte = $dadosReceitaWs !== [] ? 'ReceitaWS Comercial' : 'BrasilAPI';
+    $dadosCnpjWs = $dadosReceitaWs === [] ? consultarCnpjWs($cnpj) : [];
+    $dadosReceitaWsPublica = ($dadosReceitaWs === [] && $dadosCnpjWs === []) ? consultarCnpjReceitaWsPublica($cnpj) : [];
+    $dadosBrasilApi = ($dadosReceitaWs === [] && $dadosCnpjWs === [] && $dadosReceitaWsPublica === []) ? consultarCnpjPublico($cnpj) : [];
+
+    if ($dadosReceitaWs !== []) {
+        $dados = $dadosReceitaWs;
+        $dadosComplementares = $dadosCnpjWs !== [] ? $dadosCnpjWs : ($dadosReceitaWsPublica !== [] ? $dadosReceitaWsPublica : $dadosBrasilApi);
+        $fonte = 'ReceitaWS Comercial';
+    } elseif ($dadosCnpjWs !== []) {
+        $dados = $dadosCnpjWs;
+        $dadosComplementares = $dadosReceitaWsPublica !== [] ? $dadosReceitaWsPublica : $dadosBrasilApi;
+        $fonte = 'CNPJ.ws';
+    } elseif ($dadosReceitaWsPublica !== []) {
+        $dados = $dadosReceitaWsPublica;
+        $dadosComplementares = $dadosBrasilApi;
+        $fonte = 'ReceitaWS Pública';
+    } else {
+        $dados = $dadosBrasilApi;
+        $dadosComplementares = [];
+        $fonte = 'BrasilAPI';
+    }
 
     if ($dados === []) {
         echo json_encode(['ok' => false, 'mensagem' => 'CNPJ não encontrado.']);
         exit;
     }
 
-    $dadosComplementares = consultarCnpjWs($cnpj);
-    $estabelecimento = is_array($dadosComplementares['estabelecimento'] ?? null)
+    $estabelecimento = is_array($dados['estabelecimento'] ?? null)
+        ? $dados['estabelecimento']
+        : [];
+    $estabelecimentoComplementar = is_array($dadosComplementares['estabelecimento'] ?? null)
         ? $dadosComplementares['estabelecimento']
         : [];
 
-    $email = primeiroValorCnpj($dados, ['email']);
+    $email = primeiroValorCnpjComEstabelecimento($dados, $estabelecimento, ['email']);
     if ($email === '') {
-        $email = trim((string)($estabelecimento['email'] ?? ''));
+        $email = primeiroValorCnpjComEstabelecimento($dadosComplementares, $estabelecimentoComplementar, ['email']);
     }
 
-    $telefone = primeiroValorCnpj($dados, ['ddd_telefone_1', 'telefone']);
+    $telefone = primeiroValorCnpjComEstabelecimento($dados, $estabelecimento, ['ddd_telefone_1', 'telefone'], ['ddd1']);
     if ($telefone === '') {
-        $ddd = trim((string)($estabelecimento['ddd1'] ?? ''));
-        $numeroTelefone = trim((string)($estabelecimento['telefone1'] ?? ''));
+        $ddd = valorCnpjWsEstabelecimento($estabelecimento, ['ddd1']);
+        $numeroTelefone = valorCnpjWsEstabelecimento($estabelecimento, ['telefone1']);
         $telefone = trim($ddd . ' ' . $numeroTelefone);
     }
+    if ($telefone === '') {
+        $telefone = primeiroValorCnpjComEstabelecimento($dadosComplementares, $estabelecimentoComplementar, ['ddd_telefone_1', 'telefone'], ['ddd1']);
+    }
 
-    $tipoLogradouro = primeiroValorCnpj($dados, ['descricao_tipo_de_logradouro']);
-    $logradouroBase = primeiroValorCnpj($dados, ['logradouro']);
+    $tipoLogradouro = primeiroValorCnpjComEstabelecimento($dados, $estabelecimento, ['descricao_tipo_de_logradouro'], ['tipo_logradouro']);
+    $logradouroBase = primeiroValorCnpjComEstabelecimento($dados, $estabelecimento, ['logradouro']);
     $logradouro = trim(implode(' ', array_filter([$tipoLogradouro, $logradouroBase])));
-    $cep = preg_replace('/\D/', '', primeiroValorCnpj($dados, ['cep']));
+    if ($logradouro === '') {
+        $tipoLogradouro = primeiroValorCnpjComEstabelecimento($dadosComplementares, $estabelecimentoComplementar, ['descricao_tipo_de_logradouro'], ['tipo_logradouro']);
+        $logradouroBase = primeiroValorCnpjComEstabelecimento($dadosComplementares, $estabelecimentoComplementar, ['logradouro']);
+        $logradouro = trim(implode(' ', array_filter([$tipoLogradouro, $logradouroBase])));
+    }
+
+    $cep = preg_replace('/\D/', '', primeiroValorCnpjComEstabelecimento($dados, $estabelecimento, ['cep']));
+    if ($cep === '') {
+        $cep = preg_replace('/\D/', '', primeiroValorCnpjComEstabelecimento($dadosComplementares, $estabelecimentoComplementar, ['cep']));
+    }
+
     $ultimaAtualizacao = primeiroValorCnpj($dados, ['ultima_atualizacao']);
     $socios = normalizarSociosCnpj($dados, $dadosComplementares);
-    $fonteQsa = isset($dados['qsa']) && is_array($dados['qsa'])
+    $fonteQsa = (isset($dados['qsa']) && is_array($dados['qsa'])) || (isset($dados['socios']) && is_array($dados['socios']))
         ? $fonte
-        : (isset($dadosComplementares['socios']) && is_array($dadosComplementares['socios']) ? 'CNPJ.ws' : $fonte);
+        : (
+            (isset($dadosComplementares['socios']) && is_array($dadosComplementares['socios']))
+            ? 'CNPJ.ws'
+            : ((isset($dadosComplementares['qsa']) && is_array($dadosComplementares['qsa'])) ? 'ReceitaWS Pública/BrasilAPI' : $fonte)
+        );
 
     echo json_encode([
         'ok' => true,
         'dados' => [
             'documento' => $cnpj,
             'nome' => primeiroValorCnpj($dados, ['razao_social', 'nome']),
-            'nome_fantasia' => primeiroValorCnpj($dados, ['nome_fantasia', 'fantasia']),
+            'nome_fantasia' => primeiroValorCnpjComEstabelecimento($dados, $estabelecimento, ['nome_fantasia', 'fantasia']),
             'email' => $email,
             'telefone' => $telefone,
             'cep' => $cep,
             'endereco' => $logradouro,
-            'numero_endereco' => primeiroValorCnpj($dados, ['numero']),
-            'complemento' => primeiroValorCnpj($dados, ['complemento']),
-            'bairro' => primeiroValorCnpj($dados, ['bairro']),
-            'cidade' => primeiroValorCnpj($dados, ['municipio']),
-            'uf' => strtoupper(primeiroValorCnpj($dados, ['uf'])),
+            'numero_endereco' => primeiroValorCnpjComEstabelecimento($dados, $estabelecimento, ['numero']),
+            'complemento' => primeiroValorCnpjComEstabelecimento($dados, $estabelecimento, ['complemento']),
+            'bairro' => primeiroValorCnpjComEstabelecimento($dados, $estabelecimento, ['bairro']),
+            'cidade' => primeiroValorCnpjComEstabelecimento($dados, $estabelecimento, ['municipio'], ['cidade']),
+            'uf' => strtoupper(primeiroValorCnpjComEstabelecimento($dados, $estabelecimento, ['uf'], ['uf'])),
             'socios' => $socios,
             'fonte' => $fonte,
             'fonte_qsa' => $fonteQsa,

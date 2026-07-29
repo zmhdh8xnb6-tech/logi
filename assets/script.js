@@ -1066,7 +1066,7 @@ function textoFonteCnpj(dados) {
     }
 
     if (dados.ultima_atualizacao) {
-        partes.push(`Atualizado em ${formatarDataBr(dados.ultima_atualizacao)}`);
+        partes.push(`Atualizado em ${formatarDataBr(String(dados.ultima_atualizacao).slice(0, 10))}`);
     }
 
     return partes.join(' | ');
