@@ -9,6 +9,18 @@ if (!headers_sent()) {
     header('Pragma: no-cache');
 }
 
+if (!defined('RECEITAWS_TOKEN')) {
+    define('RECEITAWS_TOKEN', getenv('RECEITAWS_TOKEN') ?: '');
+}
+
+if (!defined('RECEITAWS_DIAS_DEFASAGEM')) {
+    define('RECEITAWS_DIAS_DEFASAGEM', (int)(getenv('RECEITAWS_DIAS_DEFASAGEM') ?: 1));
+}
+
+if (!defined('RECEITAWS_FALLBACK')) {
+    define('RECEITAWS_FALLBACK', getenv('RECEITAWS_FALLBACK') ?: 'noCache');
+}
+
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/auditoria.php';
 

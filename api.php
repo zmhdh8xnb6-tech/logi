@@ -263,10 +263,10 @@ function normalizarSociosCnpj(array $dados, array $dadosComplementares): array
 {
     $sociosOrigem = [];
 
-    if (isset($dadosComplementares['socios']) && is_array($dadosComplementares['socios'])) {
-        $sociosOrigem = $dadosComplementares['socios'];
-    } elseif (isset($dados['qsa']) && is_array($dados['qsa'])) {
+    if (isset($dados['qsa']) && is_array($dados['qsa'])) {
         $sociosOrigem = $dados['qsa'];
+    } elseif (isset($dadosComplementares['socios']) && is_array($dadosComplementares['socios'])) {
+        $sociosOrigem = $dadosComplementares['socios'];
     }
 
     $socios = [];
@@ -291,11 +291,13 @@ function normalizarSociosCnpj(array $dados, array $dadosComplementares): array
             $socio['qualificacao_socio']['descricao'] ??
             $socio['qualificacao_socio'] ??
             $socio['qualificacao'] ??
+            $socio['qual'] ??
             ''
         ));
         $documento = trim((string)(
             $socio['cpf_cnpj_socio'] ??
             $socio['cnpj_cpf_do_socio'] ??
+            $socio['cpf'] ??
             $socio['documento'] ??
             ''
         ));
@@ -314,6 +316,30 @@ function normalizarSociosCnpj(array $dados, array $dadosComplementares): array
     }
 
     return $socios;
+}
+
+function primeiroValorCnpj(array $dados, array $chaves): string
+{
+    foreach ($chaves as $chave) {
+        if (isset($dados[$chave]) && trim((string)$dados[$chave]) !== '') {
+            return trim((string)$dados[$chave]);
+        }
+    }
+
+    return '';
+}
+
+function dadosCnpjConsultaOk(array $dados): bool
+{
+    if ($dados === []) {
+        return false;
+    }
+
+    if (isset($dados['status']) && strtolower((string)$dados['status']) === 'error') {
+        return false;
+    }
+
+    return !isset($dados['message'], $dados['errors']);
 }
 
 function salvarSociosCliente(PDO $pdo, int $clienteId, array $socios): void
@@ -368,19 +394,20 @@ function salvarSociosCliente(PDO $pdo, int $clienteId, array $socios): void
     }
 }
 
-function consultarJsonExterno(string $url): array
+function consultarJsonExterno(string $url, array $headers = [], int $timeout = 10): array
 {
     $resposta = false;
+    $headers = array_values(array_filter(array_merge(['Accept: application/json'], $headers)));
 
     if (function_exists('curl_init')) {
         $curl = curl_init($url);
         curl_setopt_array($curl, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_TIMEOUT => 10,
+            CURLOPT_TIMEOUT => $timeout,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            CURLOPT_HTTPHEADER => $headers,
             CURLOPT_USERAGENT => 'Logi/1.0',
         ]);
 
@@ -395,8 +422,8 @@ function consultarJsonExterno(string $url): array
         $contexto = stream_context_create([
             'http' => [
                 'method' => 'GET',
-                'timeout' => 10,
-                'header' => "Accept: application/json\r\nUser-Agent: Logi/1.0\r\n",
+                'timeout' => $timeout,
+                'header' => implode("\r\n", array_merge($headers, ['User-Agent: Logi/1.0'])) . "\r\n",
             ],
         ]);
 
@@ -410,6 +437,49 @@ function consultarJsonExterno(string $url): array
     $dados = json_decode($resposta, true);
 
     return is_array($dados) ? $dados : [];
+}
+
+function consultarCnpjReceitaWsComercial(string $cnpj): array
+{
+    $token = trim((string)(defined('RECEITAWS_TOKEN') ? RECEITAWS_TOKEN : ''));
+
+    if ($token === '') {
+        return [];
+    }
+
+    $dias = max(0, (int)(defined('RECEITAWS_DIAS_DEFASAGEM') ? RECEITAWS_DIAS_DEFASAGEM : 1));
+    $fallback = (string)(defined('RECEITAWS_FALLBACK') ? RECEITAWS_FALLBACK : 'noCache');
+    $fallback = in_array($fallback, ['noCache', 'cacheOnError'], true) ? $fallback : 'noCache';
+    $url = 'https://receitaws.com.br/v1/cnpj/' . $cnpj . '/days/' . $dias . '?fallback=' . rawurlencode($fallback);
+    $headers = [
+        'Authorization: Bearer ' . $token,
+        'x-api-token: ' . $token,
+    ];
+
+    $dados = consultarJsonExterno($url, $headers, 55);
+
+    if (dadosCnpjConsultaOk($dados)) {
+        return $dados;
+    }
+
+    $urlComToken = $url . '&token=' . rawurlencode($token);
+    $dados = consultarJsonExterno($urlComToken, [], 55);
+
+    return dadosCnpjConsultaOk($dados) ? $dados : [];
+}
+
+function consultarCnpjPublico(string $cnpj): array
+{
+    $dados = consultarJsonExterno('https://brasilapi.com.br/api/cnpj/v1/' . $cnpj);
+
+    return dadosCnpjConsultaOk($dados) ? $dados : [];
+}
+
+function consultarCnpjWs(string $cnpj): array
+{
+    $dados = consultarJsonExterno('https://publica.cnpj.ws/cnpj/' . $cnpj);
+
+    return dadosCnpjConsultaOk($dados) ? $dados : [];
 }
 
 $action = $_GET['action'] ?? '';
@@ -551,52 +621,62 @@ if ($action === 'consultar_cnpj') {
         exit;
     }
 
-    $dados = consultarJsonExterno('https://brasilapi.com.br/api/cnpj/v1/' . $cnpj);
+    $dadosReceitaWs = consultarCnpjReceitaWsComercial($cnpj);
+    $dadosBrasilApi = $dadosReceitaWs === [] ? consultarCnpjPublico($cnpj) : [];
+    $dados = $dadosReceitaWs !== [] ? $dadosReceitaWs : $dadosBrasilApi;
+    $fonte = $dadosReceitaWs !== [] ? 'ReceitaWS Comercial' : 'BrasilAPI';
 
-    if ($dados === [] || isset($dados['message']) || isset($dados['errors'])) {
+    if ($dados === []) {
         echo json_encode(['ok' => false, 'mensagem' => 'CNPJ não encontrado.']);
         exit;
     }
 
-    $dadosComplementares = consultarJsonExterno('https://publica.cnpj.ws/cnpj/' . $cnpj);
+    $dadosComplementares = consultarCnpjWs($cnpj);
     $estabelecimento = is_array($dadosComplementares['estabelecimento'] ?? null)
         ? $dadosComplementares['estabelecimento']
         : [];
 
-    $email = trim((string)($dados['email'] ?? ''));
+    $email = primeiroValorCnpj($dados, ['email']);
     if ($email === '') {
         $email = trim((string)($estabelecimento['email'] ?? ''));
     }
 
-    $telefone = trim((string)($dados['ddd_telefone_1'] ?? $dados['telefone'] ?? ''));
+    $telefone = primeiroValorCnpj($dados, ['ddd_telefone_1', 'telefone']);
     if ($telefone === '') {
         $ddd = trim((string)($estabelecimento['ddd1'] ?? ''));
         $numeroTelefone = trim((string)($estabelecimento['telefone1'] ?? ''));
         $telefone = trim($ddd . ' ' . $numeroTelefone);
     }
 
-    $logradouro = trim(implode(' ', array_filter([
-        $dados['descricao_tipo_de_logradouro'] ?? '',
-        $dados['logradouro'] ?? '',
-    ])));
+    $tipoLogradouro = primeiroValorCnpj($dados, ['descricao_tipo_de_logradouro']);
+    $logradouroBase = primeiroValorCnpj($dados, ['logradouro']);
+    $logradouro = trim(implode(' ', array_filter([$tipoLogradouro, $logradouroBase])));
+    $cep = preg_replace('/\D/', '', primeiroValorCnpj($dados, ['cep']));
+    $ultimaAtualizacao = primeiroValorCnpj($dados, ['ultima_atualizacao']);
     $socios = normalizarSociosCnpj($dados, $dadosComplementares);
+    $fonteQsa = isset($dados['qsa']) && is_array($dados['qsa'])
+        ? $fonte
+        : (isset($dadosComplementares['socios']) && is_array($dadosComplementares['socios']) ? 'CNPJ.ws' : $fonte);
 
     echo json_encode([
         'ok' => true,
         'dados' => [
             'documento' => $cnpj,
-            'nome' => $dados['razao_social'] ?? '',
-            'nome_fantasia' => $dados['nome_fantasia'] ?? '',
+            'nome' => primeiroValorCnpj($dados, ['razao_social', 'nome']),
+            'nome_fantasia' => primeiroValorCnpj($dados, ['nome_fantasia', 'fantasia']),
             'email' => $email,
             'telefone' => $telefone,
-            'cep' => $dados['cep'] ?? '',
+            'cep' => $cep,
             'endereco' => $logradouro,
-            'numero_endereco' => $dados['numero'] ?? '',
-            'complemento' => $dados['complemento'] ?? '',
-            'bairro' => $dados['bairro'] ?? '',
-            'cidade' => $dados['municipio'] ?? '',
-            'uf' => strtoupper($dados['uf'] ?? ''),
+            'numero_endereco' => primeiroValorCnpj($dados, ['numero']),
+            'complemento' => primeiroValorCnpj($dados, ['complemento']),
+            'bairro' => primeiroValorCnpj($dados, ['bairro']),
+            'cidade' => primeiroValorCnpj($dados, ['municipio']),
+            'uf' => strtoupper(primeiroValorCnpj($dados, ['uf'])),
             'socios' => $socios,
+            'fonte' => $fonte,
+            'fonte_qsa' => $fonteQsa,
+            'ultima_atualizacao' => $ultimaAtualizacao,
         ],
     ]);
     exit;

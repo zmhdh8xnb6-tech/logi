@@ -1050,6 +1050,28 @@ function formatarDataBr(valor) {
     return `${partes[2]}/${partes[1]}/${partes[0]}`;
 }
 
+function textoFonteCnpj(dados) {
+    if (!dados) {
+        return '';
+    }
+
+    const partes = [];
+
+    if (dados.fonte) {
+        partes.push(`Fonte: ${dados.fonte}`);
+    }
+
+    if (dados.fonte_qsa && dados.fonte_qsa !== dados.fonte) {
+        partes.push(`QSA: ${dados.fonte_qsa}`);
+    }
+
+    if (dados.ultima_atualizacao) {
+        partes.push(`Atualizado em ${formatarDataBr(dados.ultima_atualizacao)}`);
+    }
+
+    return partes.join(' | ');
+}
+
 function renderizarQsaCliente(socios) {
     const tabelaWrapper = $('#qsaClienteTabelaWrapper');
     const tabelaCorpo = $('#qsaClienteTabelaCorpo');
@@ -1121,9 +1143,11 @@ function atualizarQsaPelaReceita() {
                 .removeClass('text-muted text-danger')
                 .addClass('text-success')
                 .text(
-                    sociosEncontrados.length
-                        ? 'QSA atualizado. Clique em Salvar para gravar.'
-                        : 'A consulta não retornou sócios. Clique em Salvar para gravar essa conferência.'
+                    (
+                        sociosEncontrados.length
+                            ? 'QSA atualizado. Clique em Salvar para gravar.'
+                            : 'A consulta não retornou sócios. Clique em Salvar para gravar essa conferência.'
+                    ) + (textoFonteCnpj(resposta.dados) ? ` ${textoFonteCnpj(resposta.dados)}.` : '')
                 );
         })
         .fail(function () {
@@ -1176,9 +1200,11 @@ function consultarCnpjParaPreenchimento(cnpj) {
                 dadosCnpjEncontrado.uf
             ].filter(Boolean).join(' - ') || 'Endereço não informado');
             $('#cnpjConsultaQsa').text(
-                sociosEncontrados.length
-                    ? `QSA: ${sociosEncontrados.length} ${sociosEncontrados.length === 1 ? 'sócio encontrado' : 'sócios encontrados'}`
-                    : 'QSA não retornado pela consulta.'
+                (
+                    sociosEncontrados.length
+                        ? `QSA: ${sociosEncontrados.length} ${sociosEncontrados.length === 1 ? 'sócio encontrado' : 'sócios encontrados'}`
+                        : 'QSA não retornado pela consulta.'
+                ) + (textoFonteCnpj(dadosCnpjEncontrado) ? ` ${textoFonteCnpj(dadosCnpjEncontrado)}.` : '')
             );
 
             const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modalPreencherCnpj'));
