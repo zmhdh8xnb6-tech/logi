@@ -683,9 +683,14 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
                     <p class="text-muted mb-0">Clientes com informações ausentes, vencidas ou próximas do vencimento</p>
                 </div>
 
-                <a href="home.php" class="btn btn-outline-secondary">
-                    <i class="bi bi-arrow-left"></i> Voltar
-                </a>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="importar_pendencias.php" class="btn btn-outline-success">
+                        <i class="bi bi-upload"></i> Importar
+                    </a>
+                    <a href="home.php" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Voltar
+                    </a>
+                </div>
             </div>
 
             <?php if (isset($_GET['resolvido'])): ?>
