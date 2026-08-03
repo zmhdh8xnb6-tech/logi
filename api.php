@@ -120,6 +120,79 @@ function salvarAlvarasCliente(PDO $pdo, int $clienteId, string $situacaoAlvara, 
     }
 }
 
+function moedaAlvaraGoiasParaFloat(string $valor): float
+{
+    $normalizado = str_replace('.', '', trim($valor));
+    $normalizado = str_replace(',', '.', $normalizado);
+
+    return is_numeric($normalizado) ? (float)$normalizado : 0.0;
+}
+
+function salvarAlvarasGoiasCliente(PDO $pdo, int $clienteId, bool $usarAlvaraGoias, array $dados): void
+{
+    if (!logiTabelaExiste($pdo, 'cliente_alvaras_goias')) {
+        return;
+    }
+
+    $orgaos = [
+        'bombeiros' => 'Bombeiros',
+        'vigilancia' => 'Vigilância',
+        'prefeitura' => 'Prefeitura',
+    ];
+
+    $stmtDelete = $pdo->prepare("
+        DELETE ag
+        FROM cliente_alvaras_goias ag
+        INNER JOIN clientes c ON c.id = ag.cliente_id
+        WHERE ag.cliente_id = ?
+        " . empresaFiltroClienteDireto($pdo, 'c') . "
+    ");
+    $stmtDelete->execute([$clienteId]);
+
+    if (!$usarAlvaraGoias) {
+        return;
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO cliente_alvaras_goias (
+            cliente_id,
+            orgao_codigo,
+            orgao_nome,
+            situacao,
+            vencimento,
+            taxa,
+            vistoria_previa
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ");
+
+    foreach ($orgaos as $codigo => $nome) {
+        $situacao = $dados[$codigo]['situacao'] ?? 'nao_informado';
+
+        if (!in_array($situacao, ['nao_informado', 'com_vencimento', 'dispensado', 'em_estudo'], true)) {
+            $situacao = 'nao_informado';
+        }
+
+        $vencimento = $situacao === 'com_vencimento'
+            ? ($dados[$codigo]['vencimento'] ?? null)
+            : null;
+        $vistoria = $dados[$codigo]['vistoria_previa'] ?? 'sim';
+
+        if (!in_array($vistoria, ['sim', 'nao', 'dispensada'], true)) {
+            $vistoria = 'sim';
+        }
+
+        $stmt->execute([
+            $clienteId,
+            $codigo,
+            $nome,
+            $situacao,
+            $vencimento,
+            moedaAlvaraGoiasParaFloat((string)($dados[$codigo]['taxa'] ?? '0')),
+            $vistoria,
+        ]);
+    }
+}
+
 function clienteTemColuna(PDO $pdo, string $coluna): bool
 {
     static $cache = [];
@@ -783,6 +856,7 @@ if ($action === 'create' || $action === 'update') {
     $inscricao_estadual = $_POST['inscricao_estadual'] ?? '';
     $nire = $_POST['nire'] ?? '';
     $email = $_POST['email'] ?? '';
+    $certificado_status = $_POST['certificado_status'] ?? '';
     $cadastro_df_legal = $_POST['cadastro_df_legal'] ?? '';
     $alvara = $_POST['alvara'] ?? '';
     $contador = $_POST['contador'] ?? '';
@@ -800,10 +874,11 @@ if ($action === 'create' || $action === 'update') {
     $tributacao = $_POST['tributacao'] ?? '';
     $possui_parcelamento = in_array(
         $_POST['possui_parcelamento'] ?? '',
-        ['possui', 'nao_possui'],
+        ['possui', 'nao_possui', 'nao_precisa_momento'],
         true
     ) ? $_POST['possui_parcelamento'] : '';
     $alvaras = is_array($_POST['alvaras'] ?? null) ? $_POST['alvaras'] : [];
+    $alvarasGoias = is_array($_POST['alvaras_goias'] ?? null) ? $_POST['alvaras_goias'] : [];
     $qsaJson = trim((string)($_POST['qsa_json'] ?? ''));
     $qsaSocios = [];
 
@@ -848,6 +923,21 @@ if ($action === 'create' || $action === 'update') {
 
     if ($cliente_contabil === 0 && !$servico_certificado) {
         $vencimento_certificado = null;
+        $certificado_status = '';
+    }
+
+    if ($servico_certificado || $cliente_contabil === 1) {
+        if (!in_array($certificado_status, ['', 'possui', 'nao_possui', 'nao_precisa_momento'], true)) {
+            $certificado_status = '';
+        }
+
+        if ($certificado_status === '' && !empty($vencimento_certificado)) {
+            $certificado_status = 'possui';
+        }
+
+        if ($certificado_status === 'nao_precisa_momento' || $certificado_status === 'nao_possui') {
+            $vencimento_certificado = null;
+        }
     }
 
     if ($cliente_contabil === 0) {
@@ -867,6 +957,8 @@ if ($action === 'create' || $action === 'update') {
         $contrato_prestacao_servicos = '';
         $tributacao = '';
         $alvaras = [];
+        $alvarasGoias = [];
+        $certificado_status = '';
     }
 
     if (!validarInscricaoEstadualServidor($inscricao_estadual, $uf)) {
@@ -898,24 +990,24 @@ if ($action === 'create' || $action === 'update') {
                 $procuracao_particular,
             ] as $situacao
         ) {
-            if (!in_array($situacao, ['possui', 'nao_possui'], true)) {
+            if (!in_array($situacao, ['possui', 'nao_possui', 'nao_precisa_momento'], true)) {
                 echo 'procuracoes_incompletas';
                 exit;
             }
         }
 
-        if (!in_array($procuracao_empregador_web, ['possui', 'nao_possui', 'nao_tem_funcionario'], true)) {
+        if (!in_array($procuracao_empregador_web, ['possui', 'nao_possui', 'nao_tem_funcionario', 'nao_precisa_momento'], true)) {
             echo 'procuracoes_incompletas';
             exit;
         }
     }
 
-    if ($cliente_contabil === 1 && !in_array($procuracao_sefaz, ['possui', 'nao_possui', 'goias'], true)) {
+    if ($cliente_contabil === 1 && !in_array($procuracao_sefaz, ['possui', 'nao_possui', 'nao_precisa_momento', 'goias'], true)) {
         echo 'procuracoes_incompletas';
         exit;
     }
 
-    if ($cliente_contabil === 1 && !in_array($alvara, ['possui', 'nao_possui', 'goias'], true)) {
+    if ($cliente_contabil === 1 && !in_array($alvara, ['possui', 'nao_possui', 'nao_precisa_momento', 'goias'], true)) {
         echo 'alvara_obrigatorio';
         exit;
     }
@@ -943,6 +1035,23 @@ if ($action === 'create' || $action === 'update') {
 
             if ($situacao === 'com_vencimento' && empty($vencimento)) {
                 echo 'alvaras_incompletos';
+                exit;
+            }
+        }
+    }
+
+    if ($cliente_contabil === 1 && ($alvara === 'goias' || $cadastro_df_legal === 'goias')) {
+        foreach (['bombeiros', 'vigilancia', 'prefeitura'] as $codigoOrgaoGoias) {
+            $situacaoGoias = $alvarasGoias[$codigoOrgaoGoias]['situacao'] ?? 'nao_informado';
+            $vencimentoGoias = $alvarasGoias[$codigoOrgaoGoias]['vencimento'] ?? null;
+
+            if (!in_array($situacaoGoias, ['nao_informado', 'com_vencimento', 'dispensado', 'em_estudo'], true)) {
+                echo 'alvaras_goias_incompletos';
+                exit;
+            }
+
+            if ($situacaoGoias === 'com_vencimento' && empty($vencimentoGoias)) {
+                echo 'alvaras_goias_incompletos';
                 exit;
             }
         }
@@ -1225,6 +1334,25 @@ if ($action === 'create' || $action === 'update') {
         }
 
         salvarAlvarasCliente($pdo, $clienteIdSalvo, $alvara, $alvaras);
+        salvarAlvarasGoiasCliente($pdo, $clienteIdSalvo, $alvara === 'goias' || $cadastro_df_legal === 'goias', $alvarasGoias);
+
+        if (clienteTemColuna($pdo, 'certificado_status')) {
+            $pdo->prepare("
+            UPDATE clientes
+            SET certificado_status = ?
+            WHERE id = ?
+            " . empresaFiltroClienteDireto($pdo) . "
+        ")->execute([$certificado_status, $clienteIdSalvo]);
+        }
+
+        if ($certificado_status === 'nao_precisa_momento' && clienteTemColuna($pdo, 'pendencia_certificado_digital')) {
+            $pdo->prepare("
+            UPDATE clientes
+            SET pendencia_certificado_digital = 0
+            WHERE id = ?
+            " . empresaFiltroClienteDireto($pdo) . "
+        ")->execute([$clienteIdSalvo]);
+        }
 
         if ($qsaJson !== '') {
             salvarSociosCliente($pdo, $clienteIdSalvo, $qsaSocios);

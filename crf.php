@@ -9,6 +9,7 @@ $campoStatus = 'cadastro_crf';
 $opcoesStatus = [
     'cadastrado' => 'Cadastrado',
     'nao_cadastrado' => 'Nao cadastrado',
+    'nao_precisa_momento' => 'Nao precisa no momento',
 ];
 
 include 'includes/pagina_controle_clientes.php';

@@ -10,6 +10,7 @@ $opcoesStatus = [
     'possui' => 'Possui',
     'nao_possui' => 'Nao possui',
     'nao_tem_funcionario' => 'Nao tem funcionario',
+    'nao_precisa_momento' => 'Nao precisa no momento',
 ];
 
 include 'includes/pagina_controle_clientes.php';

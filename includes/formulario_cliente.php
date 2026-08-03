@@ -9,8 +9,14 @@ $orgaosAlvara = [
     'sudesc' => 'SUBSECRETARIA DO SISTEMA DE DEFESA CIVIL - SUDESC',
     'visadf' => 'VIGILÂNCIA SANITÁRIA DO DISTRITO FEDERAL - VISADF',
 ];
+$orgaosAlvaraGoias = [
+    'bombeiros' => 'Bombeiros',
+    'vigilancia' => 'Vigilância',
+    'prefeitura' => 'Prefeitura',
+];
 
 $alvarasCliente = $alvarasCliente ?? [];
+$alvarasGoiasCliente = $alvarasGoiasCliente ?? [];
 $sociosCliente = $sociosCliente ?? [];
 $clienteContabilAtual = (int)($cliente['cliente_contabil'] ?? $clienteContabilPadrao ?? 1);
 $servicoParcelamentoAtual = (int)($cliente['servico_parcelamento'] ?? (($cliente['possui_parcelamento'] ?? '') === 'possui'));
@@ -18,6 +24,29 @@ $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
 $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
     return !empty($data) ? date('d/m/Y', strtotime($data)) : '-';
 };
+
+if (
+    empty($alvarasGoiasCliente)
+    && isset($pdo)
+    && $pdo instanceof PDO
+    && function_exists('logiTabelaExiste')
+    && function_exists('empresaFiltroClienteDireto')
+    && logiTabelaExiste($pdo, 'cliente_alvaras_goias')
+    && !empty($cliente['id'])
+) {
+    $stmtAlvarasGoiasFormulario = $pdo->prepare("
+        SELECT ag.orgao_codigo, ag.situacao, ag.vencimento, ag.taxa, ag.vistoria_previa
+        FROM cliente_alvaras_goias ag
+        INNER JOIN clientes c ON c.id = ag.cliente_id
+        WHERE ag.cliente_id = ?
+        " . empresaFiltroClienteDireto($pdo, 'c') . "
+    ");
+    $stmtAlvarasGoiasFormulario->execute([(int)$cliente['id']]);
+
+    foreach ($stmtAlvarasGoiasFormulario->fetchAll(PDO::FETCH_ASSOC) as $alvaraGoiasCliente) {
+        $alvarasGoiasCliente[$alvaraGoiasCliente['orgao_codigo']] = $alvaraGoiasCliente;
+    }
+}
 ?>
 
 <input type="hidden" name="qsa_json" id="qsa_json" value="">
@@ -84,6 +113,19 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
             <input type="text" class="form-control" name="nire" id="nire">
         </div>
         <div class="col-md-2 mb-3 campo-servico-certificado">
+            <label for="certificado_status" class="form-label">Certificado Digital</label>
+            <select class="form-select" name="certificado_status" id="certificado_status">
+                <?php
+                $certificadoStatusAtual = $cliente['certificado_status'] ?? (!empty($cliente['vencimento_certificado']) ? 'possui' : '');
+                ?>
+                <option value="" <?= $certificadoStatusAtual === '' ? 'selected' : '' ?>>Selecione</option>
+                <option value="possui" <?= $certificadoStatusAtual === 'possui' ? 'selected' : '' ?>>Possui</option>
+                <option value="nao_possui" <?= $certificadoStatusAtual === 'nao_possui' ? 'selected' : '' ?>>Não possui</option>
+                <option value="nao_precisa_momento" <?= $certificadoStatusAtual === 'nao_precisa_momento' ? 'selected' : '' ?>>Não precisa no momento</option>
+            </select>
+        </div>
+
+        <div class="col-md-2 mb-3 campo-servico-certificado">
             <label for="vencimento_certificado" class="form-label">
                 Vencimento Certificado Digital
             </label>
@@ -107,6 +149,7 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
                 <option value="">Selecione</option>
                 <option value="cadastrado">Cadastrado</option>
                 <option value="nao_cadastrado">Não cadastrado</option>
+                <option value="nao_precisa_momento">Não precisa no momento</option>
                 <option value="goias">Goiás</option>
             </select>
             <input type="hidden" name="df_legal_razao_social_correta" id="df_legal_razao_social_correta" value="sim">
@@ -120,6 +163,7 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
                     <option value="">Selecione</option>
                     <option value="possui">Possui</option>
                     <option value="nao_possui">Não possui</option>
+                    <option value="nao_precisa_momento">Não precisa no momento</option>
                     <option value="goias">Goiás</option>
                 </select>
                 <button
@@ -129,6 +173,15 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
                     data-bs-toggle="modal"
                     data-bs-target="#modalAlvaras"
                     title="Editar órgãos do alvará">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-outline-primary<?= (($cliente['alvara'] ?? '') === 'goias') ? '' : ' d-none' ?>"
+                    id="btnEditarAlvarasGoias"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modalAlvarasGoiasCliente"
+                    title="Editar alvarás Goiás">
                     <i class="bi bi-pencil"></i>
                 </button>
             </div>
@@ -145,6 +198,7 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
                 <option value="">Selecione</option>
                 <option value="possui" <?= (($cliente['possui_parcelamento'] ?? '') === 'possui') ? 'selected' : '' ?>>Possui</option>
                 <option value="nao_possui" <?= (($cliente['possui_parcelamento'] ?? '') === 'nao_possui') ? 'selected' : '' ?>>Não possui</option>
+                <option value="nao_precisa_momento" <?= (($cliente['possui_parcelamento'] ?? '') === 'nao_precisa_momento') ? 'selected' : '' ?>>Não precisa no momento</option>
             </select>
             <div class="invalid-feedback">Informe se possui parcelamento.</div>
         </div>
@@ -155,6 +209,7 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
                 <option value="">Selecione</option>
                 <option value="sim">Contador ativo</option>
                 <option value="nao">Sem contador</option>
+                <option value="nao_precisa_momento">Não precisa no momento</option>
             </select>
         </div>
 
@@ -164,6 +219,7 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
                 <option value="">Selecione</option>
                 <option value="cadastrado">Cadastrado</option>
                 <option value="nao_cadastrado">Não cadastrado</option>
+                <option value="nao_precisa_momento">Não precisa no momento</option>
             </select>
             <input type="hidden" name="crf_razao_social_correta" id="crf_razao_social_correta" value="sim">
             <input type="hidden" name="crf_endereco_correto" id="crf_endereco_correto" value="sim">
@@ -175,6 +231,7 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
                 <option value="">Selecione</option>
                 <option value="possui">Possui</option>
                 <option value="nao_possui">Não possui</option>
+                <option value="nao_precisa_momento">Não precisa no momento</option>
             </select>
         </div>
 
@@ -189,6 +246,7 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
                 <option value="">Selecione</option>
                 <option value="possui">Possui</option>
                 <option value="nao_possui">Não possui</option>
+                <option value="nao_precisa_momento">Não precisa no momento</option>
             </select>
         </div>
 
@@ -204,6 +262,7 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
                 <option value="possui">Possui</option>
                 <option value="nao_possui">Não possui</option>
                 <option value="nao_tem_funcionario">Não tem funcionário</option>
+                <option value="nao_precisa_momento">Não precisa no momento</option>
             </select>
         </div>
 
@@ -213,6 +272,7 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
                 <option value="">Selecione</option>
                 <option value="possui">Possui</option>
                 <option value="nao_possui">Não possui</option>
+                <option value="nao_precisa_momento">Não precisa no momento</option>
             </select>
         </div>
 
@@ -227,6 +287,7 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
                 <option value="">Selecione</option>
                 <option value="possui">Possui</option>
                 <option value="nao_possui">Não possui</option>
+                <option value="nao_precisa_momento">Não precisa no momento</option>
             </select>
             <input type="hidden" name="procuracao_particular_razao_social_correta" id="procuracao_particular_razao_social_correta" value="sim">
             <input type="hidden" name="procuracao_particular_endereco_correto" id="procuracao_particular_endereco_correto" value="sim">
@@ -239,6 +300,7 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
                 <option value="">Selecione</option>
                 <option value="possui">Possui</option>
                 <option value="nao_possui">Não possui</option>
+                <option value="nao_precisa_momento">Não precisa no momento</option>
                 <option value="goias">Goiás</option>
             </select>
         </div>
@@ -249,6 +311,7 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
                 <option value="">Selecione</option>
                 <option value="possui">Possui</option>
                 <option value="nao_possui">Não possui</option>
+                <option value="nao_precisa_momento">Não precisa no momento</option>
             </select>
         </div>
 
@@ -430,6 +493,96 @@ $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
 
             <div class="modal-footer">
                 <button type="button" class="btn btn-primary" id="btnConcluirAlvaras">Concluir</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalAlvarasGoiasCliente" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title">Alvarás Goiás</h5>
+                    <small class="text-muted">Informe Bombeiros, Vigilância e Prefeitura com vencimento, taxa e vistoria prévia quando existir.</small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="alert alert-danger d-none" id="alertaAlvarasGoiasObrigatorios">
+                    Quando marcar “Com vencimento”, informe a data do vencimento.
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Órgão</th>
+                                <th style="width: 190px;">Situação</th>
+                                <th style="width: 180px;">Vencimento</th>
+                                <th style="width: 160px;">Taxa</th>
+                                <th style="width: 190px;">Vistoria prévia</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($orgaosAlvaraGoias as $codigoOrgao => $nomeOrgao):
+                                $alvaraGoiasAtual = $alvarasGoiasCliente[$codigoOrgao] ?? [];
+                                $situacaoGoiasAtual = $alvaraGoiasAtual['situacao'] ?? 'nao_informado';
+                                $vencimentoGoiasAtual = $alvaraGoiasAtual['vencimento'] ?? '';
+                                $taxaGoiasAtual = isset($alvaraGoiasAtual['taxa'])
+                                    ? number_format((float)$alvaraGoiasAtual['taxa'], 2, ',', '.')
+                                    : '0,00';
+                                $vistoriaGoiasAtual = $alvaraGoiasAtual['vistoria_previa'] ?? 'sim';
+                            ?>
+                                <tr>
+                                    <td class="fw-semibold"><?= htmlspecialchars($nomeOrgao) ?></td>
+                                    <td>
+                                        <select
+                                            class="form-select alvara-goias-situacao"
+                                            name="alvaras_goias[<?= htmlspecialchars($codigoOrgao) ?>][situacao]"
+                                            data-vencimento="alvara_goias_vencimento_<?= htmlspecialchars($codigoOrgao) ?>">
+                                            <option value="nao_informado" <?= $situacaoGoiasAtual === 'nao_informado' || $situacaoGoiasAtual === '' ? 'selected' : '' ?>>Não informado</option>
+                                            <option value="com_vencimento" <?= $situacaoGoiasAtual === 'com_vencimento' ? 'selected' : '' ?>>Com vencimento</option>
+                                            <option value="dispensado" <?= $situacaoGoiasAtual === 'dispensado' ? 'selected' : '' ?>>Dispensado</option>
+                                            <option value="em_estudo" <?= $situacaoGoiasAtual === 'em_estudo' ? 'selected' : '' ?>>Em estudo</option>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <input
+                                            type="date"
+                                            class="form-control alvara-goias-vencimento"
+                                            name="alvaras_goias[<?= htmlspecialchars($codigoOrgao) ?>][vencimento]"
+                                            id="alvara_goias_vencimento_<?= htmlspecialchars($codigoOrgao) ?>"
+                                            value="<?= htmlspecialchars($vencimentoGoiasAtual) ?>"
+                                            <?= $situacaoGoiasAtual === 'com_vencimento' ? 'required' : '' ?>
+                                            <?= $situacaoGoiasAtual !== 'com_vencimento' ? 'disabled' : '' ?>>
+                                    </td>
+                                    <td>
+                                        <input
+                                            type="text"
+                                            inputmode="decimal"
+                                            class="form-control alvara-goias-taxa"
+                                            name="alvaras_goias[<?= htmlspecialchars($codigoOrgao) ?>][taxa]"
+                                            value="<?= htmlspecialchars($taxaGoiasAtual) ?>"
+                                            placeholder="0,00">
+                                    </td>
+                                    <td>
+                                        <select class="form-select" name="alvaras_goias[<?= htmlspecialchars($codigoOrgao) ?>][vistoria_previa]">
+                                            <option value="sim" <?= $vistoriaGoiasAtual === 'sim' ? 'selected' : '' ?>>Sim</option>
+                                            <option value="nao" <?= $vistoriaGoiasAtual === 'nao' ? 'selected' : '' ?>>Não</option>
+                                            <option value="dispensada" <?= $vistoriaGoiasAtual === 'dispensada' ? 'selected' : '' ?>>Dispensada</option>
+                                        </select>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" id="btnConcluirAlvarasGoias">Concluir</button>
             </div>
         </div>
     </div>

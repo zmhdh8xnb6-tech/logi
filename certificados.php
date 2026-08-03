@@ -5,6 +5,7 @@ exigirPermissao('certificados');
 
 $paralisacaoCertificadoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status')
     && logiColunaExiste($pdo, 'clientes', 'paralisacao_fim');
+$certificadoStatusDisponivel = logiColunaExiste($pdo, 'clientes', 'certificado_status');
 
 $stmt = $pdo->query("
     SELECT *
@@ -86,6 +87,10 @@ function certificadoClienteParalisado(array $cliente): bool
                             <?php foreach ($certificados as $cliente):
 
                                 $temCertificado = !empty($cliente['vencimento_certificado']);
+                                $certificadoStatus = $certificadoStatusDisponivel
+                                    ? ($cliente['certificado_status'] ?? ($temCertificado ? 'possui' : 'nao_possui'))
+                                    : ($temCertificado ? 'possui' : 'nao_possui');
+                                $certificadoNaoPrecisa = $certificadoStatus === 'nao_precisa_momento';
                                 $clienteParalisado = $paralisacaoCertificadoDisponivel && certificadoClienteParalisado($cliente);
                                 $diasRestantes = null;
                                 $certificadoVencido = false;
@@ -122,8 +127,8 @@ function certificadoClienteParalisado(array $cliente): bool
                                     </td>
 
                                     <td>
-                                        <span class="badge certificado-status <?= $clienteParalisado ? 'bg-secondary' : ($certificadoVencido ? 'bg-danger' : ($temCertificado ? 'bg-success' : 'bg-danger')) ?>">
-                                            <?= $clienteParalisado ? 'Empresa paralisada' : ($certificadoVencido ? 'Vencido' : ($temCertificado ? 'Possui' : 'Não possui')) ?>
+                                        <span class="badge certificado-status <?= $clienteParalisado ? 'bg-secondary' : ($certificadoNaoPrecisa ? 'bg-info text-dark' : ($certificadoVencido ? 'bg-danger' : ($temCertificado ? 'bg-success' : 'bg-danger'))) ?>">
+                                            <?= $clienteParalisado ? 'Empresa paralisada' : ($certificadoNaoPrecisa ? 'Não precisa no momento' : ($certificadoVencido ? 'Vencido' : ($temCertificado ? 'Possui' : 'Não possui'))) ?>
                                         </span>
                                     </td>
 
@@ -135,6 +140,12 @@ function certificadoClienteParalisado(array $cliente): bool
                                         <?php if ($clienteParalisado): ?>
 
                                             <span class="badge bg-secondary">
+                                                Não se aplica
+                                            </span>
+
+                                        <?php elseif ($certificadoNaoPrecisa): ?>
+
+                                            <span class="badge bg-info text-dark">
                                                 Não se aplica
                                             </span>
 
@@ -186,6 +197,7 @@ function certificadoClienteParalisado(array $cliente): bool
                                             class="btn btn-outline-primary btn-sm btn-editar-certificado"
                                             data-id="<?= (int)$cliente['id'] ?>"
                                             data-cliente="<?= htmlspecialchars($cliente['codigo'] . ' - ' . $cliente['nome'], ENT_QUOTES, 'UTF-8') ?>"
+                                            data-status="<?= htmlspecialchars($certificadoStatus) ?>"
                                             data-vencimento="<?= htmlspecialchars($cliente['vencimento_certificado'] ?? '') ?>"
                                             data-paralisada="<?= $clienteParalisado ? '1' : '0' ?>">
                                             <i class="bi bi-pencil"></i>
@@ -231,6 +243,17 @@ function certificadoClienteParalisado(array $cliente): bool
                         <input type="text" class="form-control" id="modalCertificadoCliente" disabled>
                     </div>
 
+                    <?php if ($certificadoStatusDisponivel): ?>
+                        <div class="mb-3">
+                            <label for="modalCertificadoStatus" class="form-label">Status</label>
+                            <select class="form-select" id="modalCertificadoStatus">
+                                <option value="possui">Possui</option>
+                                <option value="nao_possui">Não possui</option>
+                                <option value="nao_precisa_momento">Não precisa no momento</option>
+                            </select>
+                        </div>
+                    <?php endif; ?>
+
                     <div class="mb-3">
                         <label for="modalCertificadoVencimento" class="form-label">Vencimento</label>
                         <input type="date" class="form-control" id="modalCertificadoVencimento">
@@ -258,6 +281,7 @@ function certificadoClienteParalisado(array $cliente): bool
         const certificadosVazio = document.getElementById('certificadosVazio');
         const modalEditarCertificado = document.getElementById('modalEditarCertificado');
         const campoModalCertificadoVencimento = document.getElementById('modalCertificadoVencimento');
+        const campoModalCertificadoStatus = document.getElementById('modalCertificadoStatus');
         const botaoSalvarModalCertificado = document.getElementById('btnSalvarModalCertificado');
         let salvandoCertificado = false;
         let vencimentoCertificadoInicial = '';
@@ -441,6 +465,23 @@ function certificadoClienteParalisado(array $cliente): bool
             return data < hoje;
         }
 
+        function atualizarCampoVencimentoCertificado() {
+            if (!campoModalCertificadoStatus) {
+                return;
+            }
+
+            const possui = campoModalCertificadoStatus.value === 'possui';
+            campoModalCertificadoVencimento.disabled = !possui;
+
+            if (!possui) {
+                campoModalCertificadoVencimento.value = '';
+            }
+        }
+
+        if (campoModalCertificadoStatus) {
+            campoModalCertificadoStatus.addEventListener('change', atualizarCampoVencimentoCertificado);
+        }
+
         document.querySelectorAll('.btn-editar-certificado').forEach(function(botao) {
             botao.addEventListener('click', function() {
                 linhaCertificadoAtual = this.closest('tr');
@@ -450,6 +491,10 @@ function certificadoClienteParalisado(array $cliente): bool
                 document.getElementById('modalCertificadoCliente').value = this.dataset.cliente;
                 vencimentoCertificadoInicial = this.dataset.vencimento || '';
                 campoModalCertificadoVencimento.value = vencimentoCertificadoInicial;
+                if (campoModalCertificadoStatus) {
+                    campoModalCertificadoStatus.value = this.dataset.status || (vencimentoCertificadoInicial ? 'possui' : 'nao_possui');
+                    atualizarCampoVencimentoCertificado();
+                }
 
                 if (window.sincronizarCalendarioCampo) {
                     window.sincronizarCalendarioCampo(campoModalCertificadoVencimento);
@@ -467,6 +512,7 @@ function certificadoClienteParalisado(array $cliente): bool
 
             const id = document.getElementById('modalCertificadoId').value;
             const vencimento = campoModalCertificadoVencimento.value;
+            const certificadoStatus = campoModalCertificadoStatus ? campoModalCertificadoStatus.value : (vencimento ? 'possui' : 'nao_possui');
             const botao = botaoSalvarModalCertificado;
 
             salvandoCertificado = true;
@@ -479,6 +525,7 @@ function certificadoClienteParalisado(array $cliente): bool
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
                     body: 'id=' + encodeURIComponent(id) +
+                        '&certificado_status=' + encodeURIComponent(certificadoStatus) +
                         '&vencimento_certificado=' + encodeURIComponent(vencimento)
                 })
                 .then(response => response.text())
@@ -492,6 +539,9 @@ function certificadoClienteParalisado(array $cliente): bool
                         if (clienteParalisado) {
                             status.className = 'badge certificado-status bg-secondary';
                             status.textContent = 'Empresa paralisada';
+                        } else if (certificadoStatus === 'nao_precisa_momento') {
+                            status.className = 'badge certificado-status bg-info text-dark';
+                            status.textContent = 'Não precisa no momento';
                         } else if (certificadoEstaVencido(vencimento)) {
                             status.className = 'badge certificado-status bg-danger';
                             status.textContent = 'Vencido';
@@ -507,8 +557,11 @@ function certificadoClienteParalisado(array $cliente): bool
                         vencimentoTexto.textContent = formatarDataCertificado(vencimento);
                         dias.innerHTML = clienteParalisado ?
                             '<span class="badge bg-secondary">Não se aplica</span>' :
+                            certificadoStatus === 'nao_precisa_momento' ?
+                            '<span class="badge bg-info text-dark">Não se aplica</span>' :
                             textoDiasCertificado(vencimento);
                         botaoCertificadoAtual.dataset.vencimento = vencimento;
+                        botaoCertificadoAtual.dataset.status = certificadoStatus;
                         vencimentoCertificadoInicial = vencimento;
 
                         bootstrap.Modal.getInstance(modalEditarCertificado).hide();

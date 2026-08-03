@@ -48,6 +48,7 @@ function textoSituacaoAlvaraDf(string $situacao): string
     return [
         'possui' => 'Possui',
         'nao_possui' => 'Não possui',
+        'nao_precisa_momento' => 'Não precisa no momento',
         'paralisada' => 'Empresa paralisada',
         'vencido' => 'Vencido',
         'goias' => 'Goiás',
@@ -59,6 +60,7 @@ function classeSituacaoAlvaraDf(string $situacao): string
     return [
         'possui' => 'bg-success',
         'nao_possui' => 'bg-danger',
+        'nao_precisa_momento' => 'bg-info text-dark',
         'paralisada' => 'bg-secondary',
         'vencido' => 'bg-danger',
         'goias' => 'bg-info text-dark',
@@ -70,6 +72,7 @@ function textoCadastroDfLegal(string $situacao): string
     return [
         'cadastrado' => 'Cadastrado',
         'nao_cadastrado' => 'Não cadastrado',
+        'nao_precisa_momento' => 'Não precisa no momento',
         'paralisada' => 'Empresa paralisada',
         'goias' => 'Goiás',
     ][$situacao] ?? 'Não informado';
@@ -89,7 +92,7 @@ function classeCadastroDfLegal(string $situacao, bool $dadosPendentes): string
         return 'bg-secondary';
     }
 
-    if ($situacao === 'goias') {
+    if (in_array($situacao, ['goias', 'nao_precisa_momento'], true)) {
         return 'bg-info text-dark';
     }
 
@@ -258,6 +261,7 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
                         <option value="possui">Possui</option>
                         <option value="vencido">Vencido</option>
                         <option value="nao_possui">Não possui</option>
+                        <option value="nao_precisa_momento">Não precisa no momento</option>
                         <option value="nao_informado">Não informado</option>
                     </select>
                 </div>
@@ -409,6 +413,7 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
                                     <option value="">Selecione</option>
                                     <option value="possui">Possui</option>
                                     <option value="nao_possui">Não possui</option>
+                                    <option value="nao_precisa_momento">Não precisa no momento</option>
                                     <option value="goias">Goiás</option>
                                 </select>
                                 <div class="invalid-feedback">Informe a situação dos alvarás.</div>
@@ -420,6 +425,7 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
                                     <option value="">Selecione</option>
                                     <option value="cadastrado">Cadastrado</option>
                                     <option value="nao_cadastrado">Não cadastrado</option>
+                                    <option value="nao_precisa_momento">Não precisa no momento</option>
                                     <option value="goias">Goiás</option>
                                 </select>
                                 <div class="invalid-feedback">Informe a situação do cadastro DF Legal.</div>
@@ -649,6 +655,7 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
             return {
                 possui: 'Possui',
                 nao_possui: 'Não possui',
+                nao_precisa_momento: 'Não precisa no momento',
                 paralisada: 'Empresa paralisada',
                 vencido: 'Vencido',
                 goias: 'Goiás'
@@ -659,6 +666,7 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
             return {
                 possui: 'badge badge-alvara bg-success',
                 nao_possui: 'badge badge-alvara bg-danger',
+                nao_precisa_momento: 'badge badge-alvara bg-info text-dark',
                 paralisada: 'badge badge-alvara bg-secondary',
                 vencido: 'badge badge-alvara bg-danger',
                 goias: 'badge badge-alvara bg-info text-dark'
@@ -673,6 +681,7 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
             return {
                 cadastrado: 'Cadastrado',
                 nao_cadastrado: 'Não cadastrado',
+                nao_precisa_momento: 'Não precisa no momento',
                 paralisada: 'Empresa paralisada',
                 goias: 'Goiás'
             } [status] || 'Não informado';
@@ -686,6 +695,7 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
             return {
                 cadastrado: 'badge badge-df-legal bg-success',
                 nao_cadastrado: 'badge badge-df-legal bg-danger',
+                nao_precisa_momento: 'badge badge-df-legal bg-info text-dark',
                 paralisada: 'badge badge-df-legal bg-secondary',
                 goias: 'badge badge-df-legal bg-info text-dark'
             } [status] || 'badge badge-df-legal bg-warning text-dark';

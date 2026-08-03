@@ -82,11 +82,11 @@ $stmtAlvarasAntes = $pdo->prepare("
 $stmtAlvarasAntes->execute([$clienteId]);
 $alvarasAntes = $stmtAlvarasAntes->fetchAll(PDO::FETCH_ASSOC);
 
-if (!in_array($situacaoAlvara, ['possui', 'nao_possui', 'goias'], true)) {
+if (!in_array($situacaoAlvara, ['possui', 'nao_possui', 'nao_precisa_momento', 'goias'], true)) {
     responderAlvara(false, 'Informe a situação do alvará.');
 }
 
-if (!in_array($cadastroDfLegal, ['cadastrado', 'nao_cadastrado', 'goias'], true)) {
+if (!in_array($cadastroDfLegal, ['cadastrado', 'nao_cadastrado', 'nao_precisa_momento', 'goias'], true)) {
     responderAlvara(false, 'Informe a situação do cadastro DF Legal.');
 }
 

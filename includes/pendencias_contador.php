@@ -29,6 +29,7 @@ function contarPendenciasSistema(PDO $pdo): int
     $paralisacaoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status')
         && logiColunaExiste($pdo, 'clientes', 'paralisacao_fim');
     $alvaraGoiasDisponivel = logiTabelaExiste($pdo, 'cliente_alvaras_goias');
+    $certificadoStatusDisponivel = logiColunaExiste($pdo, 'clientes', 'certificado_status');
     if ($qsaDisponivel) {
         try {
             $stmtSocios = $pdo->query("
@@ -62,6 +63,8 @@ function contarPendenciasSistema(PDO $pdo): int
         $clienteParalisado = $paralisacaoDisponivel
             && ($cliente['paralisacao_status'] ?? '') === 'paralisada'
             && (empty($cliente['paralisacao_fim']) || $cliente['paralisacao_fim'] >= $hoje);
+        $certificadoNaoPrecisa = $certificadoStatusDisponivel
+            && ($cliente['certificado_status'] ?? '') === 'nao_precisa_momento';
 
         if ($clienteContabil && $clienteEnderecoIncompleto($cliente)) {
             $total++;
@@ -71,11 +74,11 @@ function contarPendenciasSistema(PDO $pdo): int
             $total++;
         }
 
-        if (!$clienteParalisado && $controlaCertificado && !empty($cliente['pendencia_certificado_digital'])) {
+        if (!$clienteParalisado && !$certificadoNaoPrecisa && $controlaCertificado && !empty($cliente['pendencia_certificado_digital'])) {
             $total++;
         }
 
-        if (!$clienteParalisado && $controlaCertificado) {
+        if (!$clienteParalisado && !$certificadoNaoPrecisa && $controlaCertificado) {
             $vencimentoCertificado = $cliente['vencimento_certificado'] ?? '';
 
             if (
@@ -104,6 +107,10 @@ function contarPendenciasSistema(PDO $pdo): int
 
             $status = $cliente[$procuracao['status']] ?? '';
 
+            if ($status === 'nao_precisa_momento') {
+                continue;
+            }
+
             if ($status === '' || $status === 'nao_possui') {
                 $total++;
                 continue;
@@ -126,7 +133,7 @@ function contarPendenciasSistema(PDO $pdo): int
             $total++;
         }
 
-        if (!$clienteParalisado && !empty($cliente['pendencia_alvara_funcionamento'])) {
+        if (!$clienteParalisado && ($cliente['alvara'] ?? '') !== 'nao_precisa_momento' && !empty($cliente['pendencia_alvara_funcionamento'])) {
             $total++;
         }
 
@@ -167,7 +174,7 @@ function contarPendenciasSistema(PDO $pdo): int
             $total++;
         }
 
-        if (!$clienteParalisado && !empty($cliente['pendencia_crf_dados'])) {
+        if (!$clienteParalisado && ($cliente['cadastro_crf'] ?? '') !== 'nao_precisa_momento' && !empty($cliente['pendencia_crf_dados'])) {
             $total++;
         }
 
@@ -175,11 +182,11 @@ function contarPendenciasSistema(PDO $pdo): int
             $total++;
         }
 
-        if (!$clienteParalisado && !empty($cliente['pendencia_df_legal_dados'])) {
+        if (!$clienteParalisado && ($cliente['cadastro_df_legal'] ?? '') !== 'nao_precisa_momento' && !empty($cliente['pendencia_df_legal_dados'])) {
             $total++;
         }
 
-        if (!empty($cliente['pendencia_procuracao_particular_dados'])) {
+        if (($cliente['procuracao_particular'] ?? '') !== 'nao_precisa_momento' && !empty($cliente['pendencia_procuracao_particular_dados'])) {
             $total++;
         }
 

@@ -26,16 +26,16 @@ $permissaoPorCampo = [
 ];
 
 $camposStatusPermitidos = [
-    'cadastro_df_legal' => ['cadastrado', 'nao_cadastrado', 'goias'],
-    'contador' => ['sim', 'nao'],
-    'cadastro_crf' => ['cadastrado', 'nao_cadastrado'],
-    'contrato_prestacao_servicos' => ['possui', 'nao_possui'],
-    'procuracao_receita_federal' => ['possui', 'nao_possui'],
-    'procuracao_conectividade' => ['possui', 'nao_possui'],
-    'procuracao_empregador_web' => ['possui', 'nao_possui', 'nao_tem_funcionario'],
-    'procuracao_fgts' => ['possui', 'nao_possui'],
-    'procuracao_particular' => ['possui', 'nao_possui'],
-    'procuracao_sefaz' => ['possui', 'nao_possui', 'goias'],
+    'cadastro_df_legal' => ['cadastrado', 'nao_cadastrado', 'nao_precisa_momento', 'goias'],
+    'contador' => ['sim', 'nao', 'nao_precisa_momento'],
+    'cadastro_crf' => ['cadastrado', 'nao_cadastrado', 'nao_precisa_momento'],
+    'contrato_prestacao_servicos' => ['possui', 'nao_possui', 'nao_precisa_momento'],
+    'procuracao_receita_federal' => ['possui', 'nao_possui', 'nao_precisa_momento'],
+    'procuracao_conectividade' => ['possui', 'nao_possui', 'nao_precisa_momento'],
+    'procuracao_empregador_web' => ['possui', 'nao_possui', 'nao_tem_funcionario', 'nao_precisa_momento'],
+    'procuracao_fgts' => ['possui', 'nao_possui', 'nao_precisa_momento'],
+    'procuracao_particular' => ['possui', 'nao_possui', 'nao_precisa_momento'],
+    'procuracao_sefaz' => ['possui', 'nao_possui', 'nao_precisa_momento', 'goias'],
 ];
 
 $pendenciasConferenciaDados = [

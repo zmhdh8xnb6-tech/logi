@@ -27,6 +27,18 @@ function listarAvisosVencimentosSistema(PDO $pdo): array
     $hoje = date('Y-m-d');
     $limiteAlerta = date('Y-m-d', strtotime('+30 days'));
     $avisos = [];
+    $mesAtual = (int)date('n');
+
+    if (in_array($mesAtual, [1, 2], true)) {
+        adicionarAvisoVencimento(
+            $avisos,
+            'Guias do DF Legal',
+            'Emitir as guias do DF Legal. Elas vencem em julho, mas o ideal é agilizar em janeiro e, no máximo, fevereiro.',
+            'alvaras_df.php',
+            'bi-building-check'
+        );
+    }
+
     $paralisacaoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status')
         && logiColunaExiste($pdo, 'clientes', 'paralisacao_fim');
 

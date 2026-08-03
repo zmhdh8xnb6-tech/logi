@@ -5,6 +5,7 @@ exigirPermissao('certificados');
 
 $id = $_POST['id'] ?? '';
 $vencimento = $_POST['vencimento_certificado'] ?? '';
+$certificadoStatus = $_POST['certificado_status'] ?? '';
 
 if ($id == '') {
     echo 'erro';
@@ -12,9 +13,20 @@ if ($id == '') {
 }
 
 $vencimento = $vencimento !== '' ? $vencimento : null;
+$certificadoStatusDisponivel = logiColunaExiste($pdo, 'clientes', 'certificado_status');
+
+if ($certificadoStatusDisponivel) {
+    if (!in_array($certificadoStatus, ['possui', 'nao_possui', 'nao_precisa_momento'], true)) {
+        $certificadoStatus = $vencimento !== null ? 'possui' : 'nao_possui';
+    }
+
+    if (in_array($certificadoStatus, ['nao_possui', 'nao_precisa_momento'], true)) {
+        $vencimento = null;
+    }
+}
 
 $stmtAntes = $pdo->prepare("
-    SELECT id, codigo, nome, vencimento_certificado
+    SELECT *
     FROM clientes
     WHERE id = ?
     " . empresaFiltroClienteDireto($pdo) . "
@@ -27,22 +39,30 @@ if (!$clienteAntes) {
     exit;
 }
 
+$setCertificadoStatus = $certificadoStatusDisponivel ? ', certificado_status = ?' : '';
+
 $stmt = $pdo->prepare("
     UPDATE clientes
     SET vencimento_certificado = ?,
         servico_certificado = 1
+        {$setCertificadoStatus}
     WHERE id = ?
       " . empresaFiltroClienteDireto($pdo) . "
 ");
 
-$ok = $stmt->execute([
-    $vencimento,
-    $id
-]);
+$valores = [$vencimento];
+
+if ($certificadoStatusDisponivel) {
+    $valores[] = $certificadoStatus;
+}
+
+$valores[] = $id;
+$ok = $stmt->execute($valores);
 
 if ($ok && $clienteAntes) {
     $clienteDepois = $clienteAntes;
     $clienteDepois['vencimento_certificado'] = $vencimento;
+    $clienteDepois['certificado_status'] = $certificadoStatusDisponivel ? $certificadoStatus : ($clienteDepois['certificado_status'] ?? null);
     $mudancas = auditoriaMudancas($clienteAntes, $clienteDepois);
     registrarAuditoria(
         $pdo,

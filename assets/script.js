@@ -191,6 +191,10 @@ $(document).ready(function () {
 
                     mostrarAviso('Preencha todos os órgãos do alvará com vencimento, como dispensado ou em estudo.');
 
+                } else if (resp.trim() === 'alvaras_goias_incompletos') {
+
+                    mostrarAviso('Confira os alvarás Goiás. Quando marcar “Com vencimento”, informe a data.');
+
                 } else if (resp.trim() === 'servico_avulso_obrigatorio') {
 
                     $('#servicosAvulsosFeedback').removeClass('d-none').show();
@@ -292,8 +296,22 @@ $(document).ready(function () {
         }
     });
 
+    function atualizarBotoesAlvaras() {
+        const valorAlvara = $('#alvara').val();
+        $('#btnEditarAlvaras').toggleClass('d-none', valorAlvara !== 'possui');
+        $('#btnEditarAlvarasGoias').toggleClass('d-none', valorAlvara !== 'goias');
+    }
+
+    function abrirModalAlvarasGoias() {
+        const modalGoias = document.getElementById('modalAlvarasGoiasCliente');
+
+        if (modalGoias) {
+            bootstrap.Modal.getOrCreateInstance(modalGoias).show();
+        }
+    }
+
     $('#alvara').on('change', function () {
-        $('#btnEditarAlvaras').toggleClass('d-none', this.value !== 'possui');
+        atualizarBotoesAlvaras();
 
         if (this.value === 'possui') {
             document.querySelectorAll('.alvara-situacao').forEach(function (campo) {
@@ -308,6 +326,16 @@ $(document).ready(function () {
             });
 
             $('.alvara-situacao').val('').trigger('change');
+
+            if (this.value === 'goias') {
+                abrirModalAlvarasGoias();
+            }
+        }
+    });
+
+    $('#cadastro_df_legal').on('change', function () {
+        if (this.value === 'goias') {
+            abrirModalAlvarasGoias();
         }
     });
 
@@ -334,6 +362,28 @@ $(document).ready(function () {
             campoVencimento.value = '';
             campoVencimento.classList.remove('is-invalid');
         }
+    });
+
+    $(document).on('change', '.alvara-goias-situacao', function () {
+        const campoVencimento = document.getElementById(this.dataset.vencimento);
+        const possuiVencimento = this.value === 'com_vencimento';
+
+        campoVencimento.disabled = !possuiVencimento;
+        campoVencimento.required = possuiVencimento;
+
+        if (!possuiVencimento) {
+            campoVencimento.value = '';
+            campoVencimento.classList.remove('is-invalid');
+        }
+    });
+
+    $(document).on('input', '.alvara-goias-taxa', function () {
+        const digitos = this.value.replace(/\D/g, '');
+        const valor = Number(digitos || 0) / 100;
+        this.value = valor.toLocaleString('pt-BR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
     });
 
     $(document).on('change', '.controle-com-vencimento', function () {
@@ -433,6 +483,18 @@ $(document).ready(function () {
         }
     });
 
+    $('#btnConcluirAlvarasGoias').on('click', function () {
+        if (!validarPreenchimentoAlvarasGoias()) {
+            return;
+        }
+
+        const modal = bootstrap.Modal.getInstance(document.getElementById('modalAlvarasGoiasCliente'));
+
+        if (modal) {
+            modal.hide();
+        }
+    });
+
 });
 
 function atualizarCampoVencimentoControle(campoSituacao, darFoco = false) {
@@ -473,6 +535,30 @@ function validarPreenchimentoAlvaras() {
 
     const alerta = document.getElementById('alertaAlvarasObrigatorios');
     alerta.classList.toggle('d-none', valido);
+
+    return valido;
+}
+
+function validarPreenchimentoAlvarasGoias() {
+    let valido = true;
+
+    document.querySelectorAll('.alvara-goias-situacao').forEach(function (campoSituacao) {
+        const campoVencimento = document.getElementById(campoSituacao.dataset.vencimento);
+
+        campoSituacao.classList.remove('is-invalid');
+        campoVencimento.classList.remove('is-invalid');
+
+        if (campoSituacao.value === 'com_vencimento' && campoVencimento.value === '') {
+            campoVencimento.classList.add('is-invalid');
+            valido = false;
+        }
+    });
+
+    const alerta = document.getElementById('alertaAlvarasGoiasObrigatorios');
+
+    if (alerta) {
+        alerta.classList.toggle('d-none', valido);
+    }
 
     return valido;
 }
@@ -918,6 +1004,17 @@ function validarFormulario() {
     if (!alvarasValidos) {
         valido = false;
         const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modalAlvaras'));
+        modal.show();
+        return false;
+    }
+
+    const alvarasGoiasValidos = !clienteContabil
+        || ($('#alvara').val() !== 'goias' && $('#cadastro_df_legal').val() !== 'goias')
+        || validarPreenchimentoAlvarasGoias();
+
+    if (!alvarasGoiasValidos) {
+        valido = false;
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modalAlvarasGoiasCliente'));
         modal.show();
         return false;
     }

@@ -39,6 +39,13 @@ function modalCertificado(array $cliente): array
         'modo' => 'certificado',
         'titulo' => 'Resolver certificado',
         'cliente' => trim(($cliente['codigo'] ?? '') . ' - ' . ($cliente['nome'] ?? '')),
+        'campo_status' => 'certificado_status',
+        'status_atual' => $cliente['certificado_status'] ?? (!empty($cliente['vencimento_certificado']) ? 'possui' : 'nao_possui'),
+        'opcoes' => [
+            'possui' => 'Possui',
+            'nao_possui' => 'Não possui',
+            'nao_precisa_momento' => 'Não precisa no momento',
+        ],
         'vencimento_atual' => $cliente['vencimento_certificado'] ?? '',
     ];
 }
@@ -114,6 +121,7 @@ $paralisacaoDisponivel = logiColunaExiste($pdo, 'clientes', 'paralisacao_status'
     && logiColunaExiste($pdo, 'clientes', 'paralisacao_fim');
 $alvaraGoiasDisponivel = logiTabelaExiste($pdo, 'cliente_alvaras_goias');
 $alvarasGoiasPorCliente = [];
+$certificadoStatusDisponivel = logiColunaExiste($pdo, 'clientes', 'certificado_status');
 
 foreach ($clientes as $cliente) {
     if ((int)($cliente['cliente_contabil'] ?? 1) !== 1) {
@@ -227,6 +235,8 @@ foreach ($clientes as $cliente) {
     $clienteParalisado = $paralisacaoDisponivel
         && ($cliente['paralisacao_status'] ?? '') === 'paralisada'
         && (empty($cliente['paralisacao_fim']) || $cliente['paralisacao_fim'] >= $hoje);
+    $certificadoNaoPrecisa = $certificadoStatusDisponivel
+        && ($cliente['certificado_status'] ?? '') === 'nao_precisa_momento';
 
     if ($clienteContabil && clienteEnderecoIncompleto($cliente)) {
         adicionarPendencia(
@@ -256,7 +266,7 @@ foreach ($clientes as $cliente) {
         );
     }
 
-    if (!$clienteParalisado && $controlaCertificado && !empty($cliente['pendencia_certificado_digital'])) {
+    if (!$clienteParalisado && !$certificadoNaoPrecisa && $controlaCertificado && !empty($cliente['pendencia_certificado_digital'])) {
         adicionarPendencia(
             $pendencias,
             $resumo,
@@ -269,9 +279,9 @@ foreach ($clientes as $cliente) {
         );
     }
 
-    if (!$clienteParalisado && $controlaCertificado && empty($cliente['vencimento_certificado'])) {
+    if (!$clienteParalisado && !$certificadoNaoPrecisa && $controlaCertificado && empty($cliente['vencimento_certificado'])) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado digital não informado', 'Não possui', 'danger', null, null, modalCertificado($cliente));
-    } elseif (!$clienteParalisado && $controlaCertificado && $cliente['vencimento_certificado'] < $hoje) {
+    } elseif (!$clienteParalisado && !$certificadoNaoPrecisa && $controlaCertificado && $cliente['vencimento_certificado'] < $hoje) {
         adicionarPendencia($pendencias, $resumo, $cliente, 'Certificado', 'Certificado digital vencido em ' . dataBr($cliente['vencimento_certificado']), 'Vencido', 'danger', null, null, modalCertificado($cliente));
     }
 
@@ -292,12 +302,16 @@ foreach ($clientes as $cliente) {
         }
 
         $status = $cliente[$procuracao['status']] ?? '';
+        if ($status === 'nao_precisa_momento') {
+            continue;
+        }
+
         if ($procuracao['status'] === 'procuracao_sefaz') {
-            $opcoesProcuracao = ['possui' => 'Possui', 'nao_possui' => 'Não possui', 'goias' => 'Goiás'];
+            $opcoesProcuracao = ['possui' => 'Possui', 'nao_possui' => 'Não possui', 'nao_precisa_momento' => 'Não precisa no momento', 'goias' => 'Goiás'];
         } elseif ($procuracao['status'] === 'procuracao_empregador_web') {
-            $opcoesProcuracao = ['possui' => 'Possui', 'nao_possui' => 'Não possui', 'nao_tem_funcionario' => 'Não tem funcionário'];
+            $opcoesProcuracao = ['possui' => 'Possui', 'nao_possui' => 'Não possui', 'nao_tem_funcionario' => 'Não tem funcionário', 'nao_precisa_momento' => 'Não precisa no momento'];
         } else {
-            $opcoesProcuracao = ['possui' => 'Possui', 'nao_possui' => 'Não possui'];
+            $opcoesProcuracao = ['possui' => 'Possui', 'nao_possui' => 'Não possui', 'nao_precisa_momento' => 'Não precisa no momento'];
         }
         $modalProcuracao = modalControle(
             $cliente,
@@ -350,7 +364,7 @@ foreach ($clientes as $cliente) {
         );
     }
 
-    if (!$clienteParalisado && !empty($cliente['pendencia_alvara_funcionamento'])) {
+    if (!$clienteParalisado && ($cliente['alvara'] ?? '') !== 'nao_precisa_momento' && !empty($cliente['pendencia_alvara_funcionamento'])) {
         adicionarPendencia(
             $pendencias,
             $resumo,
@@ -391,31 +405,31 @@ foreach ($clientes as $cliente) {
     }
 
     if (($cliente['contador'] ?? '') === '' || ($cliente['contador'] ?? '') === 'nao') {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Contador não informado ou marcado como sem contador', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver contador', 'contador', ['sim' => 'Contador ativo', 'nao' => 'Sem contador']));
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Contador não informado ou marcado como sem contador', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver contador', 'contador', ['sim' => 'Contador ativo', 'nao' => 'Sem contador', 'nao_precisa_momento' => 'Não precisa no momento']));
     }
 
     if (!$clienteParalisado && (($cliente['cadastro_crf'] ?? '') === '' || ($cliente['cadastro_crf'] ?? '') === 'nao_cadastrado')) {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro CRF não cadastrado', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro CRF', 'cadastro_crf', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado'], null, true));
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro CRF não cadastrado', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro CRF', 'cadastro_crf', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado', 'nao_precisa_momento' => 'Não precisa no momento'], null, true));
     }
 
-    if (!$clienteParalisado && !empty($cliente['pendencia_crf_dados'])) {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro CRF com razão social ou endereço incorreto', 'A resolver', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro CRF', 'cadastro_crf', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado'], null, true));
+    if (!$clienteParalisado && ($cliente['cadastro_crf'] ?? '') !== 'nao_precisa_momento' && !empty($cliente['pendencia_crf_dados'])) {
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro CRF com razão social ou endereço incorreto', 'A resolver', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro CRF', 'cadastro_crf', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado', 'nao_precisa_momento' => 'Não precisa no momento'], null, true));
     }
 
     if (!$clienteParalisado && (($cliente['cadastro_df_legal'] ?? '') === '' || ($cliente['cadastro_df_legal'] ?? '') === 'nao_cadastrado')) {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro DF Legal não cadastrado', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro DF Legal', 'cadastro_df_legal', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado', 'goias' => 'Goiás'], null, true));
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro DF Legal não cadastrado', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro DF Legal', 'cadastro_df_legal', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado', 'nao_precisa_momento' => 'Não precisa no momento', 'goias' => 'Goiás'], null, true));
     }
 
-    if (!$clienteParalisado && !empty($cliente['pendencia_df_legal_dados'])) {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro DF Legal com razão social ou endereço incorreto', 'A resolver', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro DF Legal', 'cadastro_df_legal', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado', 'goias' => 'Goiás'], null, true));
+    if (!$clienteParalisado && ($cliente['cadastro_df_legal'] ?? '') !== 'nao_precisa_momento' && !empty($cliente['pendencia_df_legal_dados'])) {
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Cadastro DF Legal com razão social ou endereço incorreto', 'A resolver', 'warning', null, null, modalControle($cliente, 'Resolver Cadastro DF Legal', 'cadastro_df_legal', ['cadastrado' => 'Cadastrado', 'nao_cadastrado' => 'Não cadastrado', 'nao_precisa_momento' => 'Não precisa no momento', 'goias' => 'Goiás'], null, true));
     }
 
-    if (!empty($cliente['pendencia_procuracao_particular_dados'])) {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', 'Procuração Particular com razão social, endereço ou sócio incorreto', 'A resolver', 'warning', null, null, modalControle($cliente, 'Resolver Procuração Particular', 'procuracao_particular', ['possui' => 'Possui', 'nao_possui' => 'Não possui'], null, true, true));
+    if (($cliente['procuracao_particular'] ?? '') !== 'nao_precisa_momento' && !empty($cliente['pendencia_procuracao_particular_dados'])) {
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Procurações', 'Procuração Particular com razão social, endereço ou sócio incorreto', 'A resolver', 'warning', null, null, modalControle($cliente, 'Resolver Procuração Particular', 'procuracao_particular', ['possui' => 'Possui', 'nao_possui' => 'Não possui', 'nao_precisa_momento' => 'Não precisa no momento'], null, true, true));
     }
 
     if (($cliente['contrato_prestacao_servicos'] ?? '') === '' || ($cliente['contrato_prestacao_servicos'] ?? '') === 'nao_possui') {
-        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Contrato de prestação de serviços não possui', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver contrato de prestação de serviços', 'contrato_prestacao_servicos', ['possui' => 'Possui', 'nao_possui' => 'Não possui']));
+        adicionarPendencia($pendencias, $resumo, $cliente, 'Controles internos', 'Contrato de prestação de serviços não possui', 'Pendente', 'warning', null, null, modalControle($cliente, 'Resolver contrato de prestação de serviços', 'contrato_prestacao_servicos', ['possui' => 'Possui', 'nao_possui' => 'Não possui', 'nao_precisa_momento' => 'Não precisa no momento']));
     }
 }
 
@@ -977,6 +991,7 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
                                     <option value="">Selecione</option>
                                     <option value="possui">Possui</option>
                                     <option value="nao_possui">Não possui</option>
+                                    <option value="nao_precisa_momento">Não precisa no momento</option>
                                     <option value="goias">Goiás</option>
                                 </select>
                                 <div class="invalid-feedback">Informe a situação dos alvarás.</div>
@@ -988,6 +1003,7 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
                                     <option value="">Selecione</option>
                                     <option value="cadastrado">Cadastrado</option>
                                     <option value="nao_cadastrado">Não cadastrado</option>
+                                    <option value="nao_precisa_momento">Não precisa no momento</option>
                                     <option value="goias">Goiás</option>
                                 </select>
                                 <div class="invalid-feedback">Informe a situação do cadastro DF Legal.</div>
@@ -1343,8 +1359,14 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
             const vencimento = document.getElementById('modalPendenciaVencimento');
 
             if (modo === 'certificado') {
+                const possui = status === 'possui';
                 grupoVencimento.classList.remove('d-none');
-                vencimento.disabled = false;
+                vencimento.disabled = !possui;
+
+                if (!possui) {
+                    vencimento.value = '';
+                }
+
                 sincronizarCampoDataPendencia(vencimento);
                 return;
             }
@@ -1385,7 +1407,15 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
 
         function pendenciaFoiResolvida(modo, status, vencimento, campoVencimento) {
             if (modo === 'certificado') {
-                return vencimentoNaoEstaVencido(vencimento);
+                if (status === 'nao_precisa_momento') {
+                    return true;
+                }
+
+                return status === 'possui' && vencimentoNaoEstaVencido(vencimento);
+            }
+
+            if (status === 'nao_precisa_momento') {
+                return true;
             }
 
             if (['nao', 'nao_possui', 'nao_cadastrado', ''].includes(status)) {
@@ -1436,8 +1466,9 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
                 document.getElementById('pendencia_socio_sim').checked = true;
 
                 if (modo === 'certificado') {
-                    document.getElementById('grupoModalPendenciaStatus').classList.add('d-none');
-                    document.getElementById('textoAjudaModalPendencia').textContent = 'Deixe em branco para marcar como não possui.';
+                    document.getElementById('grupoModalPendenciaStatus').classList.remove('d-none');
+                    preencherOpcoesPendencia(configuracaoPendenciaAtual.opcoes || {}, configuracaoPendenciaAtual.status_atual || '');
+                    document.getElementById('textoAjudaModalPendencia').textContent = '';
                 } else {
                     document.getElementById('grupoModalPendenciaStatus').classList.remove('d-none');
                     document.getElementById('textoAjudaModalPendencia').textContent = '';
@@ -1519,6 +1550,22 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
             document.getElementById('modalPendenciaStatus').classList.remove('is-invalid');
             campoModalPendenciaVencimento.classList.remove('is-invalid');
 
+            if (modo === 'certificado') {
+                if (status === '') {
+                    document.getElementById('modalPendenciaStatus').classList.add('is-invalid');
+                    document.getElementById('modalPendenciaStatus').focus();
+                    return;
+                }
+
+                if (status === 'possui' && vencimento === '') {
+                    const campoData = campoModalPendenciaVencimento;
+                    campoData.classList.add('is-invalid');
+                    sincronizarCampoDataPendencia(campoData);
+                    focarCampoDataPendencia(campoData);
+                    return;
+                }
+            }
+
             if (modo === 'controle') {
                 if (status === '') {
                     document.getElementById('modalPendenciaStatus').classList.add('is-invalid');
@@ -1544,6 +1591,7 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
             dados.append('id', clienteId);
 
             if (modo === 'certificado') {
+                dados.append('certificado_status', status);
                 dados.append('vencimento_certificado', vencimento);
             } else {
                 dados.append('campo_status', campoStatus);
