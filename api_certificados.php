@@ -15,16 +15,6 @@ if ($id == '') {
 $vencimento = $vencimento !== '' ? $vencimento : null;
 $certificadoStatusDisponivel = logiColunaExiste($pdo, 'clientes', 'certificado_status');
 
-if ($certificadoStatusDisponivel) {
-    if (!in_array($certificadoStatus, ['possui', 'nao_possui', 'nao_precisa_momento'], true)) {
-        $certificadoStatus = $vencimento !== null ? 'possui' : 'nao_possui';
-    }
-
-    if (in_array($certificadoStatus, ['nao_possui', 'nao_precisa_momento'], true)) {
-        $vencimento = null;
-    }
-}
-
 $stmtAntes = $pdo->prepare("
     SELECT *
     FROM clientes
@@ -37,6 +27,20 @@ $clienteAntes = $stmtAntes->fetch(PDO::FETCH_ASSOC);
 if (!$clienteAntes) {
     echo 'Cliente não encontrado nesta empresa.';
     exit;
+}
+
+if ($certificadoStatusDisponivel) {
+    if (!array_key_exists('certificado_status', $_POST)) {
+        $certificadoStatus = $clienteAntes['certificado_status'] ?? ($vencimento !== null ? 'possui' : 'nao_possui');
+    }
+
+    if (!in_array($certificadoStatus, ['possui', 'nao_possui', 'nao_precisa_momento'], true)) {
+        $certificadoStatus = $vencimento !== null ? 'possui' : 'nao_possui';
+    }
+
+    if (in_array($certificadoStatus, ['nao_possui', 'nao_precisa_momento'], true)) {
+        $vencimento = null;
+    }
 }
 
 $setCertificadoStatus = $certificadoStatusDisponivel ? ', certificado_status = ?' : '';

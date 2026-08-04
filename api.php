@@ -891,6 +891,54 @@ if ($action === 'create' || $action === 'update') {
         ? $_POST['vencimento_certificado']
         : null;
 
+    $clienteAtualPreservado = [];
+
+    if ($action === 'update' && $id !== '') {
+        $stmtClientePreservado = $pdo->prepare("
+            SELECT *
+            FROM clientes
+            WHERE id = ?
+            " . empresaFiltroClienteDireto($pdo) . "
+            LIMIT 1
+        ");
+        $stmtClientePreservado->execute([$id]);
+        $clienteAtualPreservado = $stmtClientePreservado->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $preservarCampoAusente = static function (string $campo, mixed $valorAtual) use ($clienteAtualPreservado): mixed {
+            return array_key_exists($campo, $_POST)
+                ? $valorAtual
+                : ($clienteAtualPreservado[$campo] ?? $valorAtual);
+        };
+
+        $preservarDataAusente = static function (string $campo, ?string $valorAtual) use ($clienteAtualPreservado): ?string {
+            if (array_key_exists($campo, $_POST)) {
+                return $valorAtual;
+            }
+
+            $valorAntigo = $clienteAtualPreservado[$campo] ?? null;
+            return $valorAntigo !== '' ? $valorAntigo : null;
+        };
+
+        $certificado_status = $preservarCampoAusente('certificado_status', $certificado_status);
+        $cadastro_df_legal = $preservarCampoAusente('cadastro_df_legal', $cadastro_df_legal);
+        $alvara = $preservarCampoAusente('alvara', $alvara);
+        $contador = $preservarCampoAusente('contador', $contador);
+        $cadastro_crf = $preservarCampoAusente('cadastro_crf', $cadastro_crf);
+        $procuracao_receita_federal = $preservarCampoAusente('procuracao_receita_federal', $procuracao_receita_federal);
+        $procuracao_conectividade = $preservarCampoAusente('procuracao_conectividade', $procuracao_conectividade);
+        $procuracao_empregador_web = $preservarCampoAusente('procuracao_empregador_web', $procuracao_empregador_web);
+        $procuracao_fgts = $preservarCampoAusente('procuracao_fgts', $procuracao_fgts);
+        $procuracao_particular = $preservarCampoAusente('procuracao_particular', $procuracao_particular);
+        $procuracao_sefaz = $preservarCampoAusente('procuracao_sefaz', $procuracao_sefaz);
+        $contrato_prestacao_servicos = $preservarCampoAusente('contrato_prestacao_servicos', $contrato_prestacao_servicos);
+        $tributacao = $preservarCampoAusente('tributacao', $tributacao);
+        $possui_parcelamento = $preservarCampoAusente('possui_parcelamento', $possui_parcelamento);
+        $vencimento_certificado = $preservarDataAusente('vencimento_certificado', $vencimento_certificado);
+        $vencimento_procuracao_receita_federal = $preservarDataAusente('vencimento_procuracao_receita_federal', $vencimento_procuracao_receita_federal);
+        $vencimento_procuracao_conectividade = $preservarDataAusente('vencimento_procuracao_conectividade', $vencimento_procuracao_conectividade);
+        $vencimento_procuracao_fgts = $preservarDataAusente('vencimento_procuracao_fgts', $vencimento_procuracao_fgts);
+    }
+
     if (!in_array((string)$cliente_contabil_enviado, ['0', '1'], true)) {
         echo 'cliente_contabil_obrigatorio';
         exit;
