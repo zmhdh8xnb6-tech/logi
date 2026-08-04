@@ -254,7 +254,7 @@ function certificadoClienteParalisado(array $cliente): bool
                         </div>
                     <?php endif; ?>
 
-                    <div class="mb-3">
+                    <div class="mb-3" id="grupoModalCertificadoVencimento">
                         <label for="modalCertificadoVencimento" class="form-label">Vencimento</label>
                         <input type="date" class="form-control" id="modalCertificadoVencimento">
                         <div class="form-text">Deixe em branco para marcar como não possui.</div>
@@ -280,6 +280,7 @@ function certificadoClienteParalisado(array $cliente): bool
         const paginacaoCertificados = document.getElementById('paginacaoCertificados');
         const certificadosVazio = document.getElementById('certificadosVazio');
         const modalEditarCertificado = document.getElementById('modalEditarCertificado');
+        const grupoModalCertificadoVencimento = document.getElementById('grupoModalCertificadoVencimento');
         const campoModalCertificadoVencimento = document.getElementById('modalCertificadoVencimento');
         const campoModalCertificadoStatus = document.getElementById('modalCertificadoStatus');
         const botaoSalvarModalCertificado = document.getElementById('btnSalvarModalCertificado');
@@ -471,6 +472,7 @@ function certificadoClienteParalisado(array $cliente): bool
             }
 
             const possui = campoModalCertificadoStatus.value === 'possui';
+            grupoModalCertificadoVencimento.classList.toggle('d-none', !possui);
             campoModalCertificadoVencimento.disabled = !possui;
 
             if (!possui) {
@@ -567,6 +569,15 @@ function certificadoClienteParalisado(array $cliente): bool
                         bootstrap.Modal.getInstance(modalEditarCertificado).hide();
                     } else {
                         botao.innerHTML = 'Erro';
+                        const mensagem = resp.trim();
+
+                        if (mensagem === 'certificado_status_coluna_ausente') {
+                            alert('O banco ainda não tem a coluna certificado_status. Rode o SQL de atualização antes de usar "Não precisa no momento" em certificados.');
+                        } else if (mensagem === 'certificado_status_coluna_desatualizada') {
+                            alert('A coluna certificado_status existe, mas ainda não aceita "Não precisa no momento". Rode o SQL de atualização do certificado_status.');
+                        } else if (mensagem === 'erro_salvar_certificado') {
+                            alert('Não foi possível salvar o certificado. Verifique se o banco está atualizado.');
+                        }
                     }
                 })
                 .catch(() => {

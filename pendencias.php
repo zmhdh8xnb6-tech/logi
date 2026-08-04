@@ -1365,7 +1365,7 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
 
             if (modo === 'certificado') {
                 const possui = status === 'possui';
-                grupoVencimento.classList.remove('d-none');
+                grupoVencimento.classList.toggle('d-none', !possui);
                 vencimento.disabled = !possui;
 
                 if (!possui) {
@@ -1631,6 +1631,15 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
                         campoData.classList.add('is-invalid');
                         sincronizarCampoDataPendencia(campoData);
                         focarCampoDataPendencia(campoData);
+                    } else if (resp.trim() === 'certificado_status_coluna_ausente') {
+                        botaoSalvarModalPendencia.innerHTML = 'Erro';
+                        document.getElementById('textoAjudaModalPendencia').textContent = 'O banco ainda não tem a coluna certificado_status. Rode o SQL de atualização antes de usar "Não precisa no momento" em certificados.';
+                    } else if (resp.trim() === 'certificado_status_coluna_desatualizada') {
+                        botaoSalvarModalPendencia.innerHTML = 'Erro';
+                        document.getElementById('textoAjudaModalPendencia').textContent = 'A coluna certificado_status existe, mas ainda não aceita "Não precisa no momento". Rode o SQL de atualização do certificado_status.';
+                    } else if (resp.trim() === 'erro_salvar_certificado') {
+                        botaoSalvarModalPendencia.innerHTML = 'Erro';
+                        document.getElementById('textoAjudaModalPendencia').textContent = 'Não foi possível salvar o certificado. Verifique se o banco está atualizado.';
                     } else {
                         botaoSalvarModalPendencia.innerHTML = 'Erro';
                         document.getElementById('textoAjudaModalPendencia').textContent = resp.trim() || 'Não foi possível salvar essa pendência.';
