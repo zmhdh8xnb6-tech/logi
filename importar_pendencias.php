@@ -11,6 +11,7 @@ $tiposImportacaoPendencias = [
         'permissao' => 'certificados',
         'campo_status' => 'certificado_status',
         'campo_vencimento' => 'vencimento_certificado',
+        'status_permitidos' => ['possui', 'nao_possui', 'nao_precisa_momento'],
         'status_possui' => 'possui',
         'status_nao' => 'nao_possui',
         'status_nao_precisa' => 'nao_precisa_momento',
@@ -20,6 +21,7 @@ $tiposImportacaoPendencias = [
         'permissao' => 'procuracoes',
         'campo_status' => 'procuracao_receita_federal',
         'campo_vencimento' => 'vencimento_procuracao_receita_federal',
+        'status_permitidos' => ['possui', 'nao_possui', 'nao_precisa_momento'],
         'status_possui' => 'possui',
         'status_nao' => 'nao_possui',
         'status_nao_precisa' => 'nao_precisa_momento',
@@ -29,6 +31,7 @@ $tiposImportacaoPendencias = [
         'permissao' => 'procuracoes',
         'campo_status' => 'procuracao_conectividade',
         'campo_vencimento' => 'vencimento_procuracao_conectividade',
+        'status_permitidos' => ['possui', 'nao_possui', 'nao_precisa_momento'],
         'status_possui' => 'possui',
         'status_nao' => 'nao_possui',
         'status_nao_precisa' => 'nao_precisa_momento',
@@ -38,6 +41,17 @@ $tiposImportacaoPendencias = [
         'permissao' => 'procuracoes',
         'campo_status' => 'procuracao_fgts',
         'campo_vencimento' => 'vencimento_procuracao_fgts',
+        'status_permitidos' => ['possui', 'nao_possui', 'nao_precisa_momento'],
+        'status_possui' => 'possui',
+        'status_nao' => 'nao_possui',
+        'status_nao_precisa' => 'nao_precisa_momento',
+    ],
+    'procuracao_empregador_web' => [
+        'titulo' => 'Procuração Empregador Web',
+        'permissao' => 'procuracoes',
+        'campo_status' => 'procuracao_empregador_web',
+        'campo_vencimento' => '',
+        'status_permitidos' => ['possui', 'nao_possui', 'nao_tem_funcionario', 'nao_precisa_momento'],
         'status_possui' => 'possui',
         'status_nao' => 'nao_possui',
         'status_nao_precisa' => 'nao_precisa_momento',
@@ -158,6 +172,10 @@ function importarPendenciaStatus(string $valor, ?string $vencimento): string
         'nao_precisa_momento' => 'nao_precisa_momento',
         'nao_precisa' => 'nao_precisa_momento',
         'nao_precisa_no_momento' => 'nao_precisa_momento',
+        'nao_tem_funcionario' => 'nao_tem_funcionario',
+        'nao_tem_funcionarios' => 'nao_tem_funcionario',
+        'sem_funcionario' => 'nao_tem_funcionario',
+        'sem_funcionarios' => 'nao_tem_funcionario',
     ];
 
     if ($normalizado !== '') {
@@ -241,6 +259,7 @@ function importarPendenciaClientePorCodigo(PDO $pdo, string $codigo): ?array
 function importarPendenciaPreparar(PDO $pdo, array $linhaCsv, array $tipoConfig): array
 {
     $linha = $linhaCsv['dados'];
+    $temVencimento = trim((string)($tipoConfig['campo_vencimento'] ?? '')) !== '';
     $codigo = importarPendenciaValor($linha, ['codigo', 'codigo_interno', 'cod', 'cliente']);
     $vencimentoOriginal = importarPendenciaValor($linha, ['vencimento', 'validade', 'data', 'data_validade']);
     $vencimento = importarPendenciaData($vencimentoOriginal);
@@ -267,7 +286,11 @@ function importarPendenciaPreparar(PDO $pdo, array $linhaCsv, array $tipoConfig)
         $erros[] = 'Status inválido ou vazio.';
     }
 
-    if ($status === 'possui' && $vencimento === null) {
+    if (!in_array($status, $tipoConfig['status_permitidos'] ?? [], true)) {
+        $erros[] = 'Status não permitido para este tipo de importação.';
+    }
+
+    if ($temVencimento && $status === 'possui' && $vencimento === null) {
         $erros[] = 'Vencimento obrigatório quando status for possui.';
     }
 
@@ -289,7 +312,8 @@ function importarPendenciaPreparar(PDO $pdo, array $linhaCsv, array $tipoConfig)
 
 function importarPendenciaAtualizar(PDO $pdo, array $linha, array $tipoConfig): void
 {
-    $vencimento = $linha['status'] === 'possui' ? $linha['vencimento'] : null;
+    $temVencimento = trim((string)($tipoConfig['campo_vencimento'] ?? '')) !== '';
+    $vencimento = $temVencimento && $linha['status'] === 'possui' ? $linha['vencimento'] : null;
 
     $stmtAntes = $pdo->prepare("
         SELECT *
@@ -304,18 +328,31 @@ function importarPendenciaAtualizar(PDO $pdo, array $linha, array $tipoConfig): 
         throw new RuntimeException('Cliente não encontrado.');
     }
 
-    $stmt = $pdo->prepare("
-        UPDATE clientes
-        SET {$tipoConfig['campo_status']} = ?,
-            {$tipoConfig['campo_vencimento']} = ?
-        WHERE id = ?
-        " . empresaFiltroClienteDireto($pdo) . "
-    ");
-    $stmt->execute([
-        $linha['status'],
-        $vencimento,
-        $linha['cliente_id'],
-    ]);
+    if ($temVencimento) {
+        $stmt = $pdo->prepare("
+            UPDATE clientes
+            SET {$tipoConfig['campo_status']} = ?,
+                {$tipoConfig['campo_vencimento']} = ?
+            WHERE id = ?
+            " . empresaFiltroClienteDireto($pdo) . "
+        ");
+        $stmt->execute([
+            $linha['status'],
+            $vencimento,
+            $linha['cliente_id'],
+        ]);
+    } else {
+        $stmt = $pdo->prepare("
+            UPDATE clientes
+            SET {$tipoConfig['campo_status']} = ?
+            WHERE id = ?
+            " . empresaFiltroClienteDireto($pdo) . "
+        ");
+        $stmt->execute([
+            $linha['status'],
+            $linha['cliente_id'],
+        ]);
+    }
 
     $stmtDepois = $pdo->prepare("
         SELECT *
@@ -345,6 +382,7 @@ if (($_GET['modelo'] ?? '') === '1') {
     fputcsv($saida, ['codigo', 'status', 'vencimento'], ';');
     fputcsv($saida, ['105', 'possui', '31/12/2026'], ';');
     fputcsv($saida, ['1422', 'nao_precisa_momento', ''], ';');
+    fputcsv($saida, ['1445', 'nao_tem_funcionario', ''], ';');
     exit;
 }
 
@@ -491,7 +529,7 @@ $tipoPreviewTitulo = $tiposImportacaoPendencias[$tipoPreview]['titulo'] ?? '';
                 <form method="post" enctype="multipart/form-data" class="row g-3 align-items-end" id="formImportarPendencias" novalidate>
                     <input type="hidden" name="acao" value="previsualizar">
 
-                    <div class="col-lg-4">
+                    <div class="col-xl-3 col-lg-4">
                         <label for="tipoImportacao" class="form-label">Tipo de importação</label>
                         <select
                             class="form-select <?= $erroTipo ? 'is-invalid' : '' ?>"
@@ -507,7 +545,7 @@ $tipoPreviewTitulo = $tiposImportacaoPendencias[$tipoPreview]['titulo'] ?? '';
                         <div class="invalid-feedback">Selecione o tipo de importação.</div>
                     </div>
 
-                    <div class="col-lg-5">
+                    <div class="col-xl-6 col-lg-5">
                         <label for="arquivoImportacaoPendencias" class="form-label">Arquivo CSV</label>
                         <input
                             type="file"
@@ -516,14 +554,11 @@ $tipoPreviewTitulo = $tiposImportacaoPendencias[$tipoPreview]['titulo'] ?? '';
                             id="arquivoImportacaoPendencias"
                             accept=".csv,text/csv">
                         <div class="invalid-feedback">Selecione um arquivo CSV para pré-visualizar.</div>
-                        <div class="form-text">
-                            Colunas aceitas: código, status e vencimento. Status pode ficar vazio quando houver data.
-                        </div>
                     </div>
 
-                    <div class="col-lg-3">
-                        <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
-                            <button type="submit" class="btn btn-primary">
+                    <div class="col-xl-3 col-lg-3">
+                        <div class="d-flex flex-wrap gap-2 justify-content-lg-end align-items-center">
+                            <button type="submit" class="btn btn-primary px-4">
                                 <i class="bi bi-eye"></i> Pré-visualizar
                             </button>
                             <?php if ($linhasPreview !== []): ?>
@@ -531,6 +566,12 @@ $tipoPreviewTitulo = $tiposImportacaoPendencias[$tipoPreview]['titulo'] ?? '';
                                     Limpar
                                 </button>
                             <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="form-text mt-0">
+                            Colunas aceitas: código, status e vencimento. Para Empregador Web, use só código e status.
                         </div>
                     </div>
                 </form>
@@ -574,6 +615,7 @@ $tipoPreviewTitulo = $tiposImportacaoPendencias[$tipoPreview]['titulo'] ?? '';
                                     $statusTexto = [
                                         'possui' => 'Possui',
                                         'nao_possui' => 'Não possui',
+                                        'nao_tem_funcionario' => 'Não tem funcionário',
                                         'nao_precisa_momento' => 'Não precisa no momento',
                                     ][$linha['status']] ?? '-';
                                 ?>
