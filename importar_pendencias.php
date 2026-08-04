@@ -56,6 +56,16 @@ $tiposImportacaoPendencias = [
         'status_nao' => 'nao_possui',
         'status_nao_precisa' => 'nao_precisa_momento',
     ],
+    'procuracao_sefaz_df' => [
+        'titulo' => 'Procuração SEFAZ DF',
+        'permissao' => 'procuracoes',
+        'campo_status' => 'procuracao_sefaz',
+        'campo_vencimento' => '',
+        'status_permitidos' => ['possui', 'nao_possui', 'nao_precisa_momento', 'goias'],
+        'status_possui' => 'possui',
+        'status_nao' => 'nao_possui',
+        'status_nao_precisa' => 'nao_precisa_momento',
+    ],
     'contrato_prestacao_servicos' => [
         'titulo' => 'Contrato de Prestação de Serviços',
         'permissao' => 'contratos',
@@ -186,6 +196,8 @@ function importarPendenciaStatus(string $valor, ?string $vencimento): string
         'nao_tem_funcionarios' => 'nao_tem_funcionario',
         'sem_funcionario' => 'nao_tem_funcionario',
         'sem_funcionarios' => 'nao_tem_funcionario',
+        'goias' => 'goias',
+        'go' => 'goias',
     ];
 
     if ($normalizado !== '') {
@@ -581,7 +593,7 @@ $tipoPreviewTitulo = $tiposImportacaoPendencias[$tipoPreview]['titulo'] ?? '';
 
                     <div class="col-12">
                         <div class="form-text mt-0">
-                            Colunas aceitas: código, status e vencimento. Para Empregador Web, use só código e status.
+                            Colunas aceitas: código, status e vencimento. Para Empregador Web, SEFAZ DF e contrato, use só código e status.
                         </div>
                     </div>
                 </form>
