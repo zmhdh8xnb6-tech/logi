@@ -56,6 +56,16 @@ $tiposImportacaoPendencias = [
         'status_nao' => 'nao_possui',
         'status_nao_precisa' => 'nao_precisa_momento',
     ],
+    'contrato_prestacao_servicos' => [
+        'titulo' => 'Contrato de Prestação de Serviços',
+        'permissao' => 'contratos',
+        'campo_status' => 'contrato_prestacao_servicos',
+        'campo_vencimento' => '',
+        'status_permitidos' => ['possui', 'nao_possui', 'nao_precisa_momento'],
+        'status_possui' => 'possui',
+        'status_nao' => 'nao_possui',
+        'status_nao_precisa' => 'nao_precisa_momento',
+    ],
 ];
 
 function importarPendenciaNormalizarCabecalho(string $valor): string
