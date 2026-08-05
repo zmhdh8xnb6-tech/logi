@@ -653,7 +653,22 @@ if ($tabelaAntivirusExiste) {
             });
         });
 
-        document.getElementById('formAntivirus')?.addEventListener('submit', function(evento) {
+        const formAntivirus = document.getElementById('formAntivirus');
+
+        formAntivirus?.addEventListener('keydown', function(evento) {
+            if (evento.key !== 'Enter') {
+                return;
+            }
+
+            if (evento.target && evento.target.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            evento.preventDefault();
+            formAntivirus.requestSubmit();
+        });
+
+        formAntivirus?.addEventListener('submit', function(evento) {
             let valido = true;
             const colaborador = document.getElementById('antivirusColaborador');
             const status = document.getElementById('antivirusStatus');
