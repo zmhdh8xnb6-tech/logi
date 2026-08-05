@@ -427,7 +427,9 @@ $abas = [
                             <?php
                             $concluida = (int)$tarefa['concluida'] === 1;
                             ?>
-                            <article class="tarefa-item <?= $concluida ? 'concluida' : '' ?>">
+                            <article
+                                class="tarefa-item <?= $concluida ? 'concluida' : '' ?>"
+                                data-filtro="<?= htmlspecialchars(trim(($tarefa['titulo'] ?? '') . ' ' . ($tarefa['descricao'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
                                 <?php if ($concluida): ?>
                                     <form method="post" class="tarefa-check">
                                         <input type="hidden" name="acao" value="reabrir">
@@ -500,6 +502,7 @@ $abas = [
                                 </div>
                             </article>
                         <?php endforeach; ?>
+                        <div class="tarefas-vazio d-none" id="tarefasVazioBusca">Nenhuma tarefa encontrada nesta lista.</div>
                     </div>
 
                     <?php if ((int)$resumo['concluidas'] > 0): ?>
@@ -709,17 +712,46 @@ $abas = [
             const buscaTarefa = document.getElementById('buscaTarefa');
             const limiteTarefas = document.getElementById('limiteTarefas');
             const tarefasPaginaFiltro = document.getElementById('tarefasPaginaFiltro');
-            let timerBuscaTarefa = null;
+            const itensTarefas = Array.from(document.querySelectorAll('.tarefa-item'));
+            const tarefasVazioBusca = document.getElementById('tarefasVazioBusca');
+
+            function normalizarBuscaTarefa(texto) {
+                return (texto || '')
+                    .toLocaleLowerCase('pt-BR')
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '');
+            }
+
+            function filtrarTarefasNaTela() {
+                const termo = normalizarBuscaTarefa(buscaTarefa?.value || '');
+                let totalVisivel = 0;
+
+                itensTarefas.forEach(function(item) {
+                    const texto = normalizarBuscaTarefa(item.dataset.filtro || item.textContent);
+                    const visivel = termo === '' || texto.includes(termo);
+
+                    item.classList.toggle('d-none', !visivel);
+
+                    if (visivel) {
+                        totalVisivel++;
+                    }
+                });
+
+                tarefasVazioBusca?.classList.toggle('d-none', totalVisivel > 0 || itensTarefas.length === 0);
+            }
+
+            formFiltroTarefas?.addEventListener('submit', function(evento) {
+                evento.preventDefault();
+                filtrarTarefasNaTela();
+                buscaTarefa?.focus();
+            });
 
             buscaTarefa?.addEventListener('input', function() {
-                clearTimeout(timerBuscaTarefa);
-                timerBuscaTarefa = setTimeout(function() {
-                    if (tarefasPaginaFiltro) {
-                        tarefasPaginaFiltro.value = '1';
-                    }
+                if (tarefasPaginaFiltro) {
+                    tarefasPaginaFiltro.value = '1';
+                }
 
-                    formFiltroTarefas?.submit();
-                }, 450);
+                filtrarTarefasNaTela();
             });
 
             limiteTarefas?.addEventListener('change', function() {
