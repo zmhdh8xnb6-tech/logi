@@ -239,5 +239,21 @@ function contarPendenciasSistema(PDO $pdo): int
     } catch (Throwable $e) {
     }
 
+    if (logiTabelaExiste($pdo, 'antivirus_controles')) {
+        try {
+            $stmtAntivirus = $pdo->query("
+                SELECT COUNT(*)
+                FROM antivirus_controles
+                WHERE (
+                    status = 'nao_possui'
+                    OR (status = 'possui' AND (vencimento IS NULL OR vencimento < " . $pdo->quote($hoje) . "))
+                )
+                " . empresaFiltro($pdo, 'antivirus_controles') . "
+            ");
+            $total += (int)$stmtAntivirus->fetchColumn();
+        } catch (Throwable $e) {
+        }
+    }
+
     return $total;
 }

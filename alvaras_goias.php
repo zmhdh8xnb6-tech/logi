@@ -86,6 +86,41 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
 
     return '<span class="badge bg-success">Em dia</span>';
 }
+
+function alvaraGoiasFiltroStatus(array $cliente, array $alvaras, array $orgaos): string
+{
+    if (($cliente['paralisacao_status'] ?? '') === 'paralisada'
+        && (empty($cliente['paralisacao_fim']) || $cliente['paralisacao_fim'] >= date('Y-m-d'))
+    ) {
+        return 'paralisada';
+    }
+
+    $pendentes = 0;
+    $vencidos = 0;
+    $hoje = date('Y-m-d');
+
+    foreach (array_keys($orgaos) as $codigo) {
+        $alvara = $alvaras[$codigo] ?? [];
+        $situacao = $alvara['situacao'] ?? '';
+        $vencimento = $alvara['vencimento'] ?? '';
+
+        if (in_array($situacao, ['', 'nao_informado', 'em_estudo'], true)) {
+            $pendentes++;
+        } elseif ($situacao === 'com_vencimento' && ($vencimento === '' || $vencimento < $hoje)) {
+            $vencidos++;
+        }
+    }
+
+    if ($vencidos > 0) {
+        return 'vencido';
+    }
+
+    if ($pendentes > 0) {
+        return 'pendente';
+    }
+
+    return 'em_dia';
+}
 ?>
 
 <!DOCTYPE html>
@@ -94,6 +129,52 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
 <head>
     <?php include 'includes/head.php'; ?>
     <title>Alvarás Goiás</title>
+    <style>
+        @media print {
+            @page {
+                size: A4 landscape;
+                margin: 8mm;
+            }
+
+            html,
+            body,
+            .app-layout {
+                background: #fff !important;
+                display: block !important;
+                height: auto !important;
+                min-height: 0 !important;
+                overflow: visible !important;
+            }
+
+            .app-sidebar,
+            .no-print,
+            .modal,
+            .modal-backdrop,
+            .coluna-acoes {
+                display: none !important;
+            }
+
+            .app-main {
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+            }
+
+            .container-fluid {
+                padding: 0 !important;
+            }
+
+            .clientes-box {
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                padding: 0 !important;
+            }
+
+            .table-responsive {
+                overflow: visible !important;
+            }
+        }
+    </style>
 </head>
 
 <body class="app-layout">
@@ -107,9 +188,16 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                     <p class="text-muted mb-0">Bombeiros, Vigilância e Prefeitura com vencimento, taxa e vistoria</p>
                 </div>
 
-                <a href="alvaras.php" class="btn btn-outline-secondary">
-                    <i class="bi bi-arrow-left"></i> Voltar
-                </a>
+                <div class="d-flex gap-2 no-print">
+                    <?php if ($estruturaGoias): ?>
+                        <button type="button" class="btn btn-outline-primary" id="btnImprimirAlvarasGoias">
+                            <i class="bi bi-printer"></i> Imprimir
+                        </button>
+                    <?php endif; ?>
+                    <a href="alvaras.php" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Voltar
+                    </a>
+                </div>
             </div>
 
             <?php if (!$estruturaGoias): ?>
@@ -120,9 +208,18 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                     </div>
                 </div>
             <?php else: ?>
-                <div class="row mb-3">
+                <div class="row g-2 mb-3 no-print">
                     <div class="col-md-5">
                         <input type="text" id="buscaAlvaraGoias" class="form-control" placeholder="Buscar por código, cliente ou CNPJ...">
+                    </div>
+                    <div class="col-md-3">
+                        <select id="filtroAlvaraGoias" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="em_dia">Em dia</option>
+                            <option value="vencido">Vencido</option>
+                            <option value="pendente">Pendente</option>
+                            <option value="paralisada">Empresa paralisada</option>
+                        </select>
                     </div>
                 </div>
 
@@ -137,7 +234,7 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                                     <th>UF</th>
                                     <th>Status</th>
                                     <th>Próximo vencimento</th>
-                                    <th class="text-end">Ações</th>
+                                    <th class="text-end coluna-acoes">Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -148,6 +245,7 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                                     $busca = strtolower(($cliente['codigo'] ?? '') . ' ' . ($cliente['nome'] ?? '') . ' ' . ($cliente['documento'] ?? ''));
                                     $clienteParalisado = ($cliente['paralisacao_status'] ?? '') === 'paralisada'
                                         && (empty($cliente['paralisacao_fim']) || $cliente['paralisacao_fim'] >= date('Y-m-d'));
+                                    $filtroStatus = alvaraGoiasFiltroStatus($cliente, $alvarasCliente, $orgaosGoias);
                                     $vencimentos = [];
 
                                     foreach ($alvarasCliente as $alvara) {
@@ -164,6 +262,7 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                                         data-id="<?= $clienteId ?>"
                                         data-codigo="<?= htmlspecialchars($cliente['codigo'] ?? '') ?>"
                                         data-nome="<?= htmlspecialchars($cliente['nome'] ?? '') ?>"
+                                        data-status-filtro="<?= htmlspecialchars($filtroStatus) ?>"
                                         data-paralisada="<?= $clienteParalisado ? '1' : '0' ?>"
                                         data-alvaras="<?= htmlspecialchars(json_encode($alvarasCliente, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>">
                                         <td><?= htmlspecialchars($cliente['codigo'] ?? '') ?></td>
@@ -172,7 +271,7 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                                         <td><?= htmlspecialchars($cliente['uf'] ?: 'GO') ?></td>
                                         <td class="status-goias"><?= alvaraGoiasResumo($cliente, $alvarasCliente, $orgaosGoias) ?></td>
                                         <td class="vencimento-goias"><?= $clienteParalisado ? '-' : alvaraGoiasData($vencimentos[0] ?? '') ?></td>
-                                        <td class="text-end">
+                                        <td class="text-end coluna-acoes">
                                             <button type="button" class="btn btn-outline-primary btn-sm btn-editar-goias" data-bs-toggle="modal" data-bs-target="#modalAlvaraGoias">
                                                 <i class="bi bi-pencil"></i>
                                             </button>
@@ -186,7 +285,7 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                         </table>
                     </div>
 
-                    <div class="mt-3" id="paginacaoAlvarasGoias"></div>
+                    <div class="mt-3 no-print" id="paginacaoAlvarasGoias"></div>
                 </div>
             <?php endif; ?>
         </div>
@@ -267,6 +366,7 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
             const orgaosGoias = <?= json_encode($orgaosGoias, JSON_UNESCAPED_UNICODE) ?>;
             const linhasGoias = Array.from(document.querySelectorAll('.linha-alvara-goias'));
             const buscaGoias = document.getElementById('buscaAlvaraGoias');
+            const filtroGoias = document.getElementById('filtroAlvaraGoias');
             const paginacaoGoias = document.getElementById('paginacaoAlvarasGoias');
             const vazioGoias = document.getElementById('alvarasGoiasVazio');
             const formGoias = document.getElementById('formAlvaraGoias');
@@ -333,9 +433,42 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                 return '<span class="badge bg-success">Em dia</span>';
             }
 
+            function statusFiltroGoias(linha, alvaras) {
+                if (linha && linha.dataset.paralisada === '1') {
+                    return 'paralisada';
+                }
+
+                let pendentes = 0;
+                let vencidos = 0;
+                const hoje = <?= json_encode(date('Y-m-d')) ?>;
+
+                Object.keys(orgaosGoias).forEach((codigo) => {
+                    const alvara = alvaras[codigo] || {};
+                    const situacao = alvara.situacao || '';
+                    const vencimento = alvara.vencimento || '';
+
+                    if (['', 'nao_informado', 'em_estudo'].includes(situacao)) {
+                        pendentes++;
+                    } else if (situacao === 'com_vencimento' && (!vencimento || vencimento < hoje)) {
+                        vencidos++;
+                    }
+                });
+
+                if (vencidos > 0) return 'vencido';
+                if (pendentes > 0) return 'pendente';
+                return 'em_dia';
+            }
+
             function filtrarGoias() {
                 const termo = (buscaGoias.value || '').trim().toLowerCase();
-                return linhasGoias.filter((linha) => linha.dataset.busca.includes(termo));
+                const filtro = filtroGoias ? filtroGoias.value : '';
+
+                return linhasGoias.filter((linha) => {
+                    const correspondeBusca = !termo || linha.dataset.busca.includes(termo);
+                    const correspondeFiltro = !filtro || linha.dataset.statusFiltro === filtro;
+
+                    return correspondeBusca && correspondeFiltro;
+                });
             }
 
             function adicionarPagina(lista, rotulo, pagina, desabilitado, ativo) {
@@ -455,6 +588,7 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                     }
 
                     linhaGoiasAtual.dataset.alvaras = JSON.stringify(retorno.alvaras || {});
+                    linhaGoiasAtual.dataset.statusFiltro = statusFiltroGoias(linhaGoiasAtual, retorno.alvaras || {});
                     linhaGoiasAtual.querySelector('.status-goias').innerHTML = resumoGoias(retorno.alvaras || {});
 
                     const vencimentos = Object.values(retorno.alvaras || {})
@@ -464,6 +598,7 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                     linhaGoiasAtual.querySelector('.vencimento-goias').textContent =
                         linhaGoiasAtual.dataset.paralisada === '1' ? '-' : dataBr(vencimentos[0] || '');
                     modalGoias.hide();
+                    renderizarGoias();
                 } catch (erro) {
                     alerta.textContent = 'Não foi possível comunicar com o servidor.';
                     alerta.classList.remove('d-none');
@@ -474,6 +609,36 @@ function alvaraGoiasResumo(array $cliente, array $alvaras, array $orgaos): strin
                 paginaGoias = 1;
                 renderizarGoias();
             });
+
+            if (filtroGoias) {
+                filtroGoias.addEventListener('change', () => {
+                    paginaGoias = 1;
+                    renderizarGoias();
+                });
+            }
+
+            function prepararImpressaoGoias() {
+                const filtradas = new Set(filtrarGoias());
+                linhasGoias.forEach((linha) => {
+                    linha.classList.toggle('d-none', !filtradas.has(linha));
+                });
+                vazioGoias.classList.toggle('d-none', filtradas.size > 0);
+            }
+
+            function restaurarImpressaoGoias() {
+                renderizarGoias();
+            }
+
+            window.addEventListener('beforeprint', prepararImpressaoGoias);
+            window.addEventListener('afterprint', restaurarImpressaoGoias);
+
+            const btnImprimirAlvarasGoias = document.getElementById('btnImprimirAlvarasGoias');
+            if (btnImprimirAlvarasGoias) {
+                btnImprimirAlvarasGoias.addEventListener('click', () => {
+                    prepararImpressaoGoias();
+                    window.print();
+                });
+            }
 
             renderizarGoias();
         </script>

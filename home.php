@@ -269,6 +269,16 @@ if (usuarioPode('pendencias')) {
                     </div>
                 <?php endif; ?>
 
+                <?php if (usuarioPode('outros_servicos')): ?>
+                    <div class="col-md-4">
+                        <div class="card-servico card-outros-servicos" onclick="location.href='outros_servicos.php'">
+                            <div class="icon"><i class="bi bi-grid"></i></div>
+                            <h5>Outros Serviços</h5>
+                            <p>Controles internos adicionais</p>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
                 <?php if (usuarioPode('usuarios')): ?>
                     <div class="col-md-4">
                         <div class="card-servico card-usuarios" onclick="location.href='usuarios.php'">

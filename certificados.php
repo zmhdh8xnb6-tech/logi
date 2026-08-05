@@ -32,6 +32,52 @@ function certificadoClienteParalisado(array $cliente): bool
 <head>
     <?php include 'includes/head.php'; ?>
     <title>Certificados</title>
+    <style>
+        @media print {
+            @page {
+                size: A4 landscape;
+                margin: 8mm;
+            }
+
+            html,
+            body,
+            .app-layout {
+                background: #fff !important;
+                display: block !important;
+                height: auto !important;
+                min-height: 0 !important;
+                overflow: visible !important;
+            }
+
+            .app-sidebar,
+            .no-print,
+            .modal,
+            .modal-backdrop,
+            .coluna-acoes {
+                display: none !important;
+            }
+
+            .app-main {
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+            }
+
+            .container-fluid {
+                padding: 0 !important;
+            }
+
+            .clientes-box {
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                padding: 0 !important;
+            }
+
+            .table-responsive {
+                overflow: visible !important;
+            }
+        }
+    </style>
 </head>
 
 <body class="app-layout">
@@ -47,12 +93,17 @@ function certificadoClienteParalisado(array $cliente): bool
                     <p class="text-muted mb-0">Acompanhe os vencimentos dos certificados digitais dos clientes</p>
                 </div>
 
-                <a href="home.php" class="btn btn-outline-secondary">
-                    <i class="bi bi-arrow-left"></i> Voltar
-                </a>
+                <div class="d-flex gap-2 no-print">
+                    <button type="button" class="btn btn-outline-primary" id="btnImprimirCertificados">
+                        <i class="bi bi-printer"></i> Imprimir
+                    </button>
+                    <a href="home.php" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Voltar
+                    </a>
+                </div>
             </div>
 
-            <div class="row g-2 mb-3">
+            <div class="row g-2 mb-3 no-print">
 
                 <div class="col-md-4">
                     <input
@@ -89,7 +140,7 @@ function certificadoClienteParalisado(array $cliente): bool
                                 <th>Status</th>
                                 <th>Vencimento</th>
                                 <th>Dias restantes</th>
-                                <th class="text-end">Ações</th>
+                                <th class="text-end coluna-acoes">Ações</th>
                             </tr>
                         </thead>
 
@@ -206,7 +257,7 @@ function certificadoClienteParalisado(array $cliente): bool
                                         <?php endif; ?>
                                     </td>
 
-                                    <td class="text-end">
+                                    <td class="text-end coluna-acoes">
                                         <button
                                             type="button"
                                             class="btn btn-outline-primary btn-sm btn-editar-certificado"
@@ -235,7 +286,7 @@ function certificadoClienteParalisado(array $cliente): bool
 
                 </div>
 
-                <div class="mt-3" id="paginacaoCertificados"></div>
+                <div class="mt-3 no-print" id="paginacaoCertificados"></div>
 
             </div>
 
@@ -427,6 +478,26 @@ function certificadoClienteParalisado(array $cliente): bool
                 renderizarCertificados();
             });
         }
+
+        function prepararImpressaoCertificados() {
+            const filtradas = new Set(certificadosFiltrados());
+            linhasCertificados.forEach(function(linha) {
+                linha.classList.toggle('d-none', !filtradas.has(linha));
+            });
+            certificadosVazio.classList.toggle('d-none', filtradas.size > 0);
+        }
+
+        function restaurarImpressaoCertificados() {
+            renderizarCertificados();
+        }
+
+        window.addEventListener('beforeprint', prepararImpressaoCertificados);
+        window.addEventListener('afterprint', restaurarImpressaoCertificados);
+
+        document.getElementById('btnImprimirCertificados').addEventListener('click', function() {
+            prepararImpressaoCertificados();
+            window.print();
+        });
 
         renderizarCertificados();
     </script>

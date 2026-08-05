@@ -524,6 +524,75 @@ try {
 } catch (Throwable $e) {
 }
 
+if (logiTabelaExiste($pdo, 'antivirus_controles')) {
+    try {
+        $stmtAntivirusPendencias = $pdo->query("
+            SELECT *
+            FROM antivirus_controles
+            WHERE (
+                status = 'nao_possui'
+                OR (status = 'possui' AND (vencimento IS NULL OR vencimento < " . $pdo->quote($hoje) . "))
+            )
+            " . empresaFiltro($pdo, 'antivirus_controles') . "
+            ORDER BY colaborador ASC, computador ASC
+        ");
+
+        foreach ($stmtAntivirusPendencias->fetchAll(PDO::FETCH_ASSOC) as $antivirus) {
+            $clienteAntivirus = [
+                'id' => 0,
+                'codigo' => '',
+                'nome' => $antivirus['colaborador'] ?? '',
+                'documento' => $antivirus['computador'] ?? '',
+            ];
+            $statusAntivirus = $antivirus['status'] ?? '';
+            $vencimentoAntivirus = $antivirus['vencimento'] ?? '';
+
+            if ($statusAntivirus === 'nao_possui') {
+                adicionarPendencia(
+                    $pendencias,
+                    $resumo,
+                    $clienteAntivirus,
+                    'Antivírus',
+                    'Computador sem antivírus informado',
+                    'Não possui',
+                    'danger',
+                    null,
+                    'antivirus.php'
+                );
+                continue;
+            }
+
+            if (empty($vencimentoAntivirus)) {
+                adicionarPendencia(
+                    $pendencias,
+                    $resumo,
+                    $clienteAntivirus,
+                    'Antivírus',
+                    'Antivírus sem vencimento informado',
+                    'Sem data',
+                    'danger',
+                    null,
+                    'antivirus.php'
+                );
+                continue;
+            }
+
+            adicionarPendencia(
+                $pendencias,
+                $resumo,
+                $clienteAntivirus,
+                'Antivírus',
+                'Antivírus vencido em ' . dataBr($vencimentoAntivirus),
+                'Vencido',
+                'danger',
+                null,
+                'antivirus.php'
+            );
+        }
+    } catch (Throwable $e) {
+    }
+}
+
 $totalPendencias = count($pendencias);
 $limiteGraficoPendencias = 15;
 $pendenciasPorPaginaInicial = 15;
@@ -783,7 +852,9 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
                             <?php foreach ($pendencias as $indicePendencia => $pendencia): ?>
                                 <tr class="linha-pendencia<?= $indicePendencia >= $pendenciasPorPaginaInicial ? ' d-none' : '' ?>" data-tipo="<?= htmlspecialchars($pendencia['tipo']) ?>">
                                     <td class="texto-pendencia">
-                                        <strong><?= htmlspecialchars($pendencia['codigo']) ?> - <?= htmlspecialchars($pendencia['nome']) ?></strong>
+                                        <strong>
+                                            <?= trim((string)$pendencia['codigo']) !== '' ? htmlspecialchars($pendencia['codigo']) . ' - ' : '' ?><?= htmlspecialchars($pendencia['nome']) ?>
+                                        </strong>
                                         <small class="text-muted d-block"><?= htmlspecialchars($pendencia['documento']) ?></small>
                                     </td>
                                     <td class="texto-pendencia"><?= htmlspecialchars($pendencia['tipo']) ?></td>
@@ -821,9 +892,11 @@ $totalPaginasPendenciasInicial = (int)ceil($totalPendencias / $pendenciasPorPagi
                                                 </a>
                                             <?php endif; ?>
 
-                                            <a href="cliente.php?id=<?= (int)$pendencia['cliente_id'] ?>" class="btn btn-outline-primary btn-sm">
-                                                <i class="bi bi-eye"></i>
-                                            </a>
+                                            <?php if ((int)$pendencia['cliente_id'] > 0): ?>
+                                                <a href="cliente.php?id=<?= (int)$pendencia['cliente_id'] ?>" class="btn btn-outline-primary btn-sm">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                 </tr>

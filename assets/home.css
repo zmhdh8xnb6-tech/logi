@@ -142,6 +142,11 @@
     --card-accent: #ea580c;
 }
 
+.card-outros-servicos,
+.card-antivirus {
+    --card-accent: #0891b2;
+}
+
 .card-usuarios {
     --card-accent: #475569;
 }

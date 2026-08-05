@@ -229,6 +229,51 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
                 max-height: calc(100dvh - 1rem);
             }
         }
+
+        @media print {
+            @page {
+                size: A4 landscape;
+                margin: 8mm;
+            }
+
+            html,
+            body,
+            .app-layout {
+                background: #fff !important;
+                display: block !important;
+                height: auto !important;
+                min-height: 0 !important;
+                overflow: visible !important;
+            }
+
+            .app-sidebar,
+            .no-print,
+            .modal,
+            .modal-backdrop,
+            .coluna-acoes {
+                display: none !important;
+            }
+
+            .app-main {
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+            }
+
+            .container-fluid {
+                padding: 0 !important;
+            }
+
+            .clientes-box {
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                padding: 0 !important;
+            }
+
+            .table-responsive {
+                overflow: visible !important;
+            }
+        }
     </style>
 </head>
 
@@ -244,14 +289,19 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
                     <p class="text-muted mb-0">Acompanhe licenças, dispensas, vencimentos e o cadastro DF Legal</p>
                 </div>
 
-                <a href="alvaras.php" class="btn btn-outline-secondary">
-                    <i class="bi bi-arrow-left"></i> Voltar
-                </a>
+                <div class="d-flex gap-2 no-print">
+                    <button type="button" class="btn btn-outline-primary" id="btnImprimirAlvarasDf">
+                        <i class="bi bi-printer"></i> Imprimir
+                    </button>
+                    <a href="alvaras.php" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Voltar
+                    </a>
+                </div>
             </div>
 
             <div id="mensagemAlvaras" class="alert d-none" role="alert"></div>
 
-            <div class="row g-2 mb-3">
+            <div class="row g-2 mb-3 no-print">
                 <div class="col-md-5">
                     <input type="text" id="buscaAlvaraDf" class="form-control" placeholder="Buscar por código, CNPJ/CPF ou cliente...">
                 </div>
@@ -278,7 +328,7 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
                                 <th>Alvarás DF</th>
                                 <th>Cadastro DF Legal</th>
                                 <th>Órgãos</th>
-                                <th class="text-end">Ações</th>
+                                <th class="text-end coluna-acoes">Ações</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -324,7 +374,7 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
                                                 <i class="bi bi-search"></i> Consultar órgãos
                                             </button>
                                         </td>
-                                        <td class="text-end">
+                                        <td class="text-end coluna-acoes">
                                             <button
                                                 type="button"
                                                 class="btn btn-outline-primary btn-sm btn-editar-alvara"
@@ -349,7 +399,7 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
                     </table>
                 </div>
 
-                <div class="mt-3" id="paginacaoAlvarasDf"></div>
+                <div class="mt-3 no-print" id="paginacaoAlvarasDf"></div>
             </div>
         </div>
     </main>
@@ -1107,6 +1157,26 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
 
             evento.preventDefault();
             formAlvarasDf.requestSubmit();
+        });
+
+        function prepararImpressaoAlvarasDf() {
+            const filtradas = new Set(alvarasDfFiltradas());
+            linhasAlvarasDf.forEach(function(linha) {
+                linha.classList.toggle('d-none', !filtradas.has(linha));
+            });
+            alvarasDfVazio.classList.toggle('d-none', filtradas.size > 0);
+        }
+
+        function restaurarImpressaoAlvarasDf() {
+            renderizarAlvarasDf();
+        }
+
+        window.addEventListener('beforeprint', prepararImpressaoAlvarasDf);
+        window.addEventListener('afterprint', restaurarImpressaoAlvarasDf);
+
+        document.getElementById('btnImprimirAlvarasDf').addEventListener('click', function() {
+            prepararImpressaoAlvarasDf();
+            window.print();
         });
 
         renderizarAlvarasDf();

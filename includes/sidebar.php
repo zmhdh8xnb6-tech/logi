@@ -149,6 +149,13 @@
             </a>
         <?php endif; ?>
 
+        <?php if (usuarioPode('outros_servicos')): ?>
+            <a href="outros_servicos.php" class="sidebar-link" data-label="Outros Serviços">
+                <i class="bi bi-grid"></i>
+                <span>Outros Serviços</span>
+            </a>
+        <?php endif; ?>
+
         <?php if (usuarioPode('usuarios')): ?>
             <a href="usuarios.php" class="sidebar-link" data-label="Usuários">
                 <i class="bi bi-person-gear"></i>

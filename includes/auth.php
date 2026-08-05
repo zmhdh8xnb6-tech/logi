@@ -13,6 +13,7 @@ if (!function_exists('modulosSistema')) {
             'contador' => 'Contador',
             'crf' => 'Cadastro CRF',
             'contratos' => 'Contrato de Prestação de Serviços',
+            'outros_servicos' => 'Outros Serviços',
             'paralisacoes' => 'Paralisações',
             'financeiro' => 'Financeiro',
             'legalizacao' => 'Legalização',

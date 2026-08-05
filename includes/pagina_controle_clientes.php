@@ -329,6 +329,52 @@ if (!function_exists('controleFormatarPrazo')) {
             color: #64748b;
             text-align: center;
         }
+
+        @media print {
+            @page {
+                size: A4 landscape;
+                margin: 8mm;
+            }
+
+            html,
+            body,
+            .app-layout {
+                background: #fff !important;
+                display: block !important;
+                height: auto !important;
+                min-height: 0 !important;
+                overflow: visible !important;
+            }
+
+            .app-sidebar,
+            .no-print,
+            .modal,
+            .modal-backdrop,
+            .controle-acoes,
+            .controle-coluna-acoes {
+                display: none !important;
+            }
+
+            .app-main {
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+            }
+
+            .container-fluid {
+                padding: 0 !important;
+            }
+
+            .clientes-box {
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                padding: 0 !important;
+            }
+
+            .table-responsive {
+                overflow: visible !important;
+            }
+        }
     </style>
 </head>
 
@@ -343,12 +389,17 @@ if (!function_exists('controleFormatarPrazo')) {
                     <p class="text-muted mb-0"><?= htmlspecialchars($subtitulo) ?></p>
                 </div>
 
-                <a href="<?= htmlspecialchars($voltarUrl) ?>" class="btn btn-outline-secondary">
-                    <i class="bi bi-arrow-left"></i> Voltar
-                </a>
+                <div class="d-flex gap-2 no-print">
+                    <button type="button" class="btn btn-outline-primary" id="btnImprimirControle">
+                        <i class="bi bi-printer"></i> Imprimir
+                    </button>
+                    <a href="<?= htmlspecialchars($voltarUrl) ?>" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Voltar
+                    </a>
+                </div>
             </div>
 
-            <div class="row g-2 mb-3">
+            <div class="row g-2 mb-3 no-print">
                 <div class="col-md-4">
                     <input
                         type="text"
@@ -381,7 +432,7 @@ if (!function_exists('controleFormatarPrazo')) {
                                 <?php if ($mostrarConferenciaDados): ?>
                                     <th>Conferência</th>
                                 <?php endif; ?>
-                                <th class="text-end">Ações</th>
+                                <th class="text-end controle-coluna-acoes">Ações</th>
                             </tr>
                         </thead>
                         <tbody id="controleTabelaCorpo">
@@ -452,7 +503,7 @@ if (!function_exists('controleFormatarPrazo')) {
                     Nenhum cliente encontrado.
                 </div>
 
-                <div class="mt-3" id="controlePaginacao"></div>
+                <div class="mt-3 no-print" id="controlePaginacao"></div>
             </div>
         </div>
     </main>
@@ -802,6 +853,26 @@ if (!function_exists('controleFormatarPrazo')) {
                 controleRenderizar();
             });
         }
+
+        function controlePrepararImpressao() {
+            const filtradas = new Set(controleLinhasFiltradas());
+            controleLinhas.forEach((linha) => {
+                linha.classList.toggle('d-none', !filtradas.has(linha));
+            });
+            controleVazio.classList.toggle('d-none', filtradas.size > 0);
+        }
+
+        function controleRestaurarImpressao() {
+            controleRenderizar();
+        }
+
+        window.addEventListener('beforeprint', controlePrepararImpressao);
+        window.addEventListener('afterprint', controleRestaurarImpressao);
+
+        document.getElementById('btnImprimirControle').addEventListener('click', () => {
+            controlePrepararImpressao();
+            window.print();
+        });
 
         document.querySelectorAll('.btn-editar-controle').forEach((botao) => {
             botao.addEventListener('click', () => {

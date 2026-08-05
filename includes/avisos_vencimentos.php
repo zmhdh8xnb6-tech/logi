@@ -204,5 +204,34 @@ function listarAvisosVencimentosSistema(PDO $pdo): array
         }
     }
 
+    if (logiTabelaExiste($pdo, 'antivirus_controles')) {
+        try {
+            $stmtAntivirus = $pdo->query("
+                SELECT colaborador, computador, antivirus_nome, vencimento
+                FROM antivirus_controles
+                WHERE status = 'possui'
+                  AND vencimento IS NOT NULL
+                  AND vencimento >= " . $pdo->quote($hoje) . "
+                  AND vencimento <= " . $pdo->quote($limiteAlerta) . "
+                  " . empresaFiltro($pdo, 'antivirus_controles') . "
+                ORDER BY vencimento ASC, colaborador ASC
+            ");
+
+            foreach ($stmtAntivirus->fetchAll(PDO::FETCH_ASSOC) as $antivirus) {
+                $identificacao = trim(($antivirus['colaborador'] ?? '') . (!empty($antivirus['computador']) ? ' | ' . $antivirus['computador'] : ''));
+
+                adicionarAvisoVencimento(
+                    $avisos,
+                    'Antivírus a vencer',
+                    $identificacao . ' vence em ' . avisoVencimentoDataBr($antivirus['vencimento'] ?? ''),
+                    'antivirus.php',
+                    'bi-shield-check',
+                    'antivirus.php'
+                );
+            }
+        } catch (Throwable $e) {
+        }
+    }
+
     return $avisos;
 }
