@@ -390,6 +390,22 @@ $(document).ready(function () {
         atualizarCampoVencimentoControle(this, true);
     });
 
+    $('#certificado_status').on('change', function () {
+        const campoVencimento = document.getElementById('vencimento_certificado');
+
+        if (!campoVencimento) {
+            return;
+        }
+
+        const possui = this.value === 'possui';
+        campoVencimento.disabled = !possui;
+
+        if (!possui) {
+            campoVencimento.value = '';
+            campoVencimento.classList.remove('is-invalid');
+        }
+    }).trigger('change');
+
     const controlesConferencia = {
         cadastro_df_legal: {
             valor: 'cadastrado',
@@ -896,7 +912,6 @@ function validarFormulario() {
     validarObrigatorio('#documento');
     validarObrigatorio('#nome');
     validarObrigatorio('#telefone');
-    validarObrigatorio('#email');
 
     const clienteContabil = $('#cliente_contabil').val() === '1';
     const servicoParcelamento = $('#servico_parcelamento').is(':checked');

@@ -52,7 +52,7 @@ function certificadoClienteParalisado(array $cliente): bool
                 </a>
             </div>
 
-            <div class="row mb-3">
+            <div class="row g-2 mb-3">
 
                 <div class="col-md-4">
                     <input
@@ -60,6 +60,17 @@ function certificadoClienteParalisado(array $cliente): bool
                         id="buscaCertificado"
                         class="form-control"
                         placeholder="Buscar por código ou CNPJ...">
+                </div>
+
+                <div class="col-md-3">
+                    <select class="form-select" id="filtroCertificado">
+                        <option value="">Todos</option>
+                        <option value="possui">Possui</option>
+                        <option value="vencido">Vencido</option>
+                        <option value="nao_possui">Não possui</option>
+                        <option value="nao_precisa_momento">Não precisa no momento</option>
+                        <option value="paralisada">Empresa paralisada</option>
+                    </select>
                 </div>
 
             </div>
@@ -104,9 +115,13 @@ function certificadoClienteParalisado(array $cliente): bool
                                     $certificadoVencido = $diasRestantes < 0;
                                 }
 
+                                $filtroStatusCertificado = $clienteParalisado
+                                    ? 'paralisada'
+                                    : ($certificadoNaoPrecisa ? 'nao_precisa_momento' : ($certificadoVencido ? 'vencido' : ($temCertificado ? 'possui' : 'nao_possui')));
+
                             ?>
 
-                                <tr class="linha-cliente">
+                                <tr class="linha-cliente" data-status-filtro="<?= htmlspecialchars($filtroStatusCertificado) ?>">
 
                                     <td class="codigo-cliente">
                                         <?= htmlspecialchars($cliente['codigo']) ?>
@@ -276,6 +291,7 @@ function certificadoClienteParalisado(array $cliente): bool
         certificadosPorPagina = [15, 30, 60, 90].includes(certificadosPorPagina) ? certificadosPorPagina : 15;
         let certificadosPaginaAtual = 1;
         const buscaCertificado = document.getElementById('buscaCertificado');
+        const filtroCertificado = document.getElementById('filtroCertificado');
         const linhasCertificados = Array.from(document.querySelectorAll('.linha-cliente'));
         const paginacaoCertificados = document.getElementById('paginacaoCertificados');
         const certificadosVazio = document.getElementById('certificadosVazio');
@@ -289,17 +305,16 @@ function certificadoClienteParalisado(array $cliente): bool
 
         function certificadosFiltrados() {
             const valor = buscaCertificado.value.trim().toLowerCase();
-
-            if (!valor) {
-                return linhasCertificados;
-            }
+            const filtro = filtroCertificado ? filtroCertificado.value : '';
 
             return linhasCertificados.filter(function(linha) {
                 const codigo = linha.querySelector('.codigo-cliente').textContent.toLowerCase();
                 const nome = linha.querySelector('.nome-cliente').textContent.toLowerCase();
                 const documento = linha.querySelector('.doc-cliente').textContent.toLowerCase();
+                const correspondeBusca = !valor || nome.includes(valor) || documento.includes(valor) || codigo.includes(valor);
+                const correspondeFiltro = !filtro || linha.dataset.statusFiltro === filtro;
 
-                return nome.includes(valor) || documento.includes(valor) || codigo.includes(valor);
+                return correspondeBusca && correspondeFiltro;
             });
         }
 
@@ -405,6 +420,13 @@ function certificadoClienteParalisado(array $cliente): bool
             certificadosPaginaAtual = 1;
             renderizarCertificados();
         });
+
+        if (filtroCertificado) {
+            filtroCertificado.addEventListener('change', function() {
+                certificadosPaginaAtual = 1;
+                renderizarCertificados();
+            });
+        }
 
         renderizarCertificados();
     </script>
@@ -541,18 +563,23 @@ function certificadoClienteParalisado(array $cliente): bool
                         if (clienteParalisado) {
                             status.className = 'badge certificado-status bg-secondary';
                             status.textContent = 'Empresa paralisada';
+                            linhaCertificadoAtual.dataset.statusFiltro = 'paralisada';
                         } else if (certificadoStatus === 'nao_precisa_momento') {
                             status.className = 'badge certificado-status bg-info text-dark';
                             status.textContent = 'Não precisa no momento';
+                            linhaCertificadoAtual.dataset.statusFiltro = 'nao_precisa_momento';
                         } else if (certificadoEstaVencido(vencimento)) {
                             status.className = 'badge certificado-status bg-danger';
                             status.textContent = 'Vencido';
+                            linhaCertificadoAtual.dataset.statusFiltro = 'vencido';
                         } else if (vencimento) {
                             status.className = 'badge certificado-status bg-success';
                             status.textContent = 'Possui';
+                            linhaCertificadoAtual.dataset.statusFiltro = 'possui';
                         } else {
                             status.className = 'badge certificado-status bg-danger';
                             status.textContent = 'Não possui';
+                            linhaCertificadoAtual.dataset.statusFiltro = 'nao_possui';
                         }
 
                         vencimentoTexto.dataset.valor = vencimento;
@@ -567,6 +594,7 @@ function certificadoClienteParalisado(array $cliente): bool
                         vencimentoCertificadoInicial = vencimento;
 
                         bootstrap.Modal.getInstance(modalEditarCertificado).hide();
+                        renderizarCertificados();
                     } else {
                         botao.innerHTML = 'Erro';
                         const mensagem = resp.trim();

@@ -193,6 +193,22 @@ $stmt = $pdo->query("
 
 $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+$opcoesFiltroStatus = ['' => 'Todos'];
+
+foreach ($opcoesStatus as $valor => $rotulo) {
+    $opcoesFiltroStatus[$valor] = $rotulo;
+}
+
+if ($mostrarVencimento) {
+    $opcoesFiltroStatus['vencido'] = 'Vencido';
+}
+
+if ($controleDispensadoPorParalisacao && $controleParalisacaoDisponivel) {
+    $opcoesFiltroStatus['paralisada'] = 'Empresa paralisada';
+}
+
+$opcoesFiltroStatus['nao_informado'] = 'Nao informado';
+
 if (!function_exists('controleFormatarStatus')) {
     function controleFormatarStatus(?string $valor, array $opcoesStatus): string
     {
@@ -239,7 +255,7 @@ if (!function_exists('controleClasseStatus')) {
             return 'bg-danger';
         }
 
-        if (in_array($valor, ['goias', 'nao_tem_funcionario', 'dispensado'], true)) {
+        if (in_array($valor, ['goias', 'nao_tem_funcionario', 'dispensado', 'nao_precisa_momento'], true)) {
             return 'bg-info text-dark';
         }
 
@@ -332,13 +348,20 @@ if (!function_exists('controleFormatarPrazo')) {
                 </a>
             </div>
 
-            <div class="row mb-3">
+            <div class="row g-2 mb-3">
                 <div class="col-md-4">
                     <input
                         type="text"
                         class="form-control"
                         id="controleBusca"
                         placeholder="<?= htmlspecialchars($placeholderBusca) ?>">
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" id="controleFiltroStatus">
+                        <?php foreach ($opcoesFiltroStatus as $valor => $rotulo): ?>
+                            <option value="<?= htmlspecialchars($valor) ?>"><?= htmlspecialchars($rotulo) ?></option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
             </div>
 
@@ -386,6 +409,7 @@ if (!function_exists('controleFormatarPrazo')) {
                                     data-codigo="<?= htmlspecialchars($cliente['codigo'] ?? '') ?>"
                                     data-nome="<?= htmlspecialchars($cliente['nome'] ?? '') ?>"
                                     data-status="<?= htmlspecialchars($statusAtual) ?>"
+                                    data-status-filtro="<?= htmlspecialchars($statusExibicao ?: 'nao_informado') ?>"
                                     data-paralisada="<?= $clienteParalisado ? '1' : '0' ?>"
                                     data-vencimento="<?= htmlspecialchars($vencimentoAtual) ?>">
                                     <td><?= htmlspecialchars($cliente['codigo'] ?? '') ?></td>
@@ -537,6 +561,7 @@ if (!function_exists('controleFormatarPrazo')) {
         controleItensPorPagina = [15, 30, 60, 90].includes(controleItensPorPagina) ? controleItensPorPagina : 15;
         const controleLinhas = Array.from(document.querySelectorAll('.linha-controle'));
         const controleBusca = document.getElementById('controleBusca');
+        const controleFiltroStatus = document.getElementById('controleFiltroStatus');
         const controlePaginacao = document.getElementById('controlePaginacao');
         const controleVazio = document.getElementById('controleVazio');
         const modalControleEl = document.getElementById('modalControle');
@@ -569,7 +594,7 @@ if (!function_exists('controleFormatarPrazo')) {
                 return 'badge status-badge bg-danger';
             }
 
-            if (['goias', 'nao_tem_funcionario', 'dispensado'].includes(status)) {
+            if (['goias', 'nao_tem_funcionario', 'dispensado', 'nao_precisa_momento'].includes(status)) {
                 return 'badge status-badge bg-info text-dark';
             }
 
@@ -657,12 +682,14 @@ if (!function_exists('controleFormatarPrazo')) {
 
         function controleLinhasFiltradas() {
             const termo = (controleBusca.value || '').trim().toLowerCase();
+            const filtroStatus = controleFiltroStatus ? controleFiltroStatus.value : '';
 
-            if (!termo) {
-                return controleLinhas;
-            }
+            return controleLinhas.filter((linha) => {
+                const correspondeBusca = !termo || linha.dataset.busca.includes(termo);
+                const correspondeStatus = !filtroStatus || linha.dataset.statusFiltro === filtroStatus;
 
-            return controleLinhas.filter((linha) => linha.dataset.busca.includes(termo));
+                return correspondeBusca && correspondeStatus;
+            });
         }
 
         function controleRenderizar() {
@@ -769,6 +796,13 @@ if (!function_exists('controleFormatarPrazo')) {
             controleRenderizar();
         });
 
+        if (controleFiltroStatus) {
+            controleFiltroStatus.addEventListener('change', () => {
+                controlePaginaAtual = 1;
+                controleRenderizar();
+            });
+        }
+
         document.querySelectorAll('.btn-editar-controle').forEach((botao) => {
             botao.addEventListener('click', () => {
                 controleLinhaAtual = botao.closest('.linha-controle');
@@ -857,6 +891,7 @@ if (!function_exists('controleFormatarPrazo')) {
 
                 controleLinhaAtual.dataset.status = status;
                 controleLinhaAtual.dataset.vencimento = vencimento;
+                controleLinhaAtual.dataset.statusFiltro = statusExibicao || 'nao_informado';
 
                 const badge = controleLinhaAtual.querySelector('.status-badge');
                 badge.className = controleClasseStatus(statusExibicao);
@@ -877,6 +912,7 @@ if (!function_exists('controleFormatarPrazo')) {
                 }
 
                 modalControle.hide();
+                controleRenderizar();
             } catch (erro) {
                 alertaControle.textContent = 'Nao foi possivel comunicar com o servidor.';
                 alertaControle.classList.remove('d-none');
