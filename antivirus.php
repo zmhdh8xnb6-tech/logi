@@ -197,33 +197,121 @@ if ($tabelaAntivirusExiste) {
             background: #f8fafc;
         }
 
-        @media print {
+        .antivirus-impressao-cabecalho {
+            display: none;
+        }
 
-            .sidebar,
-            .btn,
-            .form-control,
-            .form-select,
+        @media print {
+            @page {
+                size: A4 landscape;
+                margin: 8mm;
+            }
+
+            html,
+            body,
+            .app-layout {
+                background: #fff !important;
+                display: block !important;
+                height: auto !important;
+                min-height: 0 !important;
+                overflow: visible !important;
+            }
+
+            .app-sidebar,
+            .no-print,
             .acoes-antivirus,
             #paginacaoAntivirus,
-            .mensagem-tela,
-            .modal {
+            .modal,
+            .modal-backdrop {
                 display: none !important;
             }
 
-            body,
             .app-main {
-                background: #fff !important;
                 margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+            }
+
+            .container-fluid {
                 padding: 0 !important;
             }
 
             .antivirus-box {
-                box-shadow: none;
-                padding: 0;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                padding: 0 !important;
+                background: #fff !important;
+            }
+
+            .table-responsive {
+                overflow: visible !important;
+            }
+
+            .antivirus-impressao-cabecalho {
+                display: flex !important;
+                align-items: flex-end;
+                justify-content: space-between;
+                gap: 16px;
+                margin-bottom: 12px;
+                padding-bottom: 8px;
+                border-bottom: 2px solid #111827;
+            }
+
+            .antivirus-impressao-cabecalho h1 {
+                margin: 0;
+                font-size: 18pt;
+                font-weight: 700;
+                color: #111827;
+            }
+
+            .antivirus-impressao-cabecalho p {
+                margin: 2px 0 0;
+                color: #4b5563;
+                font-size: 9pt;
+            }
+
+            .antivirus-impressao-meta {
+                text-align: right;
+                font-size: 9pt;
+                color: #111827;
+                white-space: nowrap;
+            }
+
+            .table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                font-size: 9pt;
+            }
+
+            .table th,
+            .table td {
+                border: 1px solid #cbd5e1 !important;
+                padding: 5px 7px !important;
+                color: #111827 !important;
+                vertical-align: middle !important;
+            }
+
+            .table thead th {
+                background: #f1f5f9 !important;
+                color: #111827 !important;
+                font-weight: 700 !important;
+            }
+
+            .badge {
+                border: 1px solid #94a3b8 !important;
+                background: #fff !important;
+                color: #111827 !important;
+                font-size: 8pt !important;
+                padding: 2px 5px !important;
             }
 
             .linha-antivirus.d-none {
                 display: table-row !important;
+            }
+
+            .linha-antivirus {
+                break-inside: avoid;
+                cursor: default;
             }
         }
     </style>
@@ -234,12 +322,12 @@ if ($tabelaAntivirusExiste) {
 
     <main class="app-main">
         <div class="container-fluid">
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 no-print">
                 <div>
                     <h3 class="mb-1">Antivírus</h3>
                     <p class="text-muted mb-0">Controle de antivírus dos computadores do escritório</p>
                 </div>
-                <div class="d-flex flex-wrap gap-2">
+                <div class="d-flex flex-wrap gap-2 no-print">
                     <button type="button" class="btn btn-outline-secondary" id="btnImprimirAntivirus" <?= !$tabelaAntivirusExiste ? 'disabled' : '' ?>>
                         <i class="bi bi-printer"></i> Imprimir
                     </button>
@@ -296,6 +384,17 @@ if ($tabelaAntivirusExiste) {
             </div>
 
             <div class="antivirus-box">
+                <div class="antivirus-impressao-cabecalho">
+                    <div>
+                        <h1>Controle de Antivírus</h1>
+                        <p>Vencimentos dos computadores do escritório</p>
+                    </div>
+                    <div class="antivirus-impressao-meta">
+                        <strong>Logi</strong><br>
+                        Emitido em <?= date('d/m/Y H:i') ?>
+                    </div>
+                </div>
+
                 <div class="table-responsive">
                     <table class="table align-middle mb-0">
                         <thead>
@@ -689,13 +788,35 @@ if ($tabelaAntivirusExiste) {
             }
         });
 
-        document.getElementById('btnImprimirAntivirus')?.addEventListener('click', function() {
+        let linhasAntivirusAntesImpressao = [];
+
+        function prepararImpressaoAntivirus() {
             const filtradas = new Set(linhasAntivirusFiltradas());
+            linhasAntivirusAntesImpressao = linhasAntivirus.map(function(linha) {
+                return {
+                    linha,
+                    estavaOculta: linha.classList.contains('d-none')
+                };
+            });
+
             linhasAntivirus.forEach(function(linha) {
                 linha.classList.toggle('d-none', !filtradas.has(linha));
             });
-            window.print();
+        }
+
+        function restaurarImpressaoAntivirus() {
+            linhasAntivirusAntesImpressao.forEach(function(item) {
+                item.linha.classList.toggle('d-none', item.estavaOculta);
+            });
+            linhasAntivirusAntesImpressao = [];
             renderizarAntivirus();
+        }
+
+        window.addEventListener('beforeprint', prepararImpressaoAntivirus);
+        window.addEventListener('afterprint', restaurarImpressaoAntivirus);
+
+        document.getElementById('btnImprimirAntivirus')?.addEventListener('click', function() {
+            window.print();
         });
 
         document.querySelectorAll('.alerta-temporario').forEach(function(alerta) {

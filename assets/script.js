@@ -399,12 +399,20 @@ $(document).ready(function () {
 
         const possui = this.value === 'possui';
         campoVencimento.disabled = !possui;
+        campoVencimento.required = possui;
 
-        if (!possui) {
+        if (possui && this.dataset.inicializadoCertificado === '1') {
+            setTimeout(function () {
+                campoVencimento.focus({ preventScroll: true });
+            }, 0);
+        } else if (!possui) {
             campoVencimento.value = '';
             campoVencimento.classList.remove('is-invalid');
         }
-    }).trigger('change');
+    }).each(function () {
+        $(this).trigger('change');
+        this.dataset.inicializadoCertificado = '1';
+    });
 
     const controlesConferencia = {
         cadastro_df_legal: {

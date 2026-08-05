@@ -31,6 +31,21 @@ if (!empty($parcelamento['liquidado_em'])) {
 $orgaosPermitidos = orgaosParcelamento();
 $clienteSelecionadoId = (int)$parcelamento['cliente_id'];
 
+function normalizarMesPrimeiraParcela(?string $valor): ?string
+{
+    $valor = trim((string)$valor);
+
+    if ($valor === '') {
+        return null;
+    }
+
+    if (preg_match('/^\d{4}-\d{2}$/', $valor)) {
+        return $valor . '-01';
+    }
+
+    return $valor;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? 'salvar';
     $urlRetorno = urlOrgaoParcelamento($parcelamento['orgao']);
@@ -88,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $orgao = trim($_POST['orgao'] ?? '');
     $numeroParcelamento = trim($_POST['numero_parcelamento'] ?? '');
     $formaEnvio = trim($_POST['forma_envio'] ?? '');
-    $dataPrimeiraParcela = $_POST['data_primeira_parcela'] ?: null;
+    $dataPrimeiraParcela = normalizarMesPrimeiraParcela($_POST['data_primeira_parcela'] ?? null);
     $parcelasTotal = (int)($_POST['parcelas_total'] ?? 0);
     $parcelasEmitidas = parcelasEmitidasAtual([
         'parcelas_total' => $parcelasTotal,
@@ -361,13 +376,13 @@ foreach ($clientes as $clienteLista) {
                         </div>
 
                         <div class="col-md-3 mb-3">
-                            <label class="form-label">Data primeira parcela</label>
+                            <label class="form-label">Mês primeira parcela</label>
                             <input
-                                type="date"
+                                type="month"
                                 class="form-control"
                                 name="data_primeira_parcela"
                                 id="data_primeira_parcela"
-                                value="<?= htmlspecialchars($parcelamento['data_primeira_parcela'] ?? '') ?>">
+                                value="<?= !empty($parcelamento['data_primeira_parcela']) ? htmlspecialchars(date('Y-m', strtotime($parcelamento['data_primeira_parcela']))) : '' ?>">
                         </div>
 
                         <div class="col-md-3 mb-3">
@@ -482,7 +497,7 @@ foreach ($clientes as $clienteLista) {
             }
 
             const partes = campoData.value.split('-').map(Number);
-            const inicio = new Date(partes[0], partes[1] - 1, partes[2]);
+            const inicio = new Date(partes[0], partes[1] - 1, 1);
             const hoje = new Date();
             hoje.setHours(0, 0, 0, 0);
 
