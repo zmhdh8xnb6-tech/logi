@@ -305,8 +305,8 @@ if ($tabelaAntivirusExiste) {
                 padding: 2px 5px !important;
             }
 
-            .linha-antivirus.d-none {
-                display: table-row !important;
+            .antivirus-print-oculto {
+                display: none !important;
             }
 
             .linha-antivirus {
@@ -795,18 +795,21 @@ if ($tabelaAntivirusExiste) {
             linhasAntivirusAntesImpressao = linhasAntivirus.map(function(linha) {
                 return {
                     linha,
-                    estavaOculta: linha.classList.contains('d-none')
+                    estavaOculta: linha.classList.contains('d-none'),
+                    estavaOcultaNaImpressao: linha.classList.contains('antivirus-print-oculto')
                 };
             });
 
             linhasAntivirus.forEach(function(linha) {
-                linha.classList.toggle('d-none', !filtradas.has(linha));
+                linha.classList.remove('d-none');
+                linha.classList.toggle('antivirus-print-oculto', !filtradas.has(linha));
             });
         }
 
         function restaurarImpressaoAntivirus() {
             linhasAntivirusAntesImpressao.forEach(function(item) {
                 item.linha.classList.toggle('d-none', item.estavaOculta);
+                item.linha.classList.toggle('antivirus-print-oculto', item.estavaOcultaNaImpressao);
             });
             linhasAntivirusAntesImpressao = [];
             renderizarAntivirus();
