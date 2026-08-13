@@ -62,6 +62,7 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, $orgaoCancelado, true);
                         <thead>
                             <tr>
                                 <th>Cliente</th>
+                                <th>CPF/CNPJ</th>
                                 <th>Órgão</th>
                                 <th class="text-end">Número</th>
                                 <th class="text-end">Forma envio</th>

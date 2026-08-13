@@ -579,6 +579,11 @@ function alvaraGoiasFiltroStatus(array $cliente, array $alvaras, array $orgaos):
                         method: 'POST',
                         body: dados
                     });
+
+                    if (!resposta.ok) {
+                        throw new Error('Servidor respondeu com erro ' + resposta.status + '.');
+                    }
+
                     const retorno = await resposta.json();
 
                     if (!retorno.sucesso) {
@@ -600,7 +605,7 @@ function alvaraGoiasFiltroStatus(array $cliente, array $alvaras, array $orgaos):
                     modalGoias.hide();
                     renderizarGoias();
                 } catch (erro) {
-                    alerta.textContent = 'Não foi possível comunicar com o servidor.';
+                    alerta.textContent = erro.message || 'Não foi possível comunicar com o servidor.';
                     alerta.classList.remove('d-none');
                 }
             });

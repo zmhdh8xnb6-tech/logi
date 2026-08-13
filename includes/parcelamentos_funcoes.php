@@ -415,7 +415,8 @@ function buscarParcelamentosPorOrgao(
         SELECT
             p.*,
             c.codigo AS cliente_codigo,
-            c.nome AS cliente_nome
+            c.nome AS cliente_nome,
+            c.documento AS cliente_documento
         FROM parcelamentos p
         INNER JOIN clientes c ON c.id = p.cliente_id
         WHERE p.orgao = ?
@@ -681,7 +682,7 @@ function renderizarLinhasParcelamentos(
 ): void {
     if (count($parcelamentos) === 0): ?>
         <tr>
-            <td colspan="<?= $mostrarAcoes ? 8 : 7 ?>" class="text-center text-muted py-4">
+            <td colspan="<?= $mostrarAcoes ? 9 : 8 ?>" class="text-center text-muted py-4">
                 Nenhum parcelamento cadastrado ainda.
             </td>
         </tr>
@@ -715,6 +716,7 @@ function renderizarLinhasParcelamentos(
             title="Consultar detalhes do parcelamento"
             data-id="<?= (int)$parcelamento['id'] ?>"
             data-cliente="<?= htmlspecialchars($parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome']) ?>"
+            data-documento="<?= htmlspecialchars($parcelamento['cliente_documento'] ?? '-') ?>"
             data-orgao="<?= htmlspecialchars($parcelamento['orgao']) ?>"
             data-numero="<?= htmlspecialchars($parcelamento['numero_parcelamento']) ?>"
             data-forma-envio="<?= htmlspecialchars($parcelamento['forma_envio']) ?>"
@@ -738,6 +740,7 @@ function renderizarLinhasParcelamentos(
                     </div>
                 <?php endif; ?>
             </td>
+            <td class="coluna-documento"><?= htmlspecialchars($parcelamento['cliente_documento'] ?? '-') ?></td>
             <td><?= htmlspecialchars($parcelamento['orgao']) ?></td>
             <td class="text-end"><?= htmlspecialchars($parcelamento['numero_parcelamento']) ?></td>
             <td class="text-end"><?= htmlspecialchars($parcelamento['forma_envio']) ?></td>
@@ -893,7 +896,7 @@ function renderizarModalDetalhesParcelamento(): void
                 dadosAtuais = {
                     ...linha.dataset
                 };
-                cliente.textContent = dadosAtuais.cliente;
+                cliente.textContent = dadosAtuais.cliente + ' · ' + (dadosAtuais.documento || '-');
 
                 modal.querySelectorAll('[data-detalhe]').forEach(function(campo) {
                     campo.textContent = dadosAtuais[campo.dataset.detalhe] || '-';
@@ -923,6 +926,7 @@ function renderizarModalDetalhesParcelamento(): void
                     '.item{border-bottom:1px solid #d1d5db;padding:10px 0}.item span{display:block;color:#6b7280;font-size:12px;margin-bottom:4px}' +
                     '.item strong{font-size:15px}@media print{body{margin:12mm}}</style></head><body>' +
                     '<h1>Parcelamento</h1><p>' + escapar(dadosAtuais.cliente) + '</p><div class="dados">' +
+                    '<div class="item"><span>CPF/CNPJ</span><strong>' + escapar(dadosAtuais.documento) + '</strong></div>' +
                     '<div class="item"><span>Órgão</span><strong>' + escapar(dadosAtuais.orgao) + '</strong></div>' +
                     '<div class="item"><span>Número</span><strong>' + escapar(dadosAtuais.numero) + '</strong></div>' +
                     '<div class="item"><span>Forma de envio</span><strong>' + escapar(dadosAtuais.formaEnvio) + '</strong></div>' +

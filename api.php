@@ -153,8 +153,14 @@ function salvarAlvarasGoiasCliente(PDO $pdo, int $clienteId, bool $usarAlvaraGoi
         return;
     }
 
+    $temEmpresaAlvarasGoias = logiColunaExiste($pdo, 'cliente_alvaras_goias', 'empresa_id');
+    $colunaEmpresa = $temEmpresaAlvarasGoias ? "empresa_id,\n            " : '';
+    $placeholderEmpresa = $temEmpresaAlvarasGoias ? '?, ' : '';
+    $valoresEmpresa = $temEmpresaAlvarasGoias ? [empresaAtivaId($pdo)] : [];
+
     $stmt = $pdo->prepare("
         INSERT INTO cliente_alvaras_goias (
+            {$colunaEmpresa}
             cliente_id,
             orgao_codigo,
             orgao_nome,
@@ -162,7 +168,7 @@ function salvarAlvarasGoiasCliente(PDO $pdo, int $clienteId, bool $usarAlvaraGoi
             vencimento,
             taxa,
             vistoria_previa
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ) VALUES ({$placeholderEmpresa}?, ?, ?, ?, ?, ?, ?)
     ");
 
     foreach ($orgaos as $codigo => $nome) {
@@ -181,7 +187,7 @@ function salvarAlvarasGoiasCliente(PDO $pdo, int $clienteId, bool $usarAlvaraGoi
             $vistoria = 'sim';
         }
 
-        $stmt->execute([
+        $stmt->execute(array_merge($valoresEmpresa, [
             $clienteId,
             $codigo,
             $nome,
@@ -189,7 +195,7 @@ function salvarAlvarasGoiasCliente(PDO $pdo, int $clienteId, bool $usarAlvaraGoi
             $vencimento,
             moedaAlvaraGoiasParaFloat((string)($dados[$codigo]['taxa'] ?? '0')),
             $vistoria,
-        ]);
+        ]));
     }
 }
 

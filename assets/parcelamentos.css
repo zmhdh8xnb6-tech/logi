@@ -11,6 +11,10 @@
     font-weight: 600;
 }
 
+.coluna-documento {
+    white-space: nowrap;
+}
+
 .orgao-impressao {
     display: none;
 }
@@ -50,7 +54,7 @@
     }
 
     .app-sidebar,
-    .container-fluid> :not(.parcelamento-box),
+    .container-fluid > :not(.parcelamento-box),
     .cabecalho-lista,
     .busca-parcelamentos,
     #paginacaoParcelamentos,
@@ -67,7 +71,7 @@
     }
 
     .app-main,
-    .app-sidebar.collapsed+.app-main {
+    .app-sidebar.collapsed + .app-main {
         min-height: 0 !important;
         width: 100% !important;
         margin: 0 !important;
@@ -102,7 +106,7 @@
         text-align: left;
     }
 
-    .orgao-impressao>div:last-child {
+    .orgao-impressao > div:last-child {
         text-align: right;
     }
 
@@ -136,15 +140,15 @@
         margin: 0;
         border-collapse: collapse;
         table-layout: fixed;
-        font-size: 7.8pt;
+        font-size: 7.2pt;
     }
 
     .parcelamento-box table th,
     .parcelamento-box table td {
-        padding: 4px 5px !important;
+        padding: 3px 4px !important;
         border: 1px solid #cbd5e1 !important;
         color: #111827 !important;
-        line-height: 1.15;
+        line-height: 1.12;
         vertical-align: middle;
         word-break: normal;
         overflow-wrap: anywhere;
@@ -154,31 +158,35 @@
         background: #e2e8f0 !important;
         font-weight: 700;
         text-transform: uppercase;
-        font-size: 6.8pt;
+        font-size: 6.4pt;
     }
 
     .parcelamento-box table th:nth-child(1),
     .parcelamento-box table td:nth-child(1) {
-        width: 38%;
+        width: 30%;
     }
 
     .parcelamento-box table th:nth-child(2),
     .parcelamento-box table td:nth-child(2) {
-        width: 10%;
+        width: 13%;
+        white-space: nowrap;
     }
 
     .parcelamento-box table th:nth-child(3),
     .parcelamento-box table td:nth-child(3) {
-        width: 10%;
+        width: 9%;
     }
 
     .parcelamento-box table th:nth-child(4),
     .parcelamento-box table td:nth-child(4) {
-        width: 11%;
+        width: 10%;
     }
 
     .parcelamento-box table th:nth-child(5),
-    .parcelamento-box table td:nth-child(5),
+    .parcelamento-box table td:nth-child(5) {
+        width: 10%;
+    }
+
     .parcelamento-box table th:nth-child(6),
     .parcelamento-box table td:nth-child(6) {
         width: 8%;
@@ -187,6 +195,12 @@
 
     .parcelamento-box table th:nth-child(7),
     .parcelamento-box table td:nth-child(7) {
+        width: 7%;
+        text-align: center;
+    }
+
+    .parcelamento-box table th:nth-child(8),
+    .parcelamento-box table td:nth-child(8) {
         width: 9%;
         text-align: center;
     }
