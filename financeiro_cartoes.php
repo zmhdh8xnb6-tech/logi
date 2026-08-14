@@ -1669,7 +1669,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
         </div>
 
         <div class="modal fade" id="modalCompra" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
                 <div class="modal-content">
                     <form method="post" class="financeiro-form" novalidate>
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(financeiroToken()) ?>">
@@ -1704,12 +1704,12 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                 </select>
                             </div>
                             <div class="row">
-                                <div class="col-md-4 mb-3">
+                                <div class="col-md-6 col-lg-4 mb-3">
                                     <label for="compraData" class="form-label">Data da compra</label>
                                     <input type="date" class="form-control financeiro-calendario" name="data_compra" id="compraData" value="<?= date('Y-m-d') ?>" required>
                                     <div class="invalid-feedback">Informe a data.</div>
                                 </div>
-                                <div class="col-md-4 mb-3">
+                                <div class="col-md-6 col-lg-4 mb-3">
                                     <label for="compraMesFatura" class="form-label" id="compraMesFaturaLabel">Primeira fatura</label>
                                     <input
                                         type="month"
@@ -1720,7 +1720,7 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                         required>
                                     <div class="invalid-feedback">Informe o mês da fatura.</div>
                                 </div>
-                                <div class="col-md-4 mb-3">
+                                <div class="col-md-12 col-lg-4 mb-3">
                                     <label for="compraValor" class="form-label" id="compraValorLabel">Valor da compra</label>
                                     <input type="text" inputmode="decimal" class="form-control campo-moeda" name="valor" id="compraValor" placeholder="0,00" required>
                                     <div class="invalid-feedback">Informe o valor.</div>
