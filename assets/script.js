@@ -1080,6 +1080,7 @@ function atualizarVinculoServicos() {
     const servicoCertificado = campoServicoCertificado.checked;
 
     document.querySelectorAll('.secao-cliente-contabil, .campo-cliente-contabil').forEach(function (bloco) {
+        bloco.hidden = !clienteContabil;
         bloco.classList.toggle('d-none', !clienteContabil);
 
         bloco.querySelectorAll('input, select, textarea').forEach(function (campo) {
@@ -1096,6 +1097,7 @@ function atualizarVinculoServicos() {
 
     document.querySelectorAll('.campo-servico-certificado').forEach(function (bloco) {
         const exibirVencimentoCertificado = clienteContabil || servicoCertificado;
+        bloco.hidden = !exibirVencimentoCertificado;
         bloco.classList.toggle('d-none', !exibirVencimentoCertificado);
 
         bloco.querySelectorAll('input, select, textarea').forEach(function (campo) {

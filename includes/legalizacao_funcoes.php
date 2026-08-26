@@ -352,11 +352,51 @@ function legalizacaoListarClientes(PDO $pdo): array
 function legalizacaoListarUsuarios(PDO $pdo): array
 {
     try {
+        $empresaId = empresaAtivaId($pdo);
+
+        if (
+            $empresaId !== null
+            && $empresaId > 0
+            && logiTabelaExiste($pdo, 'usuario_empresas')
+        ) {
+            $stmt = $pdo->prepare("
+                SELECT DISTINCT u.id, u.nome
+                FROM usuarios u
+                INNER JOIN usuario_empresas ue ON ue.usuario_id = u.id
+                WHERE COALESCE(u.ativo, 1) = 1
+                  AND ue.empresa_id = ?
+                ORDER BY u.nome
+            ");
+            $stmt->execute([$empresaId]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
         $stmt = $pdo->query("
             SELECT id, nome
             FROM usuarios
             WHERE COALESCE(ativo, 1) = 1
             ORDER BY nome
+        ");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+function legalizacaoListarResponsaveisProcessos(PDO $pdo): array
+{
+    try {
+        $stmt = $pdo->query("
+            SELECT DISTINCT
+                p.responsavel_id AS id,
+                p.responsavel_nome AS nome
+            FROM legalizacao_processos p
+            INNER JOIN clientes c ON c.id = p.cliente_id
+            WHERE p.responsavel_id IS NOT NULL
+              AND p.responsavel_id > 0
+              AND COALESCE(p.responsavel_nome, '') <> ''
+              " . empresaFiltroClienteDireto($pdo, 'c') . "
+            ORDER BY p.responsavel_nome
         ");
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {

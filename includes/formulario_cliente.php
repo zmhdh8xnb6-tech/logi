@@ -29,6 +29,10 @@ $ocultarServicosAcompanhados = isset($pdo)
 if ($ocultarServicosAcompanhados) {
     $clienteContabilAtual = 0;
 }
+
+$ocultarCamposClienteContabil = $clienteContabilAtual !== 1;
+$ocultarCamposCertificado = $clienteContabilAtual !== 1
+    && ($ocultarServicosAcompanhados || !$servicoCertificadoAtual);
 $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
     return !empty($data) ? date('d/m/Y', strtotime($data)) : '-';
 };
@@ -108,7 +112,9 @@ if (
             <input type="text" class="form-control" name="telefone" id="telefone">
         </div>
 
-        <div class="col-md-2 mb-3 campo-cliente-contabil">
+        <div
+            class="col-md-2 mb-3 campo-cliente-contabil<?= $ocultarCamposClienteContabil ? ' d-none' : '' ?>"
+            <?= $ocultarCamposClienteContabil ? 'hidden' : '' ?>>
             <label for="inscricao_estadual" class="form-label">Inscrição Estadual</label>
             <input
                 type="text"
@@ -121,11 +127,15 @@ if (
             </div>
         </div>
 
-        <div class="col-md-2 mb-3 campo-cliente-contabil">
+        <div
+            class="col-md-2 mb-3 campo-cliente-contabil<?= $ocultarCamposClienteContabil ? ' d-none' : '' ?>"
+            <?= $ocultarCamposClienteContabil ? 'hidden' : '' ?>>
             <label for="nire" class="form-label">NIRE</label>
             <input type="text" class="form-control" name="nire" id="nire">
         </div>
-        <div class="col-md-2 mb-3 campo-servico-certificado">
+        <div
+            class="col-md-2 mb-3 campo-servico-certificado<?= $ocultarCamposCertificado ? ' d-none' : '' ?>"
+            <?= $ocultarCamposCertificado ? 'hidden' : '' ?>>
             <label for="certificado_status" class="form-label">Certificado Digital</label>
             <select class="form-select" name="certificado_status" id="certificado_status">
                 <?php
@@ -138,7 +148,9 @@ if (
             </select>
         </div>
 
-        <div class="col-md-2 mb-3 campo-servico-certificado">
+        <div
+            class="col-md-2 mb-3 campo-servico-certificado<?= $ocultarCamposCertificado ? ' d-none' : '' ?>"
+            <?= $ocultarCamposCertificado ? 'hidden' : '' ?>>
             <label for="vencimento_certificado" class="form-label">
                 Vencimento Certificado Digital
             </label>
@@ -151,7 +163,9 @@ if (
     </div>
 </div>
 
-<div class="border rounded p-3 mb-3 secao-cliente-contabil">
+<div
+    class="border rounded p-3 mb-3 secao-cliente-contabil<?= $ocultarCamposClienteContabil ? ' d-none' : '' ?>"
+    <?= $ocultarCamposClienteContabil ? 'hidden' : '' ?>>
     <h6 class="mb-3 fw-bold">Controles internos</h6>
 
     <div class="row">
@@ -606,7 +620,9 @@ if (
 </div>
 
 <!-- ENDEREÇO -->
-<div class="border rounded p-3 mb-3 secao-cliente-contabil">
+<div
+    class="border rounded p-3 mb-3 secao-cliente-contabil<?= $ocultarCamposClienteContabil ? ' d-none' : '' ?>"
+    <?= $ocultarCamposClienteContabil ? 'hidden' : '' ?>>
     <h6 class="mb-3 fw-bold">Endereço</h6>
 
     <div class="col-md-1 mb-3">

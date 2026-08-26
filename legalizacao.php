@@ -9,6 +9,7 @@ $mensagem = legalizacaoObterFlash();
 $tiposProcesso = legalizacaoTiposProcesso();
 $clientes = $tabelasDisponiveis ? legalizacaoListarClientes($pdo) : [];
 $usuarios = $tabelasDisponiveis ? legalizacaoListarUsuarios($pdo) : [];
+$responsaveisFiltro = $tabelasDisponiveis ? legalizacaoListarResponsaveisProcessos($pdo) : [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$tabelasDisponiveis) {
@@ -44,17 +45,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             legalizacaoRedirect('legalizacao.php', 'Cliente não encontrado.', 'danger');
         }
 
-        $responsavelNome = $_SESSION['usuario_nome'] ?? 'Usuário';
+        $responsavelNome = '';
+        $responsavelPermitido = false;
 
         if ($responsavelId > 0) {
             foreach ($usuarios as $usuario) {
                 if ((int)$usuario['id'] === $responsavelId) {
                     $responsavelNome = $usuario['nome'];
+                    $responsavelPermitido = true;
                     break;
                 }
             }
-        } else {
-            $responsavelId = (int)($_SESSION['usuario_id'] ?? 0);
+        }
+
+        if (!$responsavelPermitido) {
+            legalizacaoRedirect('legalizacao.php', 'Selecione um responsável vinculado à empresa atual.', 'danger');
         }
 
         $fluxo = legalizacaoFluxoPorTipoECliente($tipo, $cliente);
@@ -402,7 +407,7 @@ if ($tabelasDisponiveis) {
                         </select>
                         <select class="form-select" name="responsavel">
                             <option value="0">Todos os responsáveis</option>
-                            <?php foreach ($usuarios as $usuario): ?>
+                            <?php foreach ($responsaveisFiltro as $usuario): ?>
                                 <option value="<?= (int)$usuario['id'] ?>" <?= $filtroResponsavel === (int)$usuario['id'] ? 'selected' : '' ?>>
                                     <?= htmlspecialchars($usuario['nome']) ?>
                                 </option>
