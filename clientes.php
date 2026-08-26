@@ -2,6 +2,11 @@
 require 'config.php';
 
 exigirPermissao('clientes');
+
+if (strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0) {
+    header('Location: servicos_avulsos.php');
+    exit;
+}
 ?>
 
 <!DOCTYPE html>

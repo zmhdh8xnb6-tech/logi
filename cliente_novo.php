@@ -3,7 +3,8 @@ require 'config.php';
 
 exigirPermissao('clientes');
 
-$clienteContabilPadrao = isset($_GET['avulso']) ? 0 : 1;
+$empresaSomenteServicoAvulso = strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0;
+$clienteContabilPadrao = $empresaSomenteServicoAvulso || isset($_GET['avulso']) ? 0 : 1;
 ?>
 
 <!DOCTYPE html>

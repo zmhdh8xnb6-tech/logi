@@ -3,6 +3,8 @@ require 'config.php';
 
 exigirPermissao('clientes');
 
+$empresaSomenteServicoAvulso = strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0;
+
 $filtroAtivos = clientesFiltroAtivos($pdo);
 
 $stmt = $pdo->query("
@@ -21,7 +23,7 @@ $cadastrosAvulsos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 <head>
     <?php include 'includes/head.php'; ?>
-    <title>Serviços Avulsos</title>
+    <title><?= $empresaSomenteServicoAvulso ? 'Clientes' : 'Serviços Avulsos' ?></title>
 </head>
 
 <body class="app-layout">
@@ -32,13 +34,21 @@ $cadastrosAvulsos = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <div class="container-fluid">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
                 <div>
-                    <h3 class="mb-1">Serviços Avulsos</h3>
-                    <p class="text-muted mb-0">Empresas que ainda não são clientes contábeis</p>
+                    <h3 class="mb-1"><?= $empresaSomenteServicoAvulso ? 'Clientes' : 'Serviços Avulsos' ?></h3>
+                    <p class="text-muted mb-0">
+                        <?= $empresaSomenteServicoAvulso ? 'Cadastros de serviços avulsos da MAXWELL' : 'Empresas que ainda não são clientes contábeis' ?>
+                    </p>
                 </div>
 
-                <a href="clientes.php" class="btn btn-outline-secondary">
-                    <i class="bi bi-people"></i> Clientes contábeis
-                </a>
+                <?php if ($empresaSomenteServicoAvulso): ?>
+                    <a href="cliente_novo.php" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> Novo Cliente
+                    </a>
+                <?php else: ?>
+                    <a href="clientes.php" class="btn btn-outline-secondary">
+                        <i class="bi bi-people"></i> Clientes contábeis
+                    </a>
+                <?php endif; ?>
             </div>
 
             <div class="row mb-3">
@@ -59,15 +69,17 @@ $cadastrosAvulsos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <th>Código</th>
                                 <th>CNPJ/CPF</th>
                                 <th>Empresa</th>
-                                <th>Serviços</th>
+                                <?php if (!$empresaSomenteServicoAvulso): ?>
+                                    <th>Serviços</th>
+                                <?php endif; ?>
                                 <th class="text-end">Ações</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($cadastrosAvulsos)): ?>
                                 <tr>
-                                    <td colspan="5" class="text-center text-muted py-4">
-                                        Nenhum serviço avulso cadastrado.
+                                    <td colspan="<?= $empresaSomenteServicoAvulso ? '4' : '5' ?>" class="text-center text-muted py-4">
+                                        <?= $empresaSomenteServicoAvulso ? 'Nenhum cliente cadastrado.' : 'Nenhum serviço avulso cadastrado.' ?>
                                     </td>
                                 </tr>
                             <?php else: ?>
@@ -81,17 +93,19 @@ $cadastrosAvulsos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 <small class="text-muted d-block"><?= htmlspecialchars($cadastro['nome_fantasia']) ?></small>
                                             <?php endif; ?>
                                         </td>
-                                        <td>
-                                            <div class="d-flex flex-wrap gap-1">
-                                                <?php if (!empty($cadastro['servico_parcelamento'])): ?>
-                                                    <span class="badge bg-primary">Parcelamento</span>
-                                                <?php endif; ?>
+                                        <?php if (!$empresaSomenteServicoAvulso): ?>
+                                            <td>
+                                                <div class="d-flex flex-wrap gap-1">
+                                                    <?php if (!empty($cadastro['servico_parcelamento'])): ?>
+                                                        <span class="badge bg-primary">Parcelamento</span>
+                                                    <?php endif; ?>
 
-                                                <?php if (!empty($cadastro['servico_certificado'])): ?>
-                                                    <span class="badge bg-success">Certificado Digital</span>
-                                                <?php endif; ?>
-                                            </div>
-                                        </td>
+                                                    <?php if (!empty($cadastro['servico_certificado'])): ?>
+                                                        <span class="badge bg-success">Certificado Digital</span>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </td>
+                                        <?php endif; ?>
                                         <td class="text-end">
                                             <div class="d-flex justify-content-end gap-2">
                                                 <a href="cliente.php?id=<?= (int)$cadastro['id'] ?>" class="btn btn-outline-primary btn-sm" title="Visualizar">
@@ -106,8 +120,8 @@ $cadastrosAvulsos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <?php endforeach; ?>
                             <?php endif; ?>
                             <tr id="servicosAvulsosVazio" class="d-none">
-                                <td colspan="5" class="text-center text-muted py-4">
-                                    Nenhum serviço avulso encontrado.
+                                <td colspan="<?= $empresaSomenteServicoAvulso ? '4' : '5' ?>" class="text-center text-muted py-4">
+                                    <?= $empresaSomenteServicoAvulso ? 'Nenhum cliente encontrado.' : 'Nenhum serviço avulso encontrado.' ?>
                                 </td>
                             </tr>
                         </tbody>

@@ -15,6 +15,9 @@
     <?php
     $empresasSidebar = isset($pdo) && $pdo instanceof PDO ? empresasDisponiveis($pdo) : [];
     $empresaAtivaSidebar = isset($pdo) && $pdo instanceof PDO ? empresaAtivaId($pdo) : null;
+    $empresaSomenteServicoAvulsoSidebar = isset($pdo)
+        && $pdo instanceof PDO
+        && strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0;
     ?>
 
     <?php if (count($empresasSidebar) > 1): ?>
@@ -133,7 +136,7 @@
         <?php endif; ?>
 
         <?php if (usuarioPode('clientes')): ?>
-            <a href="clientes.php" class="sidebar-link" data-label="Clientes">
+            <a href="<?= $empresaSomenteServicoAvulsoSidebar ? 'servicos_avulsos.php' : 'clientes.php' ?>" class="sidebar-link" data-label="Clientes">
                 <i class="bi bi-people"></i>
                 <span>Clientes</span>
             </a>
@@ -143,10 +146,12 @@
                 <span>Clientes Devolvidos</span>
             </a>
 
-            <a href="servicos_avulsos.php" class="sidebar-link" data-label="Serviços Avulsos">
-                <i class="bi bi-briefcase"></i>
-                <span>Serviços Avulsos</span>
-            </a>
+            <?php if (!$empresaSomenteServicoAvulsoSidebar): ?>
+                <a href="servicos_avulsos.php" class="sidebar-link" data-label="Serviços Avulsos">
+                    <i class="bi bi-briefcase"></i>
+                    <span>Serviços Avulsos</span>
+                </a>
+            <?php endif; ?>
         <?php endif; ?>
 
         <?php if (usuarioPode('outros_servicos')): ?>

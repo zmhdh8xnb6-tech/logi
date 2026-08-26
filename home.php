@@ -5,6 +5,8 @@ require_once 'includes/avisos_vencimentos.php';
 
 exigirLogin();
 
+$empresaSomenteServicoAvulso = strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0;
+
 $resumoTarefas = [
     'pendentes' => 0,
     'concluidas_hoje' => 0,
@@ -161,7 +163,7 @@ if (usuarioPode('pendencias')) {
 
                 <?php if (usuarioPode('clientes')): ?>
                     <div class="col-md-4">
-                        <div class="card-servico card-clientes" onclick="location.href='clientes.php'">
+                        <div class="card-servico card-clientes" onclick="location.href='<?= $empresaSomenteServicoAvulso ? 'servicos_avulsos.php' : 'clientes.php' ?>'">
                             <div class="icon"><i class="bi bi-people"></i></div>
                             <h5>Clientes</h5>
                             <p>Consulte e gerencie os clientes</p>

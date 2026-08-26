@@ -945,14 +945,18 @@ if ($action === 'create' || $action === 'update') {
         $vencimento_procuracao_fgts = $preservarDataAusente('vencimento_procuracao_fgts', $vencimento_procuracao_fgts);
     }
 
+    $ocultarServicosAcompanhados = strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0;
+
+    if ($ocultarServicosAcompanhados) {
+        $cliente_contabil_enviado = '0';
+    }
+
     if (!in_array((string)$cliente_contabil_enviado, ['0', '1'], true)) {
         echo 'cliente_contabil_obrigatorio';
         exit;
     }
 
     $cliente_contabil = (int)$cliente_contabil_enviado;
-    $ocultarServicosAcompanhados = strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0;
-
     if ($cliente_contabil === 1 && $possui_parcelamento === '') {
         echo 'parcelamento_obrigatorio';
         exit;

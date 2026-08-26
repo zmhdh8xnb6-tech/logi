@@ -25,6 +25,10 @@ $ocultarServicosAcompanhados = isset($pdo)
     && $pdo instanceof PDO
     && function_exists('empresaAtivaNome')
     && strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0;
+
+if ($ocultarServicosAcompanhados) {
+    $clienteContabilAtual = 0;
+}
 $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
     return !empty($data) ? date('d/m/Y', strtotime($data)) : '-';
 };
@@ -69,8 +73,12 @@ if (
         <div class="col-md-3 mb-3">
             <label for="cliente_contabil" class="form-label">É cliente contábil?</label>
             <select class="form-select" name="cliente_contabil" id="cliente_contabil" required>
-                <option value="1" <?= $clienteContabilAtual === 1 ? 'selected' : '' ?>>Sim</option>
-                <option value="0" <?= $clienteContabilAtual === 0 ? 'selected' : '' ?>>Não, serviço avulso</option>
+                <?php if ($ocultarServicosAcompanhados): ?>
+                    <option value="0" selected>Não, serviço avulso</option>
+                <?php else: ?>
+                    <option value="1" <?= $clienteContabilAtual === 1 ? 'selected' : '' ?>>Sim</option>
+                    <option value="0" <?= $clienteContabilAtual === 0 ? 'selected' : '' ?>>Não, serviço avulso</option>
+                <?php endif; ?>
             </select>
             <div class="invalid-feedback">Informe se é cliente contábil.</div>
         </div>
