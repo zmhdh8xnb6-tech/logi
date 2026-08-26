@@ -1013,7 +1013,9 @@ function validarFormulario() {
         }
     });
 
-    if (!clienteContabil && !servicoParcelamento && !servicoCertificado) {
+    const ocultarServicosAcompanhados = $('#ocultar_servicos_acompanhados').val() === '1';
+
+    if (!clienteContabil && !ocultarServicosAcompanhados && !servicoParcelamento && !servicoCertificado) {
         $('#servicosAvulsosFeedback').removeClass('d-none').show();
         valido = false;
     } else {
@@ -1059,10 +1061,18 @@ function atualizarVinculoServicos() {
     const clienteContabil = campoClienteContabil.value === '1';
     const campoServicoParcelamento = document.getElementById('servico_parcelamento');
     const campoServicoCertificado = document.getElementById('servico_certificado');
+    const ocultarServicosAcompanhados = document.getElementById('ocultar_servicos_acompanhados')?.value === '1';
 
     document.querySelectorAll('.secao-servicos-avulsos').forEach(function (bloco) {
-        bloco.classList.toggle('d-none', clienteContabil);
+        bloco.classList.toggle('d-none', clienteContabil || ocultarServicosAcompanhados);
     });
+
+    if (ocultarServicosAcompanhados) {
+        campoServicoParcelamento.checked = false;
+        campoServicoParcelamento.disabled = true;
+        campoServicoCertificado.checked = false;
+        campoServicoCertificado.disabled = true;
+    }
 
     const servicoParcelamento = campoServicoParcelamento.checked;
     const servicoCertificado = campoServicoCertificado.checked;
@@ -1101,7 +1111,7 @@ function atualizarVinculoServicos() {
         });
     }
 
-    if (clienteContabil || servicoParcelamento || servicoCertificado) {
+    if (clienteContabil || ocultarServicosAcompanhados || servicoParcelamento || servicoCertificado) {
         $('#servicosAvulsosFeedback').addClass('d-none').hide();
     }
 }

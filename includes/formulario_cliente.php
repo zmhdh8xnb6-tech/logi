@@ -21,6 +21,10 @@ $sociosCliente = $sociosCliente ?? [];
 $clienteContabilAtual = (int)($cliente['cliente_contabil'] ?? $clienteContabilPadrao ?? 1);
 $servicoParcelamentoAtual = (int)($cliente['servico_parcelamento'] ?? (($cliente['possui_parcelamento'] ?? '') === 'possui'));
 $servicoCertificadoAtual = (int)($cliente['servico_certificado'] ?? 0);
+$ocultarServicosAcompanhados = isset($pdo)
+    && $pdo instanceof PDO
+    && function_exists('empresaAtivaNome')
+    && strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0;
 $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
     return !empty($data) ? date('d/m/Y', strtotime($data)) : '-';
 };
@@ -50,6 +54,7 @@ if (
 ?>
 
 <input type="hidden" name="qsa_json" id="qsa_json" value="">
+<input type="hidden" id="ocultar_servicos_acompanhados" value="<?= $ocultarServicosAcompanhados ? '1' : '0' ?>">
 
 <!-- DADOS PRINCIPAIS -->
 <div class="border rounded p-3 mb-3">
@@ -329,7 +334,7 @@ if (
     </div>
 </div>
 
-<div class="border rounded p-3 mb-3 secao-servicos-avulsos">
+<div class="border rounded p-3 mb-3 secao-servicos-avulsos<?= $ocultarServicosAcompanhados ? ' d-none' : '' ?>">
     <h6 class="mb-3 fw-bold">Serviços acompanhados</h6>
 
     <div class="d-flex flex-wrap gap-4">
@@ -341,6 +346,7 @@ if (
                 name="servico_parcelamento"
                 id="servico_parcelamento"
                 value="1"
+                <?= $ocultarServicosAcompanhados ? 'disabled' : '' ?>
                 <?= $servicoParcelamentoAtual ? 'checked' : '' ?>>
             <label class="form-check-label" for="servico_parcelamento">Parcelamento</label>
         </div>
@@ -353,6 +359,7 @@ if (
                 name="servico_certificado"
                 id="servico_certificado"
                 value="1"
+                <?= $ocultarServicosAcompanhados ? 'disabled' : '' ?>
                 <?= $servicoCertificadoAtual ? 'checked' : '' ?>>
             <label class="form-check-label" for="servico_certificado">Certificado Digital</label>
         </div>

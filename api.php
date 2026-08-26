@@ -951,6 +951,7 @@ if ($action === 'create' || $action === 'update') {
     }
 
     $cliente_contabil = (int)$cliente_contabil_enviado;
+    $ocultarServicosAcompanhados = strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0;
 
     if ($cliente_contabil === 1 && $possui_parcelamento === '') {
         echo 'parcelamento_obrigatorio';
@@ -966,7 +967,7 @@ if ($action === 'create' || $action === 'update') {
         $possui_parcelamento = $servico_parcelamento ? 'possui' : 'nao_possui';
     }
 
-    if ($cliente_contabil === 0 && !$servico_parcelamento && !$servico_certificado) {
+    if ($cliente_contabil === 0 && !$ocultarServicosAcompanhados && !$servico_parcelamento && !$servico_certificado) {
         echo 'servico_avulso_obrigatorio';
         exit;
     }
