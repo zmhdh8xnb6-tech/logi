@@ -161,6 +161,14 @@ if (usuarioPode('pendencias')) {
 
                 <?php if (usuarioPode('clientes')): ?>
                     <div class="col-md-4">
+                        <div class="card-servico card-clientes" onclick="location.href='clientes.php'">
+                            <div class="icon"><i class="bi bi-people"></i></div>
+                            <h5>Clientes</h5>
+                            <p>Consulte e gerencie os clientes</p>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
                         <div class="card-servico card-devolvidos" onclick="location.href='clientes_devolvidos.php'">
                             <div class="icon"><i class="bi bi-archive"></i></div>
                             <h5>Clientes Devolvidos</h5>
