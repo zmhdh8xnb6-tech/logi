@@ -76,50 +76,42 @@ $cadastrosAvulsos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             </tr>
                         </thead>
                         <tbody>
-                            <?php if (empty($cadastrosAvulsos)): ?>
-                                <tr>
-                                    <td colspan="<?= $empresaSomenteServicoAvulso ? '4' : '5' ?>" class="text-center text-muted py-4">
-                                        <?= $empresaSomenteServicoAvulso ? 'Nenhum cliente cadastrado.' : 'Nenhum serviço avulso cadastrado.' ?>
-                                    </td>
-                                </tr>
-                            <?php else: ?>
-                                <?php foreach ($cadastrosAvulsos as $cadastro): ?>
-                                    <tr class="linha-servico-avulso">
-                                        <td class="codigo-avulso"><?= htmlspecialchars($cadastro['codigo']) ?></td>
-                                        <td class="documento-avulso"><?= htmlspecialchars($cadastro['documento']) ?></td>
-                                        <td class="nome-avulso">
-                                            <strong><?= htmlspecialchars($cadastro['nome']) ?></strong>
-                                            <?php if (!empty($cadastro['nome_fantasia'])): ?>
-                                                <small class="text-muted d-block"><?= htmlspecialchars($cadastro['nome_fantasia']) ?></small>
-                                            <?php endif; ?>
-                                        </td>
-                                        <?php if (!$empresaSomenteServicoAvulso): ?>
-                                            <td>
-                                                <div class="d-flex flex-wrap gap-1">
-                                                    <?php if (!empty($cadastro['servico_parcelamento'])): ?>
-                                                        <span class="badge bg-primary">Parcelamento</span>
-                                                    <?php endif; ?>
-
-                                                    <?php if (!empty($cadastro['servico_certificado'])): ?>
-                                                        <span class="badge bg-success">Certificado Digital</span>
-                                                    <?php endif; ?>
-                                                </div>
-                                            </td>
+                            <?php foreach ($cadastrosAvulsos as $cadastro): ?>
+                                <tr class="linha-servico-avulso">
+                                    <td class="codigo-avulso"><?= htmlspecialchars($cadastro['codigo']) ?></td>
+                                    <td class="documento-avulso"><?= htmlspecialchars($cadastro['documento']) ?></td>
+                                    <td class="nome-avulso">
+                                        <strong><?= htmlspecialchars($cadastro['nome']) ?></strong>
+                                        <?php if (!empty($cadastro['nome_fantasia'])): ?>
+                                            <small class="text-muted d-block"><?= htmlspecialchars($cadastro['nome_fantasia']) ?></small>
                                         <?php endif; ?>
-                                        <td class="text-end">
-                                            <div class="d-flex justify-content-end gap-2">
-                                                <a href="cliente.php?id=<?= (int)$cadastro['id'] ?>" class="btn btn-outline-primary btn-sm" title="Visualizar">
-                                                    <i class="bi bi-eye"></i>
-                                                </a>
-                                                <a href="cliente_editar.php?id=<?= (int)$cadastro['id'] ?>" class="btn btn-outline-secondary btn-sm" title="Editar">
-                                                    <i class="bi bi-pencil"></i>
-                                                </a>
+                                    </td>
+                                    <?php if (!$empresaSomenteServicoAvulso): ?>
+                                        <td>
+                                            <div class="d-flex flex-wrap gap-1">
+                                                <?php if (!empty($cadastro['servico_parcelamento'])): ?>
+                                                    <span class="badge bg-primary">Parcelamento</span>
+                                                <?php endif; ?>
+
+                                                <?php if (!empty($cadastro['servico_certificado'])): ?>
+                                                    <span class="badge bg-success">Certificado Digital</span>
+                                                <?php endif; ?>
                                             </div>
                                         </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                            <tr id="servicosAvulsosVazio" class="d-none">
+                                    <?php endif; ?>
+                                    <td class="text-end">
+                                        <div class="d-flex justify-content-end gap-2">
+                                            <a href="cliente.php?id=<?= (int)$cadastro['id'] ?>" class="btn btn-outline-primary btn-sm" title="Visualizar">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                            <a href="cliente_editar.php?id=<?= (int)$cadastro['id'] ?>" class="btn btn-outline-secondary btn-sm" title="Editar">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                            <tr id="servicosAvulsosVazio" class="<?= empty($cadastrosAvulsos) ? '' : 'd-none' ?>">
                                 <td colspan="<?= $empresaSomenteServicoAvulso ? '4' : '5' ?>" class="text-center text-muted py-4">
                                     <?= $empresaSomenteServicoAvulso ? 'Nenhum cliente encontrado.' : 'Nenhum serviço avulso encontrado.' ?>
                                 </td>
