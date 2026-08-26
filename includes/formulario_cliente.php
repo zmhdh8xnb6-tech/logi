@@ -342,7 +342,9 @@ if (
     </div>
 </div>
 
-<div class="border rounded p-3 mb-3 secao-servicos-avulsos<?= $ocultarServicosAcompanhados ? ' d-none' : '' ?>">
+<div
+    class="border rounded p-3 mb-3 secao-servicos-avulsos<?= ($ocultarServicosAcompanhados || $clienteContabilAtual === 1) ? ' d-none' : '' ?>"
+    <?= ($ocultarServicosAcompanhados || $clienteContabilAtual === 1) ? 'hidden' : '' ?>>
     <h6 class="mb-3 fw-bold">Serviços acompanhados</h6>
 
     <div class="d-flex flex-wrap gap-4">

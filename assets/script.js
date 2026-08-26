@@ -1064,7 +1064,9 @@ function atualizarVinculoServicos() {
     const ocultarServicosAcompanhados = document.getElementById('ocultar_servicos_acompanhados')?.value === '1';
 
     document.querySelectorAll('.secao-servicos-avulsos').forEach(function (bloco) {
-        bloco.classList.toggle('d-none', clienteContabil || ocultarServicosAcompanhados);
+        const ocultarBloco = clienteContabil || ocultarServicosAcompanhados;
+        bloco.hidden = ocultarBloco;
+        bloco.classList.toggle('d-none', ocultarBloco);
     });
 
     if (ocultarServicosAcompanhados) {
