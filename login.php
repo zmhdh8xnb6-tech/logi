@@ -113,55 +113,73 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 <body class="login-page">
 
-    <div class="login-container">
+    <main class="login-container">
+        <div class="login-card login-split-card">
+            <section class="login-form-panel">
+                <?php if ($mensagem): ?>
+                    <div class="alert alert-<?= $tipoMensagem ?> text-center py-2">
+                        <?= htmlspecialchars($mensagem) ?>
+                    </div>
+                <?php endif; ?>
 
-        <div class="login-card">
+                <img src="<?= assetUrl('assets/images/logo.svg') ?>" class="logo-img" alt="Logi">
 
-            <?php if ($mensagem): ?>
-                <div class="alert alert-<?= $tipoMensagem ?> text-center py-2">
-                    <?= htmlspecialchars($mensagem) ?>
-                </div>
-            <?php endif; ?>
-
-            <!-- LOGO -->
-            <div class="text-center mb-4">
-                <img src="<?= htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8') ?>/assets/images/logo.svg" class="logo-img" alt="Logi">
-            </div>
-
-            <!-- FORM -->
-
-            <form method="POST" id="loginForm">
-
-                <div class="mb-3">
-                    <label class="form-label text-primary">E-MAIL</label>
-                    <input autofocus="email" name="email" class="form-control input-custom campo-obrigatorio" placeholder="Digite seu e-mail">
-                    <div class="invalid-feedback">Preencha o e-mail.</div>
+                <div class="login-heading">
+                    <h1>Bem-vindo</h1>
+                    <p>Entre com seus dados para acessar o sistema.</p>
                 </div>
 
-                <div class="mb-4 position-relative">
-                    <label class="form-label text-primary">SENHA</label>
-                    <input type="password" name="senha" id="senha" class="form-control input-custom pe-5 campo-obrigatorio" placeholder="Digite sua senha">
-                    <div class="invalid-feedback">Preencha a senha.</div>
+                <form method="POST" id="loginForm" novalidate>
+                    <div class="mb-3">
+                        <label class="form-label" for="email">E-MAIL</label>
+                        <div class="login-input-wrap">
+                            <i class="bi bi-envelope" aria-hidden="true"></i>
+                            <input
+                                type="email"
+                                id="email"
+                                name="email"
+                                class="form-control input-custom campo-obrigatorio"
+                                placeholder="Digite seu e-mail"
+                                autocomplete="username"
+                                autofocus>
+                        </div>
+                        <div class="invalid-feedback">Preencha o e-mail.</div>
+                    </div>
 
-                    <button type="button" class="eye-btn" onclick="toggleSenha('senha', this)">
-                        <i class="bi bi-eye"></i>
+                    <div class="mb-4">
+                        <label class="form-label" for="senha">SENHA</label>
+                        <div class="login-input-wrap">
+                            <i class="bi bi-lock" aria-hidden="true"></i>
+                            <input
+                                type="password"
+                                name="senha"
+                                id="senha"
+                                class="form-control input-custom campo-obrigatorio"
+                                placeholder="Digite sua senha"
+                                autocomplete="current-password">
+                            <button type="button" class="eye-btn" onclick="toggleSenha('senha', this)" aria-label="Mostrar senha">
+                                <i class="bi bi-eye" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                        <div class="invalid-feedback">Preencha a senha.</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 btn-login">
+                        Entrar
                     </button>
-                </div>
 
+                    <div class="login-access-note">
+                        <i class="bi bi-lock" aria-hidden="true"></i>
+                        Acesso liberado apenas pelo administrador.
+                    </div>
+                </form>
+            </section>
 
-                <button type="submit" class="btn btn-primary w-100 btn-login">
-                    Entrar
-                </button>
-
-                <div class="text-center mt-3 text-muted small">
-                    Acesso liberado apenas pelo administrador.
-                </div>
-
-            </form>
-
+            <div class="login-visual-panel" aria-hidden="true">
+                <img src="<?= assetUrl('assets/images/login-escritorio.jpg') ?>" alt="">
+            </div>
         </div>
-
-    </div>
+    </main>
 
     <script>
         function toggleSenha(id, botao) {
@@ -171,9 +189,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             if (campo.type === 'password') {
                 campo.type = 'text';
                 icone.classList.replace('bi-eye', 'bi-eye-slash');
+                botao.setAttribute('aria-label', 'Ocultar senha');
             } else {
                 campo.type = 'password';
                 icone.classList.replace('bi-eye-slash', 'bi-eye');
+                botao.setAttribute('aria-label', 'Mostrar senha');
             }
         }
     </script>
