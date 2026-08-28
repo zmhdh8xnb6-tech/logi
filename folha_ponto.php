@@ -454,6 +454,7 @@ $mensagem = folhaPontoObterMensagem();
 $funcionarios = [];
 $funcionarioSelecionado = null;
 $horarios = folhaPontoHorarioPadrao();
+$horariosFuncionarios = [];
 $registros = [];
 
 if ($estruturaDisponivel) {
@@ -466,38 +467,38 @@ if ($estruturaDisponivel) {
     $stmt->execute([$empresaId]);
     $funcionarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    if ($funcionarioId <= 0 && $funcionarios !== []) {
-        $funcionarioId = (int)$funcionarios[0]['id'];
-    }
-
     $funcionarioSelecionado = $buscarFuncionario($pdo, $empresaId, $funcionarioId);
 
-    if (!$funcionarioSelecionado && $funcionarios !== []) {
-        $funcionarioId = (int)$funcionarios[0]['id'];
-        $funcionarioSelecionado = $buscarFuncionario($pdo, $empresaId, $funcionarioId);
+    if (!$funcionarioSelecionado) {
+        $funcionarioId = 0;
     }
 
-    if ($funcionarioSelecionado) {
+    if ($funcionarios !== []) {
         $stmt = $pdo->prepare("
             SELECT *
             FROM folha_ponto_horarios
-            WHERE empresa_id = ? AND funcionario_id = ?
-            ORDER BY dia_semana
+            WHERE empresa_id = ?
+            ORDER BY funcionario_id, dia_semana
         ");
-        $stmt->execute([$empresaId, $funcionarioId]);
-        $horariosSalvos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmt->execute([$empresaId]);
 
-        if ($horariosSalvos !== []) {
-            $horarios = [];
-
-            foreach ($horariosSalvos as $horario) {
-                foreach (['entrada_1', 'saida_1', 'entrada_2', 'saida_2'] as $campo) {
-                    $horario[$campo] = !empty($horario[$campo]) ? substr($horario[$campo], 0, 5) : null;
-                }
-
-                $horarios[(int)$horario['dia_semana']] = $horario;
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $horario) {
+            foreach (['entrada_1', 'saida_1', 'entrada_2', 'saida_2'] as $campo) {
+                $horario[$campo] = !empty($horario[$campo]) ? substr($horario[$campo], 0, 5) : null;
             }
+
+            $idHorario = (int)$horario['funcionario_id'];
+
+            if (!isset($horariosFuncionarios[$idHorario])) {
+                $horariosFuncionarios[$idHorario] = folhaPontoHorarioPadrao();
+            }
+
+            $horariosFuncionarios[$idHorario][(int)$horario['dia_semana']] = $horario;
         }
+    }
+
+    if ($funcionarioSelecionado) {
+        $horarios = $horariosFuncionarios[$funcionarioId] ?? folhaPontoHorarioPadrao();
 
         $stmt = $pdo->prepare("
             SELECT *
@@ -636,7 +637,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                     <p class="text-muted mb-0">Jornadas semanais e registros mensais dos funcionários</p>
                 </div>
                 <div class="d-flex flex-wrap gap-2">
-                    <a href="home.php" class="btn btn-outline-secondary">
+                    <a href="<?= $funcionarioSelecionado ? 'folha_ponto.php?' . http_build_query(['mes' => $mes]) : 'home.php' ?>" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left"></i> Voltar
                     </a>
                     <?php if ($estruturaDisponivel): ?>
@@ -659,42 +660,42 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                     </div>
                 <?php endif; ?>
 
-                <section class="ponto-filtros mb-4 no-print">
-                    <form method="get" id="formFiltrosPonto" class="ponto-filtros-form">
-                        <div>
-                            <label for="funcionarioPonto" class="form-label">Funcionário</label>
-                            <select class="form-select" name="funcionario_id" id="funcionarioPonto">
-                                <?php if ($funcionarios === []): ?>
-                                    <option value="">Nenhum funcionário cadastrado</option>
-                                <?php endif; ?>
-                                <?php foreach ($funcionarios as $funcionario): ?>
-                                    <option value="<?= (int)$funcionario['id'] ?>" <?= (int)$funcionario['id'] === $funcionarioId ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($funcionario['nome']) ?><?= (int)$funcionario['ativo'] === 1 ? '' : ' (inativo)' ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
-                    </form>
-
-                    <div class="ponto-navegacao-mes">
-                        <a href="folha_ponto.php?<?= http_build_query(['mes' => $mesAnterior, 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-secondary" title="Mês anterior" aria-label="Mês anterior">
-                            <i class="bi bi-chevron-left"></i>
-                        </a>
-                        <form method="get" id="formMesPonto">
-                            <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
-                            <label for="mesPonto" class="visually-hidden">Escolher mês</label>
-                            <input type="month" class="form-control" name="mes" id="mesPonto" value="<?= htmlspecialchars($mes) ?>">
+                <?php if ($funcionarioSelecionado): ?>
+                    <section class="ponto-filtros mb-4 no-print">
+                        <form method="get" id="formFiltrosPonto" class="ponto-filtros-form">
+                            <div>
+                                <label for="funcionarioPonto" class="form-label">Funcionário</label>
+                                <select class="form-select" name="funcionario_id" id="funcionarioPonto">
+                                    <?php if ($funcionarios === []): ?>
+                                        <option value="">Nenhum funcionário cadastrado</option>
+                                    <?php endif; ?>
+                                    <?php foreach ($funcionarios as $funcionario): ?>
+                                        <option value="<?= (int)$funcionario['id'] ?>" <?= (int)$funcionario['id'] === $funcionarioId ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($funcionario['nome']) ?><?= (int)$funcionario['ativo'] === 1 ? '' : ' (inativo)' ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
                         </form>
-                        <a href="folha_ponto.php?<?= http_build_query(['mes' => date('Y-m'), 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-primary" title="Mês atual" aria-label="Mês atual">
-                            <i class="bi bi-calendar-check"></i>
-                        </a>
-                        <a href="folha_ponto.php?<?= http_build_query(['mes' => $proximoMes, 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-secondary" title="Próximo mês" aria-label="Próximo mês">
-                            <i class="bi bi-chevron-right"></i>
-                        </a>
-                    </div>
 
-                    <?php if ($funcionarioSelecionado): ?>
+                        <div class="ponto-navegacao-mes">
+                            <a href="folha_ponto.php?<?= http_build_query(['mes' => $mesAnterior, 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-secondary" title="Mês anterior" aria-label="Mês anterior">
+                                <i class="bi bi-chevron-left"></i>
+                            </a>
+                            <form method="get" id="formMesPonto">
+                                <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
+                                <label for="mesPonto" class="visually-hidden">Escolher mês</label>
+                                <input type="month" class="form-control" name="mes" id="mesPonto" value="<?= htmlspecialchars($mes) ?>">
+                            </form>
+                            <a href="folha_ponto.php?<?= http_build_query(['mes' => date('Y-m'), 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-primary" title="Mês atual" aria-label="Mês atual">
+                                <i class="bi bi-calendar-check"></i>
+                            </a>
+                            <a href="folha_ponto.php?<?= http_build_query(['mes' => $proximoMes, 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-secondary" title="Próximo mês" aria-label="Próximo mês">
+                                <i class="bi bi-chevron-right"></i>
+                            </a>
+                        </div>
+
                         <div class="ponto-acoes-filtro">
                             <button
                                 type="button"
@@ -715,10 +716,10 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                 <i class="bi bi-printer"></i> Imprimir
                             </button>
                         </div>
-                    <?php endif; ?>
-                </section>
+                    </section>
+                <?php endif; ?>
 
-                <?php if (!$funcionarioSelecionado): ?>
+                <?php if ($funcionarios === []): ?>
                     <section class="ponto-painel ponto-vazio">
                         <i class="bi bi-person-badge"></i>
                         <h5>Nenhum funcionário cadastrado</h5>
@@ -726,6 +727,102 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalFuncionario">
                             <i class="bi bi-person-plus"></i> Cadastrar funcionário
                         </button>
+                    </section>
+                <?php elseif (!$funcionarioSelecionado): ?>
+                    <section class="ponto-painel">
+                        <div class="ponto-painel-titulo">
+                            <div>
+                                <h5 class="mb-1">Funcionários</h5>
+                                <p class="text-muted small mb-0">Abra um funcionário para consultar ou preencher a folha mensal.</p>
+                            </div>
+                            <span class="badge bg-light text-dark border">
+                                <?= count($funcionarios) ?> cadastrado<?= count($funcionarios) === 1 ? '' : 's' ?>
+                            </span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table align-middle mb-0 ponto-funcionarios-tabela">
+                                <thead>
+                                    <tr>
+                                        <th>Funcionário</th>
+                                        <th>Status</th>
+                                        <th>Jornada cadastrada</th>
+                                        <th class="text-end">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($funcionarios as $funcionario): ?>
+                                        <?php
+                                        $idFuncionarioLista = (int)$funcionario['id'];
+                                        $horariosLista = $horariosFuncionarios[$idFuncionarioLista] ?? folhaPontoHorarioPadrao();
+                                        $cargaLista = 0;
+
+                                        foreach ($horariosLista as $horarioLista) {
+                                            if (!empty($horarioLista['trabalha'])) {
+                                                $cargaLista += folhaPontoMinutosMarcacoes($horarioLista);
+                                            }
+                                        }
+
+                                        $horariosListaJson = json_encode(
+                                            array_values($horariosLista),
+                                            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                                        );
+                                        $urlFuncionario = 'folha_ponto.php?' . http_build_query([
+                                            'mes' => $mes,
+                                            'funcionario_id' => $idFuncionarioLista,
+                                        ]);
+                                        ?>
+                                        <tr>
+                                            <td>
+                                                <a class="ponto-funcionario-link" href="<?= htmlspecialchars($urlFuncionario) ?>">
+                                                    <?= htmlspecialchars($funcionario['nome']) ?>
+                                                </a>
+                                            </td>
+                                            <td>
+                                                <span class="badge <?= (int)$funcionario['ativo'] === 1 ? 'bg-success' : 'bg-secondary' ?>">
+                                                    <?= (int)$funcionario['ativo'] === 1 ? 'Ativo' : 'Inativo' ?>
+                                                </span>
+                                            </td>
+                                            <td><?= folhaPontoFormatarMinutos($cargaLista) ?> por semana</td>
+                                            <td>
+                                                <div class="ponto-acoes-funcionario">
+                                                    <a
+                                                        href="<?= htmlspecialchars($urlFuncionario) ?>"
+                                                        class="btn btn-sm btn-outline-primary"
+                                                        title="Abrir folha"
+                                                        aria-label="Abrir folha de <?= htmlspecialchars($funcionario['nome'], ENT_QUOTES, 'UTF-8') ?>">
+                                                        <i class="bi bi-eye"></i>
+                                                    </a>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-sm btn-outline-primary"
+                                                        title="Editar funcionário"
+                                                        aria-label="Editar <?= htmlspecialchars($funcionario['nome'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-id="<?= $idFuncionarioLista ?>"
+                                                        data-nome="<?= htmlspecialchars($funcionario['nome'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-ativo="<?= (int)$funcionario['ativo'] ?>"
+                                                        data-horarios="<?= htmlspecialchars($horariosListaJson, ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalFuncionario">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-sm btn-outline-danger"
+                                                        title="Excluir funcionário"
+                                                        aria-label="Excluir <?= htmlspecialchars($funcionario['nome'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-id="<?= $idFuncionarioLista ?>"
+                                                        data-nome="<?= htmlspecialchars($funcionario['nome'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalExcluirFuncionario">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </section>
                 <?php else: ?>
                     <div class="ponto-impressao-cabecalho">
@@ -793,9 +890,9 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                             <th>Dia</th>
                                             <th>Jornada prevista</th>
                                             <th>Entrada</th>
-                                            <th>Saída</th>
+                                            <th>Almoço</th>
                                             <th>Retorno</th>
-                                            <th>Saída final</th>
+                                            <th>Saída</th>
                                             <th>Trabalhado</th>
                                             <th>Saldo</th>
                                             <th>Status</th>
@@ -910,9 +1007,9 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                             <th>Dia</th>
                                             <th>Trabalha</th>
                                             <th>Entrada</th>
-                                            <th>Saída</th>
+                                            <th>Almoço</th>
                                             <th>Retorno</th>
-                                            <th>Saída final</th>
+                                            <th>Saída</th>
                                             <th>Total</th>
                                         </tr>
                                     </thead>
@@ -956,22 +1053,22 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
             </div>
         </div>
 
-        <?php if ($funcionarioSelecionado): ?>
+        <?php if ($funcionarios !== []): ?>
             <div class="modal fade" id="modalExcluirFuncionario" tabindex="-1" aria-hidden="true">
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content">
                         <form method="post">
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(folhaPontoToken()) ?>">
                             <input type="hidden" name="acao" value="excluir_funcionario">
-                            <input type="hidden" name="id" id="funcionarioExcluirId" value="<?= $funcionarioId ?>">
-                            <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
+                            <input type="hidden" name="id" id="funcionarioExcluirId" value="<?= $funcionarioSelecionado ? $funcionarioId : '' ?>">
+                            <input type="hidden" name="funcionario_id" value="<?= $funcionarioSelecionado ? $funcionarioId : '' ?>">
                             <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
                             <div class="modal-header">
                                 <h5 class="modal-title">Excluir funcionário</h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                             </div>
                             <div class="modal-body">
-                                <p>Tem certeza que deseja excluir <strong id="funcionarioExcluirNome"><?= htmlspecialchars($funcionarioSelecionado['nome']) ?></strong>?</p>
+                                <p>Tem certeza que deseja excluir <strong id="funcionarioExcluirNome"><?= htmlspecialchars($funcionarioSelecionado['nome'] ?? 'este funcionário') ?></strong>?</p>
                                 <div class="alert alert-danger mb-0">
                                     Os horários e todas as folhas mensais desse funcionário também serão excluídos. Esta ação não poderá ser desfeita.
                                 </div>
@@ -1007,7 +1104,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                             </div>
                             <div class="modal-body">
                                 <div class="alert alert-info">
-                                    O PDF é lido no navegador. Antes de gravar, confira todas as datas e marcações encontradas.
+                                    O sistema aceita PDF com texto e folha digitalizada preenchida à caneta. A leitura acontece no navegador e deve ser conferida antes de salvar.
                                 </div>
                                 <label for="arquivoPontoPdf" class="form-label">Arquivo PDF</label>
                                 <input type="file" class="form-control" id="arquivoPontoPdf" accept="application/pdf,.pdf">
@@ -1015,22 +1112,26 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                 <div class="alert alert-danger d-none mt-3" id="erroImportacaoPdf"></div>
                                 <div class="ponto-importacao-status d-none mt-3" id="statusImportacaoPdf">
                                     <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-                                    Lendo o arquivo...
+                                    <span id="statusImportacaoTexto">Lendo o arquivo...</span>
                                 </div>
                                 <div class="mt-4 d-none" id="previewImportacaoPdf">
                                     <div class="d-flex justify-content-between align-items-center gap-3 mb-2">
                                         <h6 class="mb-0">Pré-visualização</h6>
                                         <span class="badge bg-primary" id="quantidadeImportacaoPdf"></span>
                                     </div>
+                                    <div class="alert alert-warning py-2 d-none" id="avisoRevisaoOcr">
+                                        Os horários foram reconhecidos de uma imagem com escrita manual. Revise cada campo antes de confirmar.
+                                    </div>
                                     <div class="table-responsive">
-                                        <table class="table table-sm align-middle mb-0">
+                                        <table class="table table-sm align-middle mb-0 ponto-preview-tabela">
                                             <thead>
                                                 <tr>
                                                     <th>Data</th>
+                                                    <th>Dia da semana</th>
                                                     <th>Entrada</th>
-                                                    <th>Saída</th>
+                                                    <th>Almoço</th>
                                                     <th>Retorno</th>
-                                                    <th>Saída final</th>
+                                                    <th>Saída</th>
                                                 </tr>
                                             </thead>
                                             <tbody id="corpoImportacaoPdf"></tbody>
@@ -1056,6 +1157,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
     <script src="<?= assetUrl('assets/folha_ponto.js') ?>"></script>
 </body>
 

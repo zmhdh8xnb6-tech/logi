@@ -10,6 +10,7 @@
         6: { trabalha: false, entrada_1: '', saida_1: '', entrada_2: '', saida_2: '' },
         7: { trabalha: false, entrada_1: '', saida_1: '', entrada_2: '', saida_2: '' }
     };
+    let registrosPdfAtuais = [];
 
     function minutosHora(valor) {
         if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(valor || '')) {
@@ -322,12 +323,16 @@
     function limparImportacaoPdf() {
         document.getElementById('erroImportacaoPdf')?.classList.add('d-none');
         document.getElementById('previewImportacaoPdf')?.classList.add('d-none');
+        document.getElementById('avisoRevisaoOcr')?.classList.add('d-none');
         const oculto = document.getElementById('registrosPdf');
         const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
         const corpo = document.getElementById('corpoImportacaoPdf');
+        const textoStatus = document.getElementById('statusImportacaoTexto');
+        registrosPdfAtuais = [];
         if (oculto) oculto.value = '';
         if (confirmar) confirmar.disabled = true;
         if (corpo) corpo.replaceChildren();
+        if (textoStatus) textoStatus.textContent = 'Lendo o arquivo...';
     }
 
     function formatarDataBr(dataIso) {
@@ -335,31 +340,281 @@
         return partes[2] + '/' + partes[1] + '/' + partes[0];
     }
 
-    function mostrarPreviewPdf(registros) {
+    function nomeDiaSemana(dataIso) {
+        const partes = dataIso.split('-').map(Number);
+        const nomes = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+        return nomes[new Date(partes[0], partes[1] - 1, partes[2], 12).getDay()];
+    }
+
+    function sincronizarRegistrosPdf() {
+        const oculto = document.getElementById('registrosPdf');
+        const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
+        const horariosValidos = registrosPdfAtuais.every(function (registro) {
+            return ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].every(function (campo) {
+                return registro[campo] === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(registro[campo]);
+            });
+        });
+
+        if (oculto) oculto.value = horariosValidos ? JSON.stringify(registrosPdfAtuais) : '';
+        if (confirmar) confirmar.disabled = registrosPdfAtuais.length === 0 || !horariosValidos;
+    }
+
+    function mostrarPreviewPdf(registros, leituraOcr) {
         const corpo = document.getElementById('corpoImportacaoPdf');
         const preview = document.getElementById('previewImportacaoPdf');
         const quantidade = document.getElementById('quantidadeImportacaoPdf');
-        const oculto = document.getElementById('registrosPdf');
-        const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
+        const avisoOcr = document.getElementById('avisoRevisaoOcr');
 
-        if (!corpo || !preview || !oculto || !confirmar) return;
+        if (!corpo || !preview) return;
         corpo.replaceChildren();
+        registrosPdfAtuais = registros.map(function (registro) {
+            return {
+                data: registro.data,
+                entrada_1: registro.entrada_1 || '',
+                saida_1: registro.saida_1 || '',
+                entrada_2: registro.entrada_2 || '',
+                saida_2: registro.saida_2 || ''
+            };
+        });
 
-        registros.forEach(function (registro) {
+        registrosPdfAtuais.forEach(function (registro, indice) {
             const linha = document.createElement('tr');
-            [formatarDataBr(registro.data), registro.entrada_1, registro.saida_1, registro.entrada_2, registro.saida_2]
-                .forEach(function (valor) {
-                    const coluna = document.createElement('td');
-                    coluna.textContent = valor || '-';
-                    linha.appendChild(coluna);
+            const colunaData = document.createElement('td');
+            const colunaDia = document.createElement('td');
+            colunaData.textContent = formatarDataBr(registro.data);
+            colunaDia.textContent = nomeDiaSemana(registro.data);
+            linha.appendChild(colunaData);
+            linha.appendChild(colunaDia);
+
+            ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].forEach(function (campo) {
+                const coluna = document.createElement('td');
+                const input = document.createElement('input');
+                input.type = 'time';
+                input.className = 'form-control form-control-sm ponto-preview-hora';
+                input.value = registro[campo];
+                input.setAttribute('aria-label', campo + ' de ' + formatarDataBr(registro.data));
+                input.addEventListener('input', function () {
+                    registrosPdfAtuais[indice][campo] = input.value;
+                    sincronizarRegistrosPdf();
                 });
+                coluna.appendChild(input);
+                linha.appendChild(coluna);
+            });
             corpo.appendChild(linha);
         });
 
-        oculto.value = JSON.stringify(registros);
-        confirmar.disabled = false;
-        if (quantidade) quantidade.textContent = registros.length + (registros.length === 1 ? ' dia' : ' dias');
+        sincronizarRegistrosPdf();
+        avisoOcr?.classList.toggle('d-none', !leituraOcr);
+        if (quantidade) quantidade.textContent = registrosPdfAtuais.length + (registrosPdfAtuais.length === 1 ? ' dia' : ' dias');
         preview.classList.remove('d-none');
+    }
+
+    function atualizarStatusImportacao(mensagem) {
+        const texto = document.getElementById('statusImportacaoTexto');
+        if (texto) texto.textContent = mensagem;
+    }
+
+    function normalizarHorarioOcr(texto) {
+        let valor = String(texto || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toUpperCase()
+            .replace(/[OQD]/g, '0')
+            .replace(/[IL|!]/g, '1')
+            .replace(/S/g, '5')
+            .replace(/[^0-9H:M]/g, '');
+        let hora = null;
+        let minuto = 0;
+        const separado = valor.match(/^(\d{1,2})[H:](\d{1,2})?M?$/);
+
+        if (separado) {
+            hora = Number(separado[1]);
+            minuto = separado[2] ? Number(separado[2].padEnd(2, '0')) : 0;
+        } else {
+            valor = valor.replace(/[^0-9]/g, '');
+
+            if (valor.length <= 2 && valor.length > 0) {
+                hora = Number(valor);
+            } else if (valor.length === 3) {
+                hora = Number(valor.slice(0, 1));
+                minuto = Number(valor.slice(1));
+            } else if (valor.length >= 4) {
+                hora = Number(valor.slice(0, 2));
+                minuto = Number(valor.slice(2, 4));
+            }
+        }
+
+        if (hora === null || hora > 23 || minuto > 59) {
+            return '';
+        }
+
+        return String(hora).padStart(2, '0') + ':' + String(minuto).padStart(2, '0');
+    }
+
+    function recortarCelulaOcr(canvasPagina, area, somenteAzul) {
+        const contexto = canvasPagina.getContext('2d', { willReadFrequently: true });
+        const x0 = Math.max(0, Math.floor(area.x0));
+        const y0 = Math.max(0, Math.floor(area.y0));
+        const largura = Math.max(1, Math.floor(area.x1 - area.x0));
+        const altura = Math.max(1, Math.floor(area.y1 - area.y0));
+        const imagem = contexto.getImageData(x0, y0, largura, altura);
+        const ativos = [];
+        let minimoX = largura;
+        let minimoY = altura;
+        let maximoX = 0;
+        let maximoY = 0;
+
+        for (let y = 0; y < altura; y += 1) {
+            for (let x = 0; x < largura; x += 1) {
+                const indice = ((y * largura) + x) * 4;
+                const vermelho = imagem.data[indice];
+                const verde = imagem.data[indice + 1];
+                const azul = imagem.data[indice + 2];
+                const luminancia = (vermelho * .299) + (verde * .587) + (azul * .114);
+                const ativo = somenteAzul
+                    ? azul - vermelho > 25 && azul > verde * 1.04 && azul > vermelho * 1.12
+                    : luminancia < 115;
+
+                if (!ativo) continue;
+                ativos.push([x, y]);
+                minimoX = Math.min(minimoX, x);
+                minimoY = Math.min(minimoY, y);
+                maximoX = Math.max(maximoX, x);
+                maximoY = Math.max(maximoY, y);
+            }
+        }
+
+        const minimoPixels = somenteAzul ? 18 : 45;
+        if (ativos.length < minimoPixels) {
+            return null;
+        }
+
+        const margem = 4;
+        minimoX = Math.max(0, minimoX - margem);
+        minimoY = Math.max(0, minimoY - margem);
+        maximoX = Math.min(largura - 1, maximoX + margem);
+        maximoY = Math.min(altura - 1, maximoY + margem);
+        const recorteLargura = maximoX - minimoX + 1;
+        const recorteAltura = maximoY - minimoY + 1;
+        const recorte = document.createElement('canvas');
+        recorte.width = recorteLargura;
+        recorte.height = recorteAltura;
+        const contextoRecorte = recorte.getContext('2d');
+        const binaria = contextoRecorte.createImageData(recorteLargura, recorteAltura);
+        binaria.data.fill(255);
+
+        ativos.forEach(function (ponto) {
+            if (ponto[0] < minimoX || ponto[0] > maximoX || ponto[1] < minimoY || ponto[1] > maximoY) return;
+            const destino = (((ponto[1] - minimoY) * recorteLargura) + (ponto[0] - minimoX)) * 4;
+            binaria.data[destino] = 0;
+            binaria.data[destino + 1] = 0;
+            binaria.data[destino + 2] = 0;
+            binaria.data[destino + 3] = 255;
+        });
+        contextoRecorte.putImageData(binaria, 0, 0);
+
+        const escala = Math.max(3, Math.ceil(96 / recorteAltura));
+        const ampliada = document.createElement('canvas');
+        ampliada.width = (recorteLargura * escala) + 24;
+        ampliada.height = (recorteAltura * escala) + 24;
+        const contextoAmpliado = ampliada.getContext('2d');
+        contextoAmpliado.fillStyle = '#fff';
+        contextoAmpliado.fillRect(0, 0, ampliada.width, ampliada.height);
+        contextoAmpliado.imageSmoothingEnabled = false;
+        contextoAmpliado.drawImage(recorte, 12, 12, recorteLargura * escala, recorteAltura * escala);
+        return ampliada;
+    }
+
+    async function registrosDoPdfDigitalizado(pdf, mesSelecionado) {
+        if (!window.Tesseract) {
+            throw new Error('O leitor de escrita manual não carregou. Verifique a internet e tente novamente.');
+        }
+
+        atualizarStatusImportacao('Preparando a imagem para reconhecer a escrita manual...');
+        const pagina = await pdf.getPage(1);
+        const viewport = pagina.getViewport({ scale: 2.4 });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        await pagina.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+
+        const limitesX = [.168, .258, .351, .445, .535];
+        const topoLinhas = canvas.height * .204;
+        const baseLinhas = canvas.height * .840;
+        const alturaLinha = (baseLinhas - topoLinhas) / 31;
+        const partesMes = mesSelecionado.split('-').map(Number);
+        const quantidadeDias = new Date(partesMes[0], partesMes[1], 0).getDate();
+        const campos = ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'];
+        let tarefas = [];
+
+        for (let dia = 1; dia <= quantidadeDias; dia += 1) {
+            for (let coluna = 0; coluna < campos.length; coluna += 1) {
+                const area = {
+                    x0: (canvas.width * limitesX[coluna]) + 6,
+                    x1: (canvas.width * limitesX[coluna + 1]) - 6,
+                    y0: topoLinhas + ((dia - 1) * alturaLinha) + 4,
+                    y1: topoLinhas + (dia * alturaLinha) - 4
+                };
+                const recorte = recortarCelulaOcr(canvas, area, true);
+                if (recorte) tarefas.push({ dia: dia, campo: campos[coluna], canvas: recorte });
+            }
+        }
+
+        if (tarefas.length === 0) {
+            for (let dia = 1; dia <= quantidadeDias; dia += 1) {
+                for (let coluna = 0; coluna < campos.length; coluna += 1) {
+                    const area = {
+                        x0: (canvas.width * limitesX[coluna]) + 6,
+                        x1: (canvas.width * limitesX[coluna + 1]) - 6,
+                        y0: topoLinhas + ((dia - 1) * alturaLinha) + 4,
+                        y1: topoLinhas + (dia * alturaLinha) - 4
+                    };
+                    const recorte = recortarCelulaOcr(canvas, area, false);
+                    if (recorte) tarefas.push({ dia: dia, campo: campos[coluna], canvas: recorte });
+                }
+            }
+        }
+
+        if (tarefas.length === 0) {
+            throw new Error('Não encontrei horários escritos nas colunas da folha. Confira o modelo e a qualidade da digitalização.');
+        }
+
+        const worker = await window.Tesseract.createWorker('eng', 1);
+        const porDia = new Map();
+
+        try {
+            await worker.setParameters({
+                tessedit_pageseg_mode: '7',
+                tessedit_char_whitelist: '0123456789hHmM:.',
+                preserve_interword_spaces: '1',
+                user_defined_dpi: '300'
+            });
+
+            for (let indice = 0; indice < tarefas.length; indice += 1) {
+                const tarefa = tarefas[indice];
+                atualizarStatusImportacao('Reconhecendo horário ' + (indice + 1) + ' de ' + tarefas.length + '...');
+                const resultado = await worker.recognize(tarefa.canvas);
+                const horario = normalizarHorarioOcr(resultado?.data?.text || '');
+
+                if (!horario) continue;
+                if (!porDia.has(tarefa.dia)) {
+                    porDia.set(tarefa.dia, {
+                        data: mesSelecionado + '-' + String(tarefa.dia).padStart(2, '0'),
+                        entrada_1: '',
+                        saida_1: '',
+                        entrada_2: '',
+                        saida_2: ''
+                    });
+                }
+                porDia.get(tarefa.dia)[tarefa.campo] = horario;
+            }
+        } finally {
+            await worker.terminate();
+        }
+
+        return Array.from(porDia.values()).sort(function (a, b) {
+            return a.data.localeCompare(b.data);
+        });
     }
 
     async function lerPdf() {
@@ -401,16 +656,19 @@
                 linhas.push.apply(linhas, linhasDoPdf(conteudo.items));
             }
 
-            if (totalItens === 0) {
-                throw new Error('Este PDF parece ser uma imagem digitalizada. Para ele, será necessário OCR; preencha manualmente por enquanto.');
-            }
+            let registros = totalItens > 0 ? registrosDasLinhas(linhas, mes) : [];
+            let leituraOcr = false;
 
-            const registros = registrosDasLinhas(linhas, mes);
             if (registros.length === 0) {
-                throw new Error('Não encontrei datas e horários do mês selecionado. Confira se o PDF contém texto e se o mês está correto.');
+                leituraOcr = true;
+                registros = await registrosDoPdfDigitalizado(pdf, mes);
             }
 
-            mostrarPreviewPdf(registros);
+            if (registros.length === 0) {
+                throw new Error('A imagem foi lida, mas nenhum horário pôde ser reconhecido. Tente uma digitalização mais nítida.');
+            }
+
+            mostrarPreviewPdf(registros, leituraOcr);
         } catch (erro) {
             mostrarErroPdf(erro?.message || 'Não foi possível ler este PDF.');
         } finally {
@@ -467,13 +725,28 @@
 
         document.getElementById('formFuncionario')?.addEventListener('submit', validarFuncionario);
 
+        const modalExcluirFuncionario = document.getElementById('modalExcluirFuncionario');
+        modalExcluirFuncionario?.addEventListener('show.bs.modal', function (evento) {
+            const botao = evento.relatedTarget;
+
+            if (!botao?.dataset.id) {
+                return;
+            }
+
+            const excluirId = document.getElementById('funcionarioExcluirId');
+            const excluirNome = document.getElementById('funcionarioExcluirNome');
+
+            if (excluirId) excluirId.value = botao.dataset.id;
+            if (excluirNome) excluirNome.textContent = botao.dataset.nome || 'este funcionário';
+        });
+
         document.getElementById('btnExcluirFuncionario')?.addEventListener('click', function () {
             const id = document.getElementById('funcionarioIdModal')?.value || '';
             const nome = document.getElementById('funcionarioNome')?.value || 'este funcionário';
             const excluirId = document.getElementById('funcionarioExcluirId');
             const excluirNome = document.getElementById('funcionarioExcluirNome');
             const modalEdicao = bootstrap.Modal.getInstance(document.getElementById('modalFuncionario'));
-            const modalExclusaoElemento = document.getElementById('modalExcluirFuncionario');
+            const modalExclusaoElemento = modalExcluirFuncionario;
 
             if (!id || !modalExclusaoElemento) {
                 return;

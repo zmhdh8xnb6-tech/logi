@@ -154,6 +154,58 @@
     min-width: 1120px;
 }
 
+.ponto-funcionarios-tabela {
+    min-width: 680px;
+}
+
+.ponto-funcionarios-tabela th {
+    padding: 14px 18px;
+    border-bottom-color: #d8e0e9;
+    background: #f5f7fa;
+    color: #5d6b82;
+    font-size: .76rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.ponto-funcionarios-tabela td {
+    padding: 13px 18px;
+    border-color: #e1e6ec;
+}
+
+.ponto-funcionarios-tabela tbody tr {
+    transition: background-color .16s ease;
+}
+
+.ponto-funcionarios-tabela tbody tr:hover {
+    background: #f7faff;
+}
+
+.ponto-funcionario-link {
+    color: #172033;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.ponto-funcionario-link:hover {
+    color: #0d6efd;
+}
+
+.ponto-acoes-funcionario {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.ponto-acoes-funcionario .btn {
+    display: inline-flex;
+    width: 34px;
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
 .ponto-tabela th,
 .ponto-jornada-tabela th {
     padding: 12px 10px;
@@ -229,6 +281,25 @@
     align-items: center;
     gap: 8px;
     color: #475569;
+}
+
+.ponto-preview-tabela {
+    min-width: 720px;
+}
+
+.ponto-preview-tabela th {
+    color: #5d6b82;
+    font-size: .76rem;
+    white-space: nowrap;
+}
+
+.ponto-preview-tabela td:first-child,
+.ponto-preview-tabela td:nth-child(2) {
+    white-space: nowrap;
+}
+
+.ponto-preview-hora {
+    min-width: 106px;
 }
 
 #previewImportacaoPdf {
