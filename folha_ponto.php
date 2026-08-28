@@ -1104,7 +1104,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                             </div>
                             <div class="modal-body">
                                 <div class="alert alert-info">
-                                    O sistema aceita PDF com texto e folha digitalizada preenchida à caneta. A leitura acontece no navegador e deve ser conferida antes de salvar.
+                                    Em folhas preenchidas à caneta, o sistema separa cada horário para conferência. Digite 8, 12 ou 1320 para preencher 08:00, 12:00 ou 13:20.
                                 </div>
                                 <label for="arquivoPontoPdf" class="form-label">Arquivo PDF</label>
                                 <input type="file" class="form-control" id="arquivoPontoPdf" accept="application/pdf,.pdf">
@@ -1120,7 +1120,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                         <span class="badge bg-primary" id="quantidadeImportacaoPdf"></span>
                                     </div>
                                     <div class="alert alert-warning py-2 d-none" id="avisoRevisaoOcr">
-                                        Os horários foram reconhecidos de uma imagem com escrita manual. Revise cada campo antes de confirmar.
+                                        A escrita manual não é gravada automaticamente. Confira o recorte de cada célula e informe o horário correspondente.
                                     </div>
                                     <div class="table-responsive">
                                         <table class="table table-sm align-middle mb-0 ponto-preview-tabela">
@@ -1157,7 +1157,6 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
     <script src="<?= assetUrl('assets/folha_ponto.js') ?>"></script>
 </body>
 

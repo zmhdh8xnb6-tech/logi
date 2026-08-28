@@ -11,6 +11,7 @@
         7: { trabalha: false, entrada_1: '', saida_1: '', entrada_2: '', saida_2: '' }
     };
     let registrosPdfAtuais = [];
+    let camposDetectadosPdf = new Set();
 
     function minutosHora(valor) {
         if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(valor || '')) {
@@ -329,6 +330,7 @@
         const corpo = document.getElementById('corpoImportacaoPdf');
         const textoStatus = document.getElementById('statusImportacaoTexto');
         registrosPdfAtuais = [];
+        camposDetectadosPdf = new Set();
         if (oculto) oculto.value = '';
         if (confirmar) confirmar.disabled = true;
         if (corpo) corpo.replaceChildren();
@@ -349,14 +351,50 @@
     function sincronizarRegistrosPdf() {
         const oculto = document.getElementById('registrosPdf');
         const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
+        const algumHorario = registrosPdfAtuais.some(function (registro) {
+            return ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].some(function (campo) {
+                return registro[campo] !== '';
+            });
+        });
         const horariosValidos = registrosPdfAtuais.every(function (registro) {
             return ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].every(function (campo) {
                 return registro[campo] === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(registro[campo]);
             });
         });
+        const detectadosPreenchidos = Array.from(camposDetectadosPdf).every(function (chave) {
+            const partes = chave.split(':');
+            return Boolean(registrosPdfAtuais[Number(partes[0])]?.[partes[1]]);
+        });
 
-        if (oculto) oculto.value = horariosValidos ? JSON.stringify(registrosPdfAtuais) : '';
-        if (confirmar) confirmar.disabled = registrosPdfAtuais.length === 0 || !horariosValidos;
+        if (oculto) oculto.value = horariosValidos && algumHorario && detectadosPreenchidos ? JSON.stringify(registrosPdfAtuais) : '';
+        if (confirmar) confirmar.disabled = registrosPdfAtuais.length === 0 || !horariosValidos || !algumHorario || !detectadosPreenchidos;
+    }
+
+    function normalizarHorarioDigitado(valor) {
+        const texto = String(valor || '').trim();
+        const horarioCompleto = texto.match(/^(\d{1,2})\s*[:h]\s*(\d{1,2})?$/i);
+        let hora = null;
+        let minuto = 0;
+
+        if (horarioCompleto) {
+            hora = Number(horarioCompleto[1]);
+            minuto = horarioCompleto[2] ? Number(horarioCompleto[2].padEnd(2, '0')) : 0;
+        } else {
+            const digitos = texto.replace(/\D/g, '');
+
+            if (digitos.length >= 1 && digitos.length <= 2) {
+                hora = Number(digitos);
+            } else if (digitos.length === 3) {
+                hora = Number(digitos.slice(0, 1));
+                minuto = Number(digitos.slice(1));
+            } else if (digitos.length === 4) {
+                hora = Number(digitos.slice(0, 2));
+                minuto = Number(digitos.slice(2));
+            }
+        }
+
+        if (hora === null || hora > 23 || minuto > 59) return '';
+        return String(hora).padStart(2, '0') + ':' + String(minuto).padStart(2, '0');
     }
 
     function mostrarPreviewPdf(registros, leituraOcr) {
@@ -367,6 +405,7 @@
 
         if (!corpo || !preview) return;
         corpo.replaceChildren();
+        camposDetectadosPdf = new Set();
         registrosPdfAtuais = registros.map(function (registro) {
             return {
                 data: registro.data,
@@ -388,8 +427,26 @@
 
             ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].forEach(function (campo) {
                 const coluna = document.createElement('td');
+                const grupo = document.createElement('div');
                 const input = document.createElement('input');
-                input.type = 'time';
+                const imagemRecorte = registro._imagens?.[campo] || '';
+
+                grupo.className = 'ponto-preview-celula';
+
+                if (imagemRecorte) {
+                    const imagem = document.createElement('img');
+                    imagem.src = imagemRecorte;
+                    imagem.alt = 'Horário escrito na folha';
+                    imagem.className = 'ponto-preview-recorte';
+                    grupo.appendChild(imagem);
+                    camposDetectadosPdf.add(indice + ':' + campo);
+                }
+
+                input.type = 'text';
+                input.inputMode = 'numeric';
+                input.autocomplete = 'off';
+                input.maxLength = 5;
+                input.placeholder = '--:--';
                 input.className = 'form-control form-control-sm ponto-preview-hora';
                 input.value = registro[campo];
                 input.setAttribute('aria-label', campo + ' de ' + formatarDataBr(registro.data));
@@ -397,7 +454,24 @@
                     registrosPdfAtuais[indice][campo] = input.value;
                     sincronizarRegistrosPdf();
                 });
-                coluna.appendChild(input);
+                input.addEventListener('blur', function () {
+                    const horario = normalizarHorarioDigitado(input.value);
+                    input.value = horario;
+                    input.classList.toggle('is-invalid', input.value === '' && input.dataset.preenchido === '1');
+                    registrosPdfAtuais[indice][campo] = horario;
+                    sincronizarRegistrosPdf();
+                });
+                input.addEventListener('keydown', function (evento) {
+                    if (evento.key !== 'Enter') return;
+                    evento.preventDefault();
+                    input.blur();
+                    const campos = Array.from(corpo.querySelectorAll('.ponto-preview-hora'));
+                    const proximo = campos[campos.indexOf(input) + 1];
+                    proximo?.focus();
+                });
+                input.dataset.preenchido = imagemRecorte ? '1' : '0';
+                grupo.appendChild(input);
+                coluna.appendChild(grupo);
                 linha.appendChild(coluna);
             });
             corpo.appendChild(linha);
@@ -412,29 +486,6 @@
     function atualizarStatusImportacao(mensagem) {
         const texto = document.getElementById('statusImportacaoTexto');
         if (texto) texto.textContent = mensagem;
-    }
-
-    function normalizarHorarioOcr(texto) {
-        const valor = String(texto || '').replace(/\D/g, '');
-        let hora = null;
-        let minuto = 0;
-
-        if (valor.length <= 2 && valor.length > 0) {
-            // Na folha, "8" e "12" significam 08:00 e 12:00.
-            hora = Number(valor);
-        } else if (valor.length === 3) {
-            hora = Number(valor.slice(0, 1));
-            minuto = Number(valor.slice(1));
-        } else if (valor.length === 4) {
-            hora = Number(valor.slice(0, 2));
-            minuto = Number(valor.slice(2));
-        }
-
-        if (hora === null || hora > 23 || minuto > 59) {
-            return '';
-        }
-
-        return String(hora).padStart(2, '0') + ':' + String(minuto).padStart(2, '0');
     }
 
     function recortarCelulaOcr(canvasPagina, area, somenteAzul) {
@@ -512,11 +563,7 @@
     }
 
     async function registrosDoPdfDigitalizado(pdf, mesSelecionado) {
-        if (!window.Tesseract) {
-            throw new Error('O leitor de escrita manual não carregou. Verifique a internet e tente novamente.');
-        }
-
-        atualizarStatusImportacao('Preparando a imagem para reconhecer a escrita manual...');
+        atualizarStatusImportacao('Separando os horários escritos em cada dia...');
         const pagina = await pdf.getPage(1);
         const viewport = pagina.getViewport({ scale: 2.4 });
         const canvas = document.createElement('canvas');
@@ -565,37 +612,21 @@
             throw new Error('Não encontrei horários escritos nas colunas da folha. Confira o modelo e a qualidade da digitalização.');
         }
 
-        const worker = await window.Tesseract.createWorker('eng', 1);
         const porDia = new Map();
 
-        try {
-            await worker.setParameters({
-                tessedit_pageseg_mode: '8',
-                tessedit_char_whitelist: '0123456789',
-                user_defined_dpi: '300'
-            });
-
-            for (let indice = 0; indice < tarefas.length; indice += 1) {
-                const tarefa = tarefas[indice];
-                atualizarStatusImportacao('Reconhecendo horário ' + (indice + 1) + ' de ' + tarefas.length + '...');
-                const resultado = await worker.recognize(tarefa.canvas);
-                const horario = normalizarHorarioOcr(resultado?.data?.text || '');
-
-                if (!horario) continue;
-                if (!porDia.has(tarefa.dia)) {
-                    porDia.set(tarefa.dia, {
-                        data: mesSelecionado + '-' + String(tarefa.dia).padStart(2, '0'),
-                        entrada_1: '',
-                        saida_1: '',
-                        entrada_2: '',
-                        saida_2: ''
-                    });
-                }
-                porDia.get(tarefa.dia)[tarefa.campo] = horario;
+        tarefas.forEach(function (tarefa) {
+            if (!porDia.has(tarefa.dia)) {
+                porDia.set(tarefa.dia, {
+                    data: mesSelecionado + '-' + String(tarefa.dia).padStart(2, '0'),
+                    entrada_1: '',
+                    saida_1: '',
+                    entrada_2: '',
+                    saida_2: '',
+                    _imagens: {}
+                });
             }
-        } finally {
-            await worker.terminate();
-        }
+            porDia.get(tarefa.dia)._imagens[tarefa.campo] = tarefa.canvas.toDataURL('image/png');
+        });
 
         return Array.from(porDia.values()).sort(function (a, b) {
             return a.data.localeCompare(b.data);
