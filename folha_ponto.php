@@ -611,7 +611,8 @@ if ($funcionarioSelecionado) {
 }
 
 $saldoAteHoje = $totalTrabalhadoAteHoje - $totalPrevistoAteHoje;
-$referenciaMensal = $cargaSemanal * 5;
+$jornadaSemanalReferencia = 44 * 60;
+$referenciaMensal = 220 * 60;
 $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 ?>
 
@@ -748,7 +749,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                     <section class="ponto-resumo mb-4">
                         <div class="ponto-metrica metrica-jornada">
                             <span>Jornada semanal</span>
-                            <strong><?= folhaPontoFormatarMinutos($cargaSemanal) ?></strong>
+                            <strong><?= folhaPontoFormatarMinutos($jornadaSemanalReferencia) ?></strong>
                         </div>
                         <div class="ponto-metrica metrica-prevista">
                             <span>Referência mensal</span>
