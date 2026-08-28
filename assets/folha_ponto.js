@@ -415,33 +415,19 @@
     }
 
     function normalizarHorarioOcr(texto) {
-        let valor = String(texto || '')
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toUpperCase()
-            .replace(/[OQD]/g, '0')
-            .replace(/[IL|!]/g, '1')
-            .replace(/S/g, '5')
-            .replace(/[^0-9H:M]/g, '');
+        const valor = String(texto || '').replace(/\D/g, '');
         let hora = null;
         let minuto = 0;
-        const separado = valor.match(/^(\d{1,2})[H:](\d{1,2})?M?$/);
 
-        if (separado) {
-            hora = Number(separado[1]);
-            minuto = separado[2] ? Number(separado[2].padEnd(2, '0')) : 0;
-        } else {
-            valor = valor.replace(/[^0-9]/g, '');
-
-            if (valor.length <= 2 && valor.length > 0) {
-                hora = Number(valor);
-            } else if (valor.length === 3) {
-                hora = Number(valor.slice(0, 1));
-                minuto = Number(valor.slice(1));
-            } else if (valor.length >= 4) {
-                hora = Number(valor.slice(0, 2));
-                minuto = Number(valor.slice(2, 4));
-            }
+        if (valor.length <= 2 && valor.length > 0) {
+            // Na folha, "8" e "12" significam 08:00 e 12:00.
+            hora = Number(valor);
+        } else if (valor.length === 3) {
+            hora = Number(valor.slice(0, 1));
+            minuto = Number(valor.slice(1));
+        } else if (valor.length === 4) {
+            hora = Number(valor.slice(0, 2));
+            minuto = Number(valor.slice(2));
         }
 
         if (hora === null || hora > 23 || minuto > 59) {
@@ -584,9 +570,8 @@
 
         try {
             await worker.setParameters({
-                tessedit_pageseg_mode: '7',
-                tessedit_char_whitelist: '0123456789hHmM:.',
-                preserve_interword_spaces: '1',
+                tessedit_pageseg_mode: '8',
+                tessedit_char_whitelist: '0123456789',
                 user_defined_dpi: '300'
             });
 
