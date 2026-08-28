@@ -114,6 +114,10 @@
     --card-accent: #198754;
 }
 
+.card-folha-ponto {
+    --card-accent: #0f766e;
+}
+
 .card-legalizacao {
     --card-accent: #0d6efd;
 }
@@ -217,11 +221,11 @@
     background: #f3f7fb;
 }
 
-.aviso-home-item + .aviso-home-item {
+.aviso-home-item+.aviso-home-item {
     border-top: 1px solid #edf0f3;
 }
 
-.aviso-home-item > i:first-child {
+.aviso-home-item>i:first-child {
     color: #b45309;
     font-size: 1.2rem;
 }
@@ -271,7 +275,7 @@
     }
 
     .card-servico .icon,
-    .card-servico > .icon {
+    .card-servico>.icon {
         margin-bottom: 10px;
         font-size: 32px;
     }
@@ -294,7 +298,7 @@
         grid-template-columns: 28px minmax(0, 1fr);
     }
 
-    .aviso-home-item > .badge,
+    .aviso-home-item>.badge,
     .aviso-home-resolver {
         grid-column: 2;
         justify-self: start;

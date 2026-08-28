@@ -100,6 +100,13 @@
             </a>
         <?php endif; ?>
 
+        <?php if (usuarioPode('folha_ponto')): ?>
+            <a href="folha_ponto.php" class="sidebar-link" data-label="Folha de Ponto">
+                <i class="bi bi-clock-history"></i>
+                <span>Folha de Ponto</span>
+            </a>
+        <?php endif; ?>
+
         <?php if (usuarioPode('legalizacao')): ?>
             <a href="legalizacao.php" class="sidebar-link" data-label="Legalização">
                 <i class="bi bi-diagram-3"></i>

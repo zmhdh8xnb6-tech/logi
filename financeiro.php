@@ -1350,6 +1350,9 @@ $nomeMes = $nomesMeses[$numeroMes] . '/' . date('Y', strtotime($inicioMes));
                     <a href="financeiro_categorias.php" class="btn btn-outline-primary">
                         <i class="bi bi-tags"></i> Categorias
                     </a>
+                    <a href="financeiro_planejamento.php?mes=<?= htmlspecialchars($mes) ?>" class="btn btn-outline-primary">
+                        <i class="bi bi-bullseye"></i> Planejamento
+                    </a>
                     <a href="financeiro_relatorio.php?mes=<?= htmlspecialchars($mes) ?>" class="btn btn-outline-success">
                         <i class="bi bi-bar-chart"></i> Relatório
                     </a>

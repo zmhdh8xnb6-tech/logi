@@ -199,6 +199,16 @@ if (usuarioPode('pendencias')) {
                     </div>
                 <?php endif; ?>
 
+                <?php if (usuarioPode('folha_ponto')): ?>
+                    <div class="col-md-4">
+                        <div class="card-servico card-folha-ponto" onclick="location.href='folha_ponto.php'">
+                            <div class="icon"><i class="bi bi-clock-history"></i></div>
+                            <h5>Folha de Ponto</h5>
+                            <p>Jornadas, horários e registros mensais</p>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
                 <?php if (usuarioPode('legalizacao')): ?>
                     <div class="col-md-4">
                         <div class="card-servico card-legalizacao" onclick="location.href='legalizacao.php'">

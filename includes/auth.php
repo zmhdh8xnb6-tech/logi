@@ -16,6 +16,7 @@ if (!function_exists('modulosSistema')) {
             'outros_servicos' => 'Outros Serviços',
             'paralisacoes' => 'Paralisações',
             'financeiro' => 'Financeiro',
+            'folha_ponto' => 'Folha de Ponto',
             'legalizacao' => 'Legalização',
             'usuarios' => 'Usuários e Permissões',
         ];
