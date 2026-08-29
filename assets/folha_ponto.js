@@ -187,11 +187,13 @@
         }
     }
 
-    function atualizarLinhaRegistro(campo) {
-        const linha = campo.closest('tr');
+    function atualizarLinhaRegistro(referencia) {
+        const linha = referencia?.matches?.('.ponto-registro-linha')
+            ? referencia
+            : referencia?.closest?.('.ponto-registro-linha');
 
         if (!linha) {
-            return;
+            return null;
         }
 
         const horarios = Array.from(linha.querySelectorAll('.ponto-hora-registro')).map(function (item) {
@@ -201,7 +203,18 @@
             + minutosIntervalo(horarios[2], horarios[3]);
         const total = linha.querySelector('.ponto-total-dia');
         const saldo = linha.querySelector('.ponto-saldo-dia');
+        const status = linha.querySelector('.ponto-status-dia');
         const previsto = Number(total?.dataset.previsto || 0);
+        const possuiMarcacao = horarios.some(Boolean);
+        const incompleto = possuiMarcacao && (
+            !horarios[0]
+            || !horarios[1]
+            || ((horarios[2] || horarios[3]) && (!horarios[2] || !horarios[3]))
+        );
+        const hoje = document.getElementById('formRegistrosPonto')?.dataset.hoje || '';
+        const data = linha.dataset.data || '';
+        let statusTexto = 'Registrado';
+        let statusClasse = 'bg-success';
 
         if (total) total.textContent = formatarMinutos(trabalhado, false);
         if (saldo) {
@@ -210,6 +223,69 @@
             saldo.classList.toggle('text-danger', diferenca < 0);
             saldo.classList.toggle('text-success', diferenca >= 0);
         }
+
+        if (!possuiMarcacao && previsto <= 0) {
+            statusTexto = 'Folga';
+            statusClasse = 'bg-secondary';
+        } else if (!possuiMarcacao && data > hoje) {
+            statusTexto = 'Aguardando';
+            statusClasse = 'bg-light text-dark border';
+        } else if (!possuiMarcacao) {
+            statusTexto = 'Sem registro';
+            statusClasse = 'bg-danger';
+        } else if (incompleto) {
+            statusTexto = 'Incompleto';
+            statusClasse = 'bg-warning text-dark';
+        }
+
+        if (status) {
+            status.textContent = statusTexto;
+            status.className = 'badge ponto-status-dia ' + statusClasse;
+        }
+
+        return {
+            data: data,
+            previsto: previsto,
+            trabalhado: trabalhado,
+            semRegistro: !possuiMarcacao && previsto > 0 && data <= hoje
+        };
+    }
+
+    function atualizarResumoRegistros() {
+        const form = document.getElementById('formRegistrosPonto');
+        const hoje = form?.dataset.hoje || '';
+        let totalTrabalhadoMes = 0;
+        let totalPrevistoAteHoje = 0;
+        let totalTrabalhadoAteHoje = 0;
+        let diasSemRegistro = 0;
+
+        document.querySelectorAll('.ponto-registro-linha').forEach(function (linha) {
+            const resultado = atualizarLinhaRegistro(linha);
+            if (!resultado) return;
+
+            totalTrabalhadoMes += resultado.trabalhado;
+            if (resultado.data <= hoje) {
+                totalPrevistoAteHoje += resultado.previsto;
+                totalTrabalhadoAteHoje += resultado.trabalhado;
+            }
+            if (resultado.semRegistro) diasSemRegistro += 1;
+        });
+
+        const horasRegistradas = document.getElementById('totalHorasRegistradas');
+        const saldoAteHoje = document.getElementById('totalSaldoAteHoje');
+        const semRegistro = document.getElementById('totalDiasSemRegistro');
+        const metricaSaldo = document.getElementById('metricaSaldoAteHoje');
+        const metricaSemRegistro = document.getElementById('metricaDiasSemRegistro');
+        const saldo = totalTrabalhadoAteHoje - totalPrevistoAteHoje;
+
+        if (horasRegistradas) horasRegistradas.textContent = formatarMinutos(totalTrabalhadoMes, false);
+        if (saldoAteHoje) saldoAteHoje.textContent = formatarMinutos(saldo, true);
+        if (semRegistro) semRegistro.textContent = String(diasSemRegistro);
+
+        metricaSaldo?.classList.toggle('metrica-negativa', saldo < 0);
+        metricaSaldo?.classList.toggle('metrica-positiva', saldo >= 0);
+        metricaSemRegistro?.classList.toggle('metrica-negativa', diasSemRegistro > 0);
+        metricaSemRegistro?.classList.toggle('metrica-positiva', diasSemRegistro === 0);
     }
 
     function dataIsoValida(ano, mes, dia) {
@@ -219,21 +295,48 @@
             && data.getUTCDate() === dia;
     }
 
+    function textoNormalizado(texto) {
+        return String(texto || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+    }
+
+    function possuiDiaSemana(texto) {
+        return /\b(?:dom(?:ingo)?|seg(?:unda(?:-feira)?)?|ter(?:ca(?:-feira)?)?|qua(?:rta(?:-feira)?)?|qui(?:nta(?:-feira)?)?|sex(?:ta(?:-feira)?)?|sab(?:ado)?)\b/i.test(textoNormalizado(texto));
+    }
+
+    function horariosDaLinha(texto) {
+        return Array.from(String(texto || '').matchAll(/(?:^|[^\d])([01]?\d|2[0-3])\s*[:h]\s*([0-5]\d)(?::[0-5]\d)?(?!\d)/gi))
+            .map(function (resultado) {
+                return String(Number(resultado[1])).padStart(2, '0') + ':' + resultado[2];
+            });
+    }
+
     function dataDaLinha(texto, mesSelecionado) {
         const partesMes = mesSelecionado.split('-').map(Number);
         let ano = partesMes[0];
         let mes = partesMes[1];
         let dia = null;
-        const dataCompleta = texto.match(/(?:^|\s)([0-3]?\d)[\/.\-]([01]?\d)[\/.\-](\d{2}|\d{4})(?=\s|$)/);
+        const dataIso = texto.match(/(?:^|\D)(\d{4})-([01]?\d)-([0-3]?\d)(?!\d)/);
+        const dataCompleta = texto.match(/(?:^|\D)([0-3]?\d)\s*[\/.\-]\s*([01]?\d)(?:\s*[\/.\-]\s*(\d{2}|\d{4}))?(?!\d)/);
+        const textoBusca = textoNormalizado(texto);
 
-        if (dataCompleta) {
+        if (dataIso) {
+            ano = Number(dataIso[1]);
+            mes = Number(dataIso[2]);
+            dia = Number(dataIso[3]);
+        } else if (dataCompleta) {
             dia = Number(dataCompleta[1]);
             mes = Number(dataCompleta[2]);
-            ano = Number(dataCompleta[3]);
-            if (ano < 100) ano += 2000;
+            if (dataCompleta[3]) {
+                ano = Number(dataCompleta[3]);
+                if (ano < 100) ano += 2000;
+            }
         } else {
-            const somenteDia = texto.match(/^\s*([0-3]?\d)(?:\s|$)/);
-            dia = somenteDia ? Number(somenteDia[1]) : null;
+            const somenteDia = textoBusca.match(/^\s*([0-3]?\d)(?=\s|$|\|)/);
+            const diaDepoisDaSemana = textoBusca.match(/\b(?:dom(?:ingo)?|seg(?:unda(?:-feira)?)?|ter(?:ca(?:-feira)?)?|qua(?:rta(?:-feira)?)?|qui(?:nta(?:-feira)?)?|sex(?:ta(?:-feira)?)?|sab(?:ado)?)\.?\s*[,]?\s*([0-3]?\d)(?!\d)/i);
+            dia = somenteDia ? Number(somenteDia[1]) : (diaDepoisDaSemana ? Number(diaDepoisDaSemana[1]) : null);
         }
 
         if (!dia || !dataIsoValida(ano, mes, dia)) {
@@ -253,12 +356,12 @@
             .filter(function (item) { return String(item.str || '').trim() !== ''; })
             .sort(function (a, b) {
                 const diferencaY = b.transform[5] - a.transform[5];
-                return Math.abs(diferencaY) > 2.5 ? diferencaY : a.transform[4] - b.transform[4];
+                return Math.abs(diferencaY) > 4 ? diferencaY : a.transform[4] - b.transform[4];
             })
             .forEach(function (item) {
                 const y = item.transform[5];
                 let linha = linhas.find(function (existente) {
-                    return Math.abs(existente.y - y) <= 2.5;
+                    return Math.abs(existente.y - y) <= 4;
                 });
 
                 if (!linha) {
@@ -269,29 +372,44 @@
                 linha.itens.push({ x: item.transform[4], texto: String(item.str).trim() });
             });
 
-        return linhas.map(function (linha) {
-            return linha.itens
+        return linhas.flatMap(function (linha) {
+            const texto = linha.itens
                 .sort(function (a, b) { return a.x - b.x; })
                 .map(function (item) { return item.texto; })
                 .join(' ')
                 .replace(/\s+/g, ' ')
                 .trim();
+            return texto.split(/[\r\n]+/).map(function (parte) { return parte.trim(); }).filter(Boolean);
         });
     }
 
     function registrosDasLinhas(linhas, mesSelecionado) {
         const encontrados = new Map();
 
-        linhas.forEach(function (linha) {
+        linhas.forEach(function (linha, indice) {
             const data = dataDaLinha(linha, mesSelecionado);
-            const horarios = Array.from(linha.matchAll(/\b(?:[01]?\d|2[0-3])[:h][0-5]\d\b/gi))
-                .map(function (resultado) {
-                    const partes = resultado[0].toLowerCase().replace('h', ':').split(':');
-                    return String(Number(partes[0])).padStart(2, '0') + ':' + partes[1];
-                })
-                .slice(0, 4);
+            let textoRegistro = linha;
+            let horarios = horariosDaLinha(textoRegistro);
 
-            if (!data || horarios.length === 0) {
+            if (data && horarios.length < 4) {
+                for (let proximoIndice = indice + 1; proximoIndice < Math.min(linhas.length, indice + 3); proximoIndice += 1) {
+                    const proximaLinha = linhas[proximoIndice];
+                    if (dataDaLinha(proximaLinha, mesSelecionado)) break;
+                    textoRegistro += ' ' + proximaLinha;
+                    horarios = horariosDaLinha(textoRegistro);
+                    if (horarios.length >= 4) break;
+                }
+            }
+
+            horarios = horarios.slice(0, 4);
+            const identificadaComoDia = Boolean(data) && (
+                possuiDiaSemana(textoRegistro)
+                || /(?:^|\D)[0-3]?\d\s*[\/.\-]\s*[01]?\d/.test(textoRegistro)
+                || /(?:^|\D)\d{4}-[01]?\d-[0-3]?\d(?!\d)/.test(textoRegistro)
+                || /^\s*[0-3]?\d(?=\s|$|\|)/.test(textoRegistro)
+            );
+
+            if (!identificadaComoDia || horarios.length === 0) {
                 return;
             }
 
@@ -808,9 +926,10 @@
         });
 
         document.querySelectorAll('.ponto-hora-registro').forEach(function (campo) {
-            campo.addEventListener('input', function () { atualizarLinhaRegistro(campo); });
-            campo.addEventListener('change', function () { atualizarLinhaRegistro(campo); });
+            campo.addEventListener('input', atualizarResumoRegistros);
+            campo.addEventListener('change', atualizarResumoRegistros);
         });
+        atualizarResumoRegistros();
 
         const modalPdf = document.getElementById('modalImportarPdf');
         modalPdf?.addEventListener('hidden.bs.modal', function () {

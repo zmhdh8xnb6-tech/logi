@@ -680,7 +680,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                         </form>
 
                         <div class="ponto-navegacao-mes">
-                            <a href="folha_ponto.php?<?= http_build_query(['mes' => $mesAnterior, 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-secondary" title="Mês anterior" aria-label="Mês anterior">
+                            <a href="folha_ponto.php?<?= http_build_query(['mes' => $mesAnterior, 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-secondary ponto-nav-anterior" title="Mês anterior" aria-label="Mês anterior">
                                 <i class="bi bi-chevron-left"></i>
                             </a>
                             <form method="get" id="formMesPonto">
@@ -688,11 +688,11 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                 <label for="mesPonto" class="visually-hidden">Escolher mês</label>
                                 <input type="month" class="form-control" name="mes" id="mesPonto" value="<?= htmlspecialchars($mes) ?>">
                             </form>
-                            <a href="folha_ponto.php?<?= http_build_query(['mes' => date('Y-m'), 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-primary" title="Mês atual" aria-label="Mês atual">
-                                <i class="bi bi-calendar-check"></i>
-                            </a>
-                            <a href="folha_ponto.php?<?= http_build_query(['mes' => $proximoMes, 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-secondary" title="Próximo mês" aria-label="Próximo mês">
+                            <a href="folha_ponto.php?<?= http_build_query(['mes' => $proximoMes, 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-secondary ponto-nav-proximo" title="Próximo mês" aria-label="Próximo mês">
                                 <i class="bi bi-chevron-right"></i>
+                            </a>
+                            <a href="folha_ponto.php?<?= http_build_query(['mes' => date('Y-m'), 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-primary ponto-nav-atual" title="Ir para o mês atual" aria-label="Ir para o mês atual">
+                                <i class="bi bi-calendar-check"></i>
                             </a>
                         </div>
 
@@ -854,19 +854,19 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                         </div>
                         <div class="ponto-metrica metrica-trabalhada">
                             <span>Horas registradas</span>
-                            <strong><?= folhaPontoFormatarMinutos($totalTrabalhadoMes) ?></strong>
+                            <strong id="totalHorasRegistradas"><?= folhaPontoFormatarMinutos($totalTrabalhadoMes) ?></strong>
                         </div>
-                        <div class="ponto-metrica <?= $saldoAteHoje < 0 ? 'metrica-negativa' : 'metrica-positiva' ?>">
+                        <div class="ponto-metrica <?= $saldoAteHoje < 0 ? 'metrica-negativa' : 'metrica-positiva' ?>" id="metricaSaldoAteHoje">
                             <span>Saldo até hoje</span>
-                            <strong><?= folhaPontoFormatarMinutos($saldoAteHoje, true) ?></strong>
+                            <strong id="totalSaldoAteHoje"><?= folhaPontoFormatarMinutos($saldoAteHoje, true) ?></strong>
                         </div>
-                        <div class="ponto-metrica <?= $diasSemRegistro > 0 ? 'metrica-negativa' : 'metrica-positiva' ?>">
+                        <div class="ponto-metrica <?= $diasSemRegistro > 0 ? 'metrica-negativa' : 'metrica-positiva' ?>" id="metricaDiasSemRegistro">
                             <span>Dias sem registro</span>
-                            <strong><?= $diasSemRegistro ?></strong>
+                            <strong id="totalDiasSemRegistro"><?= $diasSemRegistro ?></strong>
                         </div>
                     </section>
 
-                    <form method="post" id="formRegistrosPonto">
+                    <form method="post" id="formRegistrosPonto" data-hoje="<?= htmlspecialchars($hoje) ?>">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(folhaPontoToken()) ?>">
                         <input type="hidden" name="acao" value="salvar_registros">
                         <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
@@ -876,7 +876,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                             <div class="ponto-painel-titulo no-print">
                                 <div>
                                     <h5 class="mb-1"><?= htmlspecialchars($funcionarioSelecionado['nome']) ?></h5>
-                                    <p class="text-muted small mb-0"><?= htmlspecialchars($nomeMes) ?> · alterações somente após salvar</p>
+                                    <p class="text-muted small mb-0"><?= htmlspecialchars($nomeMes) ?> · totais atualizados durante o preenchimento</p>
                                 </div>
                                 <button type="submit" class="btn btn-success">
                                     <i class="bi bi-check-lg"></i> Salvar folha
@@ -913,7 +913,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                 ])))
                                                 : 'Folga';
                                             ?>
-                                            <tr class="<?= $dia['previsto'] <= 0 ? 'ponto-dia-folga' : '' ?>">
+                                            <tr class="ponto-registro-linha <?= $dia['previsto'] <= 0 ? 'ponto-dia-folga' : '' ?>" data-data="<?= htmlspecialchars($dia['data']) ?>">
                                                 <td class="text-nowrap"><strong><?= $dia['data_br'] ?></strong></td>
                                                 <td class="text-nowrap"><?= htmlspecialchars($dia['dia_semana']) ?></td>
                                                 <td class="text-nowrap ponto-previsto"><?= htmlspecialchars($previstoTexto) ?></td>
@@ -933,7 +933,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                 <td class="text-nowrap fw-semibold ponto-saldo-dia <?= $dia['saldo'] < 0 ? 'text-danger' : 'text-success' ?>">
                                                     <?= folhaPontoFormatarMinutos($dia['saldo'], true) ?>
                                                 </td>
-                                                <td><span class="badge <?= $dia['status'][1] ?>"><?= $dia['status'][0] ?></span></td>
+                                                <td><span class="badge ponto-status-dia <?= $dia['status'][1] ?>"><?= $dia['status'][0] ?></span></td>
                                                 <td>
                                                     <input
                                                         type="text"
