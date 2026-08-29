@@ -302,12 +302,63 @@
             .toLowerCase();
     }
 
+    function mesDoTextoPdf(texto) {
+        const normalizado = textoNormalizado(texto);
+        const meses = {
+            janeiro: '01', jan: '01', fevereiro: '02', fev: '02', marco: '03', mar: '03',
+            abril: '04', abr: '04', maio: '05', mai: '05', junho: '06', jun: '06',
+            julho: '07', jul: '07', agosto: '08', ago: '08', setembro: '09', set: '09',
+            outubro: '10', out: '10', novembro: '11', nov: '11', dezembro: '12', dez: '12'
+        };
+        const dataNumerica = normalizado.match(/(?:^|\D)[0-3]?\d\s*[\/.\-]\s*([01]?\d)\s*[\/.\-]\s*(20\d{2})(?!\d)/);
+
+        if (dataNumerica) {
+            return dataNumerica[2] + '-' + String(Number(dataNumerica[1])).padStart(2, '0');
+        }
+
+        for (const [nome, numero] of Object.entries(meses)) {
+            const mesDepoisAno = normalizado.match(new RegExp('\\b' + nome + '\\b[\\s\\S]{0,80}?\\b(20\\d{2})\\b'));
+            const anoAntesMes = normalizado.match(new RegExp('\\b(20\\d{2})\\b[\\s\\S]{0,40}?\\b' + nome + '\\b'));
+            const ano = mesDepoisAno?.[1] || anoAntesMes?.[1] || '';
+            if (ano) return ano + '-' + numero;
+        }
+
+        return '';
+    }
+
+    function nomeMesIso(mesIso) {
+        const partes = mesIso.split('-').map(Number);
+        if (partes.length !== 2 || !partes[0] || !partes[1]) return mesIso;
+        const texto = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' })
+            .format(new Date(partes[0], partes[1] - 1, 1, 12));
+        return texto.charAt(0).toUpperCase() + texto.slice(1);
+    }
+
+    function definirMesImportacao(mesDetectado) {
+        const campoMes = document.querySelector('#formImportarPdf input[name="mes"]');
+        const aviso = document.getElementById('avisoMesImportacaoPdf');
+        const tituloMes = document.getElementById('mesImportacaoPdf');
+        const mesOriginal = campoMes?.dataset.mesOriginal || campoMes?.value || '';
+        const mesFinal = mesDetectado || mesOriginal;
+
+        if (campoMes) campoMes.value = mesFinal;
+        if (tituloMes) tituloMes.textContent = nomeMesIso(mesFinal);
+        if (aviso) {
+            aviso.textContent = mesFinal !== mesOriginal
+                ? 'O arquivo é de ' + nomeMesIso(mesFinal) + '. Ele será importado diretamente nesse mês.'
+                : '';
+            aviso.classList.toggle('d-none', mesFinal === mesOriginal);
+        }
+
+        return mesFinal;
+    }
+
     function possuiDiaSemana(texto) {
         return /\b(?:dom(?:ingo)?|seg(?:unda(?:-feira)?)?|ter(?:ca(?:-feira)?)?|qua(?:rta(?:-feira)?)?|qui(?:nta(?:-feira)?)?|sex(?:ta(?:-feira)?)?|sab(?:ado)?)\b/i.test(textoNormalizado(texto));
     }
 
     function horariosDaLinha(texto) {
-        return Array.from(String(texto || '').matchAll(/(?:^|[^\d])([01]?\d|2[0-3])\s*[:h]\s*([0-5]\d)(?::[0-5]\d)?(?!\d)/gi))
+        return Array.from(String(texto || '').matchAll(/(?:^|[^\d])([01]?\d|2[0-3])\s*[:h.,]\s*([0-5]\d)(?::[0-5]\d)?(?!\d)(?!\s*[.\/]\s*\d)/gi))
             .map(function (resultado) {
                 return String(Number(resultado[1])).padStart(2, '0') + ':' + resultado[2];
             });
@@ -443,16 +494,19 @@
         document.getElementById('erroImportacaoPdf')?.classList.add('d-none');
         document.getElementById('previewImportacaoPdf')?.classList.add('d-none');
         document.getElementById('avisoRevisaoOcr')?.classList.add('d-none');
+        document.getElementById('avisoMesImportacaoPdf')?.classList.add('d-none');
         const oculto = document.getElementById('registrosPdf');
         const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
         const corpo = document.getElementById('corpoImportacaoPdf');
         const textoStatus = document.getElementById('statusImportacaoTexto');
+        const campoMes = document.querySelector('#formImportarPdf input[name="mes"]');
         registrosPdfAtuais = [];
         camposDetectadosPdf = new Set();
         if (oculto) oculto.value = '';
         if (confirmar) confirmar.disabled = true;
         if (corpo) corpo.replaceChildren();
         if (textoStatus) textoStatus.textContent = 'Lendo o arquivo...';
+        if (campoMes?.dataset.mesOriginal) definirMesImportacao(campoMes.dataset.mesOriginal);
     }
 
     function formatarDataBr(dataIso) {
@@ -502,13 +556,8 @@
                 return registro[campo] === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(registro[campo]);
             });
         });
-        const detectadosPreenchidos = Array.from(camposDetectadosPdf).every(function (chave) {
-            const partes = chave.split(':');
-            return Boolean(registrosPdfAtuais[Number(partes[0])]?.[partes[1]]);
-        });
-
-        if (oculto) oculto.value = horariosValidos && algumHorario && detectadosPreenchidos ? JSON.stringify(registrosPdfAtuais) : '';
-        if (confirmar) confirmar.disabled = registrosPdfAtuais.length === 0 || !horariosValidos || !algumHorario || !detectadosPreenchidos;
+        if (oculto) oculto.value = horariosValidos && algumHorario ? JSON.stringify(registrosPdfAtuais) : '';
+        if (confirmar) confirmar.disabled = registrosPdfAtuais.length === 0 || !horariosValidos || !algumHorario;
     }
 
     function normalizarHorarioDigitado(valor) {
@@ -710,14 +759,56 @@
         return ampliada;
     }
 
-    async function registrosDoPdfDigitalizado(pdf, mesSelecionado) {
-        atualizarStatusImportacao('Separando os horários escritos em cada dia...');
-        const pagina = await pdf.getPage(1);
-        const viewport = pagina.getViewport({ scale: 2.4 });
+    async function canvasPaginaPdf(pdf, paginaNumero, escala) {
+        const pagina = await pdf.getPage(paginaNumero);
+        const viewport = pagina.getViewport({ scale: escala });
         const canvas = document.createElement('canvas');
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
         await pagina.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+        return canvas;
+    }
+
+    async function linhasDoPdfPorOcr(pdf) {
+        if (!window.Tesseract?.createWorker) return [];
+
+        atualizarStatusImportacao('O relatório é uma imagem. Iniciando a leitura do texto impresso...');
+        const worker = await window.Tesseract.createWorker('por', 1, {
+            logger: function (progresso) {
+                if (progresso.status !== 'recognizing text') return;
+                atualizarStatusImportacao('Lendo o relatório eletrônico... ' + Math.round((progresso.progress || 0) * 100) + '%');
+            }
+        });
+        const linhas = [];
+
+        try {
+            await worker.setParameters({ preserve_interword_spaces: '1' });
+
+            for (let paginaNumero = 1; paginaNumero <= pdf.numPages; paginaNumero += 1) {
+                const canvas = await canvasPaginaPdf(pdf, paginaNumero, 2.5);
+                const resultado = await worker.recognize(canvas);
+                linhas.push.apply(linhas, String(resultado?.data?.text || '').split(/[\r\n]+/).map(function (linha) {
+                    return linha.replace(/\s+/g, ' ').trim();
+                }).filter(Boolean));
+            }
+        } finally {
+            await worker.terminate();
+        }
+
+        return linhas;
+    }
+
+    function registrosOcrConfiaveis(registros) {
+        const diasComPares = registros.filter(function (registro) {
+            const horarios = [registro.entrada_1, registro.saida_1, registro.entrada_2, registro.saida_2].filter(Boolean);
+            return horarios.length >= 2;
+        });
+        return diasComPares.length >= 2;
+    }
+
+    async function registrosDoPdfDigitalizado(pdf, mesSelecionado) {
+        atualizarStatusImportacao('Separando os horários escritos em cada dia...');
+        const canvas = await canvasPaginaPdf(pdf, 1, 2.4);
 
         const limitesX = [.168, .258, .351, .445, .535];
         const topoLinhas = canvas.height * .204;
@@ -742,22 +833,7 @@
         }
 
         if (tarefas.length === 0) {
-            for (let dia = 1; dia <= quantidadeDias; dia += 1) {
-                for (let coluna = 0; coluna < campos.length; coluna += 1) {
-                    const area = {
-                        x0: (canvas.width * limitesX[coluna]) + 6,
-                        x1: (canvas.width * limitesX[coluna + 1]) - 6,
-                        y0: topoLinhas + ((dia - 1) * alturaLinha) + 4,
-                        y1: topoLinhas + (dia * alturaLinha) - 4
-                    };
-                    const recorte = recortarCelulaOcr(canvas, area, false);
-                    if (recorte) tarefas.push({ dia: dia, campo: campos[coluna], canvas: recorte });
-                }
-            }
-        }
-
-        if (tarefas.length === 0) {
-            throw new Error('Não encontrei horários escritos nas colunas da folha. Confira o modelo e a qualidade da digitalização.');
+            throw new Error('Não encontrei marcações manuscritas neste modelo e o texto impresso também não formou registros válidos.');
         }
 
         const porDia = new Map();
@@ -785,7 +861,7 @@
         limparImportacaoPdf();
         const arquivo = document.getElementById('arquivoPontoPdf');
         const status = document.getElementById('statusImportacaoPdf');
-        const mes = document.querySelector('#formImportarPdf input[name="mes"]')?.value || '';
+        let mes = document.querySelector('#formImportarPdf input[name="mes"]')?.value || '';
 
         if (!arquivo?.files?.[0]) {
             arquivo?.classList.add('is-invalid');
@@ -798,6 +874,8 @@
             mostrarErroPdf('O PDF deve ter no máximo 15 MB.');
             return;
         }
+
+        mes = definirMesImportacao(mesDoTextoPdf(arquivo.files[0].name) || mes);
 
         if (!window.pdfjsLib) {
             mostrarErroPdf('O leitor de PDF não carregou. Verifique a internet e tente novamente.');
@@ -820,8 +898,23 @@
                 linhas.push.apply(linhas, linhasDoPdf(conteudo.items));
             }
 
+            const mesDoTexto = mesDoTextoPdf(linhas.join(' '));
+            if (mesDoTexto) mes = definirMesImportacao(mesDoTexto);
+
             let registros = totalItens > 0 ? registrosDasLinhas(linhas, mes) : [];
             let leituraOcr = false;
+
+            if (registros.length === 0) {
+                try {
+                    const linhasOcr = await linhasDoPdfPorOcr(pdf);
+                    const mesOcr = mesDoTextoPdf(linhasOcr.join(' '));
+                    if (mesOcr) mes = definirMesImportacao(mesOcr);
+                    const registrosOcr = registrosDasLinhas(linhasOcr, mes);
+                    if (registrosOcrConfiaveis(registrosOcr)) registros = registrosOcr;
+                } catch (erroOcr) {
+                    registros = [];
+                }
+            }
 
             if (registros.length === 0) {
                 leituraOcr = true;

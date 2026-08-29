@@ -1093,12 +1093,12 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(folhaPontoToken()) ?>">
                             <input type="hidden" name="acao" value="importar_pdf">
                             <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
-                            <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
+                            <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>" data-mes-original="<?= htmlspecialchars($mes) ?>">
                             <input type="hidden" name="registros_pdf" id="registrosPdf">
                             <div class="modal-header">
                                 <div>
                                     <h5 class="modal-title">Importar folha de ponto</h5>
-                                    <p class="text-muted mb-0"><?= htmlspecialchars($funcionarioSelecionado['nome']) ?> · <?= htmlspecialchars($nomeMes) ?></p>
+                                    <p class="text-muted mb-0"><?= htmlspecialchars($funcionarioSelecionado['nome']) ?> · <span id="mesImportacaoPdf"><?= htmlspecialchars($nomeMes) ?></span></p>
                                 </div>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                             </div>
@@ -1109,6 +1109,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                 <label for="arquivoPontoPdf" class="form-label">Arquivo PDF</label>
                                 <input type="file" class="form-control" id="arquivoPontoPdf" accept="application/pdf,.pdf">
                                 <div class="invalid-feedback">Selecione um arquivo PDF.</div>
+                                <div class="alert alert-primary d-none mt-3" id="avisoMesImportacaoPdf"></div>
                                 <div class="alert alert-danger d-none mt-3" id="erroImportacaoPdf"></div>
                                 <div class="ponto-importacao-status d-none mt-3" id="statusImportacaoPdf">
                                     <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
@@ -1157,6 +1158,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
     <script src="<?= assetUrl('assets/folha_ponto.js') ?>"></script>
 </body>
 
