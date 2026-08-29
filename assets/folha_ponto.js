@@ -348,6 +348,29 @@
         return nomes[new Date(partes[0], partes[1] - 1, partes[2], 12).getDay()];
     }
 
+    function horariosFuncionarioSelecionado() {
+        const botao = document.getElementById('btnEditarFuncionario');
+
+        try {
+            const horarios = JSON.parse(botao?.dataset.horarios || '[]');
+            return Array.isArray(horarios) ? horarios : [];
+        } catch (erro) {
+            return [];
+        }
+    }
+
+    function horarioPrevistoPdf(dataIso, campo) {
+        const partes = dataIso.split('-').map(Number);
+        const diaJs = new Date(partes[0], partes[1] - 1, partes[2], 12).getDay();
+        const diaSemana = diaJs === 0 ? 7 : diaJs;
+        const horarioDia = horariosFuncionarioSelecionado().find(function (horario) {
+            return Number(horario.dia_semana) === diaSemana;
+        });
+
+        if (!horarioDia || Number(horarioDia.trabalha) !== 1) return '';
+        return String(horarioDia[campo] || '').slice(0, 5);
+    }
+
     function sincronizarRegistrosPdf() {
         const oculto = document.getElementById('registrosPdf');
         const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
@@ -417,6 +440,7 @@
         });
 
         registrosPdfAtuais.forEach(function (registro, indice) {
+            const registroOriginal = registros[indice] || {};
             const linha = document.createElement('tr');
             const colunaData = document.createElement('td');
             const colunaDia = document.createElement('td');
@@ -429,7 +453,7 @@
                 const coluna = document.createElement('td');
                 const grupo = document.createElement('div');
                 const input = document.createElement('input');
-                const imagemRecorte = registro._imagens?.[campo] || '';
+                const imagemRecorte = registroOriginal._imagens?.[campo] || '';
 
                 grupo.className = 'ponto-preview-celula';
 
@@ -440,6 +464,10 @@
                     imagem.className = 'ponto-preview-recorte';
                     grupo.appendChild(imagem);
                     camposDetectadosPdf.add(indice + ':' + campo);
+
+                    if (!registro[campo]) {
+                        registro[campo] = horarioPrevistoPdf(registro.data, campo);
+                    }
                 }
 
                 input.type = 'text';
@@ -449,8 +477,10 @@
                 input.placeholder = '--:--';
                 input.className = 'form-control form-control-sm ponto-preview-hora';
                 input.value = registro[campo];
+                input.classList.toggle('ponto-preview-hora-sugerida', Boolean(imagemRecorte && registro[campo]));
                 input.setAttribute('aria-label', campo + ' de ' + formatarDataBr(registro.data));
                 input.addEventListener('input', function () {
+                    input.classList.remove('ponto-preview-hora-sugerida');
                     registrosPdfAtuais[indice][campo] = input.value;
                     sincronizarRegistrosPdf();
                 });

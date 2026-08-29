@@ -303,6 +303,11 @@
     text-align: center;
 }
 
+.ponto-preview-hora-sugerida {
+    border-color: #e7b64b;
+    background: #fff8df;
+}
+
 .ponto-preview-celula {
     display: grid;
     gap: 5px;
