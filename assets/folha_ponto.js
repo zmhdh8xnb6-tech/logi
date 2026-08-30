@@ -310,10 +310,20 @@
             julho: '07', jul: '07', agosto: '08', ago: '08', setembro: '09', set: '09',
             outubro: '10', out: '10', novembro: '11', nov: '11', dezembro: '12', dez: '12'
         };
-        const dataNumerica = normalizado.match(/(?:^|\D)[0-3]?\d\s*[\/.\-]\s*([01]?\d)\s*[\/.\-]\s*(20\d{2})(?!\d)/);
+        const periodo = normalizado.match(/(?:periodo|competencia|de)\s*:?\s*[0-3]?\d\s*[\/.\-]\s*([01]?\d)\s*[\/.\-]\s*(20\d{2})\s*(?:ate|a|-)\s*[0-3]?\d\s*[\/.\-]\s*[01]?\d\s*[\/.\-]\s*20\d{2}/);
 
-        if (dataNumerica) {
-            return dataNumerica[2] + '-' + String(Number(dataNumerica[1])).padStart(2, '0');
+        if (periodo) {
+            return periodo[2] + '-' + String(Number(periodo[1])).padStart(2, '0');
+        }
+
+        const frequencias = new Map();
+        Array.from(normalizado.matchAll(/(?:^|\D)[0-3]?\d\s*[\/.\-]\s*([01]?\d)\s*[\/.\-]\s*(20\d{2})(?!\d)/g)).forEach(function (data) {
+            const chave = data[2] + '-' + String(Number(data[1])).padStart(2, '0');
+            frequencias.set(chave, (frequencias.get(chave) || 0) + 1);
+        });
+
+        if (frequencias.size > 0) {
+            return Array.from(frequencias.entries()).sort(function (a, b) { return b[1] - a[1]; })[0][0];
         }
 
         for (const [nome, numero] of Object.entries(meses)) {
@@ -362,6 +372,35 @@
             .map(function (resultado) {
                 return String(Number(resultado[1])).padStart(2, '0') + ':' + resultado[2];
             });
+    }
+
+    function horariosComMarcadorDaLinha(texto) {
+        return Array.from(String(texto || '').matchAll(/(?:^|[^\d])([01]?\d|2[0-3])\s*[:h.,]?\s*([0-5]\d)\s*\(\s*[^)\s]{0,2}\s*\)?/gi))
+            .map(function (resultado) {
+                return String(Number(resultado[1])).padStart(2, '0') + ':' + resultado[2];
+            });
+    }
+
+    function removerTotalCalculado(horarios) {
+        if (horarios.length !== 3 && horarios.length !== 5) return horarios;
+
+        const marcacoes = horarios.slice(0, -1);
+        const total = minutosIntervalo(marcacoes[0], marcacoes[1])
+            + minutosIntervalo(marcacoes[2], marcacoes[3]);
+        return minutosHora(horarios[horarios.length - 1]) === total ? marcacoes : horarios;
+    }
+
+    function horariosRealizadosDaLinha(texto, possuiColunaPrevisto) {
+        const marcados = horariosComMarcadorDaLinha(texto);
+        if (marcados.length >= 2) return marcados.slice(0, 4);
+
+        let textoRealizado = String(texto || '');
+        if (possuiColunaPrevisto) {
+            const horario = '(?:[01]?\\d|2[0-3])\\s*[:h.,]\\s*[0-5]\\d';
+            textoRealizado = textoRealizado.replace(new RegExp(horario + '\\s*[-–—]\\s*' + horario, 'gi'), ' ');
+        }
+
+        return removerTotalCalculado(horariosDaLinha(textoRealizado)).slice(0, 4);
     }
 
     function dataDaLinha(texto, mesSelecionado) {
@@ -436,18 +475,19 @@
 
     function registrosDasLinhas(linhas, mesSelecionado) {
         const encontrados = new Map();
+        const possuiColunaPrevisto = /\b(?:previsto|prevista|programado|programada)\b/.test(textoNormalizado(linhas.join(' ')));
 
         linhas.forEach(function (linha, indice) {
             const data = dataDaLinha(linha, mesSelecionado);
             let textoRegistro = linha;
-            let horarios = horariosDaLinha(textoRegistro);
+            let horarios = horariosRealizadosDaLinha(textoRegistro, possuiColunaPrevisto);
 
             if (data && horarios.length < 4) {
                 for (let proximoIndice = indice + 1; proximoIndice < Math.min(linhas.length, indice + 3); proximoIndice += 1) {
                     const proximaLinha = linhas[proximoIndice];
                     if (dataDaLinha(proximaLinha, mesSelecionado)) break;
                     textoRegistro += ' ' + proximaLinha;
-                    horarios = horariosDaLinha(textoRegistro);
+                    horarios = horariosRealizadosDaLinha(textoRegistro, possuiColunaPrevisto);
                     if (horarios.length >= 4) break;
                 }
             }
@@ -785,7 +825,7 @@
             await worker.setParameters({ preserve_interword_spaces: '1' });
 
             for (let paginaNumero = 1; paginaNumero <= pdf.numPages; paginaNumero += 1) {
-                const canvas = await canvasPaginaPdf(pdf, paginaNumero, 2.5);
+                const canvas = await canvasPaginaPdf(pdf, paginaNumero, 3.5);
                 const resultado = await worker.recognize(canvas);
                 linhas.push.apply(linhas, String(resultado?.data?.text || '').split(/[\r\n]+/).map(function (linha) {
                     return linha.replace(/\s+/g, ' ').trim();
