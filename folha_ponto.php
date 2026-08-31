@@ -1242,7 +1242,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                             </div>
                             <div class="modal-body">
                                 <div class="alert alert-info">
-                                    Em folhas preenchidas à caneta, o sistema recorta e tenta reconhecer cada horário. Compare os campos com a imagem original antes de confirmar.
+                                    Em folhas preenchidas à caneta, o sistema localiza os horários e sugere a jornada cadastrada do funcionário. Compare os campos com os recortes antes de confirmar.
                                 </div>
                                 <label for="arquivoPontoPdf" class="form-label">Arquivo PDF</label>
                                 <input type="file" class="form-control" id="arquivoPontoPdf" accept="application/pdf,.pdf">
@@ -1259,7 +1259,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                         <span class="badge bg-primary" id="quantidadeImportacaoPdf"></span>
                                     </div>
                                     <div class="alert alert-warning py-2 d-none" id="avisoRevisaoOcr">
-                                        Quando um horário não for reconhecido, o campo ficará vazio para preenchimento manual. Você pode digitar 8, 12 ou 1320.
+                                        Os campos amarelos foram sugeridos pela jornada cadastrada. Confira cada recorte e corrija somente os horários diferentes. Você também pode digitar 8, 12 ou 1320.
                                     </div>
                                     <div class="table-responsive">
                                         <table class="table table-sm align-middle mb-0 ponto-preview-tabela">

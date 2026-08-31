@@ -1047,95 +1047,98 @@
         if (texto) texto.textContent = mensagem;
     }
 
-    function canvasSomenteTintaColorida(canvasOriginal) {
-        const contextoOriginal = canvasOriginal.getContext('2d', { willReadFrequently: true });
-        const imagem = contextoOriginal.getImageData(0, 0, canvasOriginal.width, canvasOriginal.height);
-        const pontos = [];
+    function recortarCelulaOcr(canvasPagina, area) {
+        const contexto = canvasPagina.getContext('2d', { willReadFrequently: true });
+        const x0 = Math.max(0, Math.floor(area.x0));
+        const y0 = Math.max(0, Math.floor(area.y0));
+        const largura = Math.max(1, Math.floor(area.x1 - area.x0));
+        const altura = Math.max(1, Math.floor(area.y1 - area.y0));
+        const imagem = contexto.getImageData(x0, y0, largura, altura);
+        const pixelsEscuros = [];
+        const pixelsColoridos = [];
+        let ativos = [];
+        const pixelsPorLinha = new Uint16Array(altura);
+        const pixelsPorColuna = new Uint16Array(largura);
+        let minimoX = largura;
+        let minimoY = altura;
+        let maximoX = 0;
+        let maximoY = 0;
 
-        for (let y = 0; y < canvasOriginal.height; y += 1) {
-            for (let x = 0; x < canvasOriginal.width; x += 1) {
-                const indice = ((y * canvasOriginal.width) + x) * 4;
+        for (let y = 0; y < altura; y += 1) {
+            for (let x = 0; x < largura; x += 1) {
+                const indice = ((y * largura) + x) * 4;
                 const vermelho = imagem.data[indice];
                 const verde = imagem.data[indice + 1];
                 const azul = imagem.data[indice + 2];
+                const luminancia = (vermelho * .299) + (verde * .587) + (azul * .114);
                 const maiorCanal = Math.max(vermelho, verde, azul);
                 const menorCanal = Math.min(vermelho, verde, azul);
                 const saturacao = maiorCanal - menorCanal;
-                const luminancia = (vermelho * .299) + (verde * .587) + (azul * .114);
-
-                if (saturacao > 34 && menorCanal < 220 && luminancia < 235) {
-                    pontos.push([x, y]);
-                }
+                const tintaEscura = luminancia < 135;
+                const tintaColorida = saturacao > 35 && menorCanal < 210 && luminancia < 220;
+                if (tintaEscura) pixelsEscuros.push([x, y]);
+                if (tintaColorida) pixelsColoridos.push([x, y]);
             }
         }
 
-        const minimoPontos = Math.max(60, Math.floor((canvasOriginal.width * canvasOriginal.height) * .001));
-        if (pontos.length < minimoPontos) return null;
-
-        const canvas = document.createElement('canvas');
-        canvas.width = canvasOriginal.width;
-        canvas.height = canvasOriginal.height;
-        const contexto = canvas.getContext('2d');
-        contexto.fillStyle = '#fff';
-        contexto.fillRect(0, 0, canvas.width, canvas.height);
-        contexto.fillStyle = '#000';
-
-        pontos.forEach(function (ponto) {
-            contexto.fillRect(ponto[0] - 1, ponto[1] - 1, 3, 3);
+        ativos = pixelsColoridos.length >= 20 ? pixelsColoridos : pixelsEscuros;
+        ativos.forEach(function (ponto) {
+            pixelsPorLinha[ponto[1]] += 1;
+            pixelsPorColuna[ponto[0]] += 1;
         });
-        return canvas;
-    }
 
-    function recortarCelulaOcr(canvasPagina, area) {
-        const x0 = Math.max(0, Math.floor(area.x0));
-        const y0 = Math.max(0, Math.floor(area.y0));
-        const largura = Math.max(1, Math.min(canvasPagina.width - x0, Math.floor(area.x1 - area.x0)));
-        const altura = Math.max(1, Math.min(canvasPagina.height - y0, Math.floor(area.y1 - area.y0)));
-        const escalaVisual = 3;
-        const visual = document.createElement('canvas');
-        visual.width = largura * escalaVisual;
-        visual.height = altura * escalaVisual;
-        const contextoVisual = visual.getContext('2d');
-        contextoVisual.fillStyle = '#fff';
-        contextoVisual.fillRect(0, 0, visual.width, visual.height);
-        contextoVisual.imageSmoothingEnabled = true;
-        contextoVisual.drawImage(
-            canvasPagina,
-            x0,
-            y0,
-            largura,
-            altura,
-            0,
-            0,
-            visual.width,
-            visual.height
-        );
+        ativos = ativos.filter(function (ponto) {
+            const linhaDaGrade = pixelsPorLinha[ponto[1]] > largura * .82;
+            const colunaDaGrade = pixelsPorColuna[ponto[0]] > altura * .92;
+            return !linhaDaGrade && !colunaDaGrade;
+        });
 
-        const escalaOcr = 4;
-        const ocr = document.createElement('canvas');
-        ocr.width = largura * escalaOcr;
-        ocr.height = altura * escalaOcr;
-        const contextoOcr = ocr.getContext('2d');
-        contextoOcr.fillStyle = '#fff';
-        contextoOcr.fillRect(0, 0, ocr.width, ocr.height);
-        contextoOcr.imageSmoothingEnabled = true;
-        contextoOcr.drawImage(
-            canvasPagina,
-            x0,
-            y0,
-            largura,
-            altura,
-            0,
-            0,
-            ocr.width,
-            ocr.height
-        );
+        ativos.forEach(function (ponto) {
+            minimoX = Math.min(minimoX, ponto[0]);
+            minimoY = Math.min(minimoY, ponto[1]);
+            maximoX = Math.max(maximoX, ponto[0]);
+            maximoY = Math.max(maximoY, ponto[1]);
+        });
 
-        return {
-            visual: visual,
-            ocr: canvasSomenteTintaColorida(ocr) || ocr,
-            ocrOriginal: ocr
-        };
+        if (ativos.length < 30) return null;
+
+        const margem = 4;
+        minimoX = Math.max(0, minimoX - margem);
+        minimoY = Math.max(0, minimoY - margem);
+        maximoX = Math.min(largura - 1, maximoX + margem);
+        maximoY = Math.min(altura - 1, maximoY + margem);
+        const recorteLargura = maximoX - minimoX + 1;
+        const recorteAltura = maximoY - minimoY + 1;
+
+        if (recorteAltura < Math.max(4, altura * .08) && recorteLargura > largura * .55) return null;
+
+        const recorte = document.createElement('canvas');
+        recorte.width = recorteLargura;
+        recorte.height = recorteAltura;
+        const contextoRecorte = recorte.getContext('2d');
+        const binaria = contextoRecorte.createImageData(recorteLargura, recorteAltura);
+        binaria.data.fill(255);
+
+        ativos.forEach(function (ponto) {
+            if (ponto[0] < minimoX || ponto[0] > maximoX || ponto[1] < minimoY || ponto[1] > maximoY) return;
+            const destino = (((ponto[1] - minimoY) * recorteLargura) + (ponto[0] - minimoX)) * 4;
+            binaria.data[destino] = 0;
+            binaria.data[destino + 1] = 0;
+            binaria.data[destino + 2] = 0;
+            binaria.data[destino + 3] = 255;
+        });
+        contextoRecorte.putImageData(binaria, 0, 0);
+
+        const escala = Math.max(3, Math.ceil(96 / recorteAltura));
+        const ampliada = document.createElement('canvas');
+        ampliada.width = (recorteLargura * escala) + 24;
+        ampliada.height = (recorteAltura * escala) + 24;
+        const contextoAmpliado = ampliada.getContext('2d');
+        contextoAmpliado.fillStyle = '#fff';
+        contextoAmpliado.fillRect(0, 0, ampliada.width, ampliada.height);
+        contextoAmpliado.imageSmoothingEnabled = false;
+        contextoAmpliado.drawImage(recorte, 12, 12, recorteLargura * escala, recorteAltura * escala);
+        return { visual: ampliada, ocr: ampliada, ocrOriginal: ampliada };
     }
 
     async function canvasPaginaPdf(pdf, paginaNumero, escala) {
@@ -1666,20 +1669,10 @@
             }
         }
 
-        if (somenteRecortes && tarefas.length > 0) {
-            tarefas = await reconhecerHorariosManuscritos(tarefas);
-            tarefas.forEach(function (tarefa) {
-                if (tarefa.situacao) situacoes.set(tarefa.dia, tarefa.situacao);
-            });
-        }
-
         if (somenteRecortes) {
             const porDiaAssistido = new Map();
+            const horariosFuncionario = horariosFuncionarioSelecionado();
             const diasEncontrados = new Set(tarefas.map(function (tarefa) { return tarefa.dia; }));
-
-            for (let dia = 1; dia <= quantidadeDias; dia += 1) {
-                diasEncontrados.add(dia);
-            }
 
             situacoes.forEach(function (observacao, dia) {
                 diasEncontrados.add(dia);
@@ -1687,21 +1680,28 @@
 
             Array.from(diasEncontrados).sort(function (a, b) { return a - b; }).forEach(function (dia) {
                 const dataIso = mesSelecionado + '-' + String(dia).padStart(2, '0');
+                const dataPartes = dataIso.split('-').map(Number);
+                const diaJs = new Date(dataPartes[0], dataPartes[1] - 1, dataPartes[2], 12).getDay();
+                const diaSemana = diaJs === 0 ? 7 : diaJs;
+                const jornada = horariosFuncionario.find(function (horario) {
+                    return Number(horario.dia_semana) === diaSemana;
+                });
                 const observacao = situacoes.get(dia) || '';
+                const sugerirJornada = !observacao && jornada && Number(jornada.trabalha) === 1;
                 porDiaAssistido.set(dia, {
                     data: dataIso,
-                    entrada_1: '',
-                    saida_1: '',
-                    entrada_2: '',
-                    saida_2: '',
+                    entrada_1: sugerirJornada ? String(jornada.entrada_1 || '').slice(0, 5) : '',
+                    saida_1: sugerirJornada ? String(jornada.saida_1 || '').slice(0, 5) : '',
+                    entrada_2: sugerirJornada ? String(jornada.entrada_2 || '').slice(0, 5) : '',
+                    saida_2: sugerirJornada ? String(jornada.saida_2 || '').slice(0, 5) : '',
                     observacao: observacao,
                     _imagens: {},
                     _revisar: {},
                     _sugeridos: {
-                        entrada_1: false,
-                        saida_1: false,
-                        entrada_2: false,
-                        saida_2: false
+                        entrada_1: sugerirJornada && Boolean(jornada.entrada_1),
+                        saida_1: sugerirJornada && Boolean(jornada.saida_1),
+                        entrada_2: sugerirJornada && Boolean(jornada.entrada_2),
+                        saida_2: sugerirJornada && Boolean(jornada.saida_2)
                     }
                 });
             });
@@ -1710,10 +1710,6 @@
                 const registro = porDiaAssistido.get(tarefa.dia);
                 if (!registro || situacoes.has(tarefa.dia)) return;
                 registro._imagens[tarefa.campo] = tarefa.canvas.toDataURL('image/png');
-                if (tarefa.confiavel) {
-                    registro[tarefa.campo] = tarefa.horario;
-                    registro._sugeridos[tarefa.campo] = false;
-                }
             });
 
             return Array.from(porDiaAssistido.values());
