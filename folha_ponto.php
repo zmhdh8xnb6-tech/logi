@@ -441,8 +441,18 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? mb_substr($observacao, 0, 255)
                     : substr($observacao, 0, 255);
                 $feriado = preg_match('/^feriado\b/i', $observacao) === 1;
+                $folga = preg_match('/^folga\b/i', $observacao) === 1;
 
-                if (array_filter($valores, static fn($valor) => $valor !== null) === [] && !$feriado) {
+                if ($folga) {
+                    $valores = [
+                        'entrada_1' => null,
+                        'saida_1' => null,
+                        'entrada_2' => null,
+                        'saida_2' => null,
+                    ];
+                }
+
+                if (array_filter($valores, static fn($valor) => $valor !== null) === [] && !$feriado && !$folga) {
                     continue;
                 }
 
@@ -600,6 +610,7 @@ if ($funcionarioSelecionado) {
         ];
         $observacaoRegistro = trim((string)($registro['observacao'] ?? ''));
         $feriadoInformado = preg_match('/^feriado\b/i', $observacaoRegistro) === 1;
+        $folgaInformada = preg_match('/^folga\b/i', $observacaoRegistro) === 1;
         $feriadoNacional = folhaPontoFeriadoNacional($dataIso);
         $feriado = $feriadoInformado || $feriadoNacional !== null;
         $feriadoNome = $feriadoNacional ?? '';
@@ -613,7 +624,7 @@ if ($funcionarioSelecionado) {
         }
 
         $previstoJornada = !empty($horario['trabalha']) ? folhaPontoMinutosMarcacoes($horario) : 0;
-        $previsto = $feriado ? 0 : $previstoJornada;
+        $previsto = $feriado || $folgaInformada ? 0 : $previstoJornada;
         $trabalhado = folhaPontoMinutosMarcacoes($registro);
         $marcacoes = array_filter([
             $registro['entrada_1'] ?? '',
@@ -631,6 +642,8 @@ if ($funcionarioSelecionado) {
 
         if ($feriado) {
             $status = ['Feriado', 'bg-primary'];
+        } elseif ($folgaInformada) {
+            $status = ['Folga', 'bg-secondary'];
         } elseif (!$possuiMarcacao && $previsto <= 0) {
             $status = ['Folga', 'bg-secondary'];
         } elseif (!$possuiMarcacao && $dataIso > $hoje) {

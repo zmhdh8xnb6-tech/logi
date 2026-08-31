@@ -207,6 +207,7 @@
         const previstoTexto = linha.querySelector('.ponto-previsto');
         const observacao = linha.querySelector('.ponto-observacao')?.value.trim() || '';
         const feriadoInformado = /^feriado\b/i.test(observacao);
+        const folgaInformada = /^folga\b/i.test(observacao);
         const feriadoNacional = linha.dataset.feriadoNacional === '1';
         const feriado = feriadoNacional || feriadoInformado;
         const descricaoInformada = feriadoInformado
@@ -214,7 +215,7 @@
             : '';
         const feriadoNome = descricaoInformada || linha.dataset.feriadoNome || '';
         const previstoJornada = Number(total?.dataset.previstoJornada || total?.dataset.previsto || 0);
-        const previsto = feriado ? 0 : previstoJornada;
+        const previsto = feriado || folgaInformada ? 0 : previstoJornada;
         const possuiMarcacao = horarios.some(Boolean);
         const incompleto = possuiMarcacao && (
             !horarios[0]
@@ -249,6 +250,9 @@
         if (feriado) {
             statusTexto = 'Feriado';
             statusClasse = 'bg-primary';
+        } else if (folgaInformada) {
+            statusTexto = 'Folga';
+            statusClasse = 'bg-secondary';
         } else if (!possuiMarcacao && previsto <= 0) {
             statusTexto = 'Folga';
             statusClasse = 'bg-secondary';
@@ -429,7 +433,9 @@
     }
 
     function observacaoEspecialDaLinha(texto) {
-        if (!/\bferiado\b/i.test(textoNormalizado(texto))) return '';
+        const normalizado = textoNormalizado(texto);
+        if (/\bfolga\b/i.test(normalizado)) return 'Folga';
+        if (!/\bferiado\b/i.test(normalizado)) return '';
 
         const descricao = String(texto || '').match(/feriado\s*:\s*(.+)$/i);
         return descricao?.[1]?.trim() ? 'Feriado: ' + descricao[1].trim() : 'Feriado';
@@ -511,10 +517,11 @@
 
         linhas.forEach(function (linha, indice) {
             const data = dataDaLinha(linha, mesSelecionado);
+            const folga = /\bfolga\b/i.test(textoNormalizado(linha));
             let textoRegistro = linha;
-            let horarios = horariosRealizadosDaLinha(textoRegistro, possuiColunaPrevisto);
+            let horarios = folga ? [] : horariosRealizadosDaLinha(textoRegistro, possuiColunaPrevisto);
 
-            if (data && horarios.length < 4) {
+            if (data && !folga && horarios.length < 4) {
                 for (let proximoIndice = indice + 1; proximoIndice < Math.min(linhas.length, indice + 3); proximoIndice += 1) {
                     const proximaLinha = linhas[proximoIndice];
                     if (dataDaLinha(proximaLinha, mesSelecionado)) break;
@@ -699,6 +706,11 @@
                 etiqueta.className = 'badge bg-primary';
                 etiqueta.textContent = registro.observacao;
                 colunaSituacao.appendChild(etiqueta);
+            } else if (/^folga\b/i.test(registro.observacao)) {
+                const etiqueta = document.createElement('span');
+                etiqueta.className = 'badge bg-secondary';
+                etiqueta.textContent = 'Folga';
+                colunaSituacao.appendChild(etiqueta);
             } else {
                 colunaSituacao.textContent = '-';
             }
@@ -732,6 +744,7 @@
                 input.placeholder = '--:--';
                 input.className = 'form-control form-control-sm ponto-preview-hora';
                 input.value = registro[campo];
+                input.disabled = /^folga\b/i.test(registro.observacao);
                 input.classList.toggle('ponto-preview-hora-sugerida', Boolean(imagemRecorte && registro[campo]));
                 input.setAttribute('aria-label', campo + ' de ' + formatarDataBr(registro.data));
                 input.addEventListener('input', function () {

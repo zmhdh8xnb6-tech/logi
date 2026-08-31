@@ -348,7 +348,28 @@
 }
 
 .ponto-modal-importacao .modal-content {
+    height: 94vh;
     max-height: 94vh;
+    overflow: hidden;
+}
+
+.ponto-modal-importacao #formImportarPdf {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+}
+
+.ponto-modal-importacao .modal-header,
+.ponto-modal-importacao .modal-footer {
+    flex: 0 0 auto;
+}
+
+.ponto-modal-importacao .modal-body {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 .ponto-preview-tabela {
@@ -454,6 +475,7 @@
     }
 
     .ponto-modal-importacao .modal-content {
+        height: calc(100vh - 24px);
         max-height: calc(100vh - 24px);
     }
 
