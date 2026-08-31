@@ -451,6 +451,19 @@
     background: #fff8df;
 }
 
+.ponto-preview-hora-invalida,
+.ponto-preview-hora-invalida:focus {
+    border-color: #dc3545;
+    background: #fff0f1;
+    box-shadow: 0 0 0 2px rgb(220 53 69 / 12%);
+}
+
+.ponto-preview-linha-invalida>td:first-child,
+.ponto-preview-linha-invalida>td:nth-child(2),
+.ponto-preview-linha-invalida>td:nth-child(3) {
+    background: #fff7f7;
+}
+
 .ponto-preview-celula {
     display: grid;
     gap: 5px;

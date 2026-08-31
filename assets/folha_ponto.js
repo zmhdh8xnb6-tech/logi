@@ -12,6 +12,7 @@
     };
     let registrosPdfAtuais = [];
     let camposDetectadosPdf = new Set();
+    let linhasInvalidasPdf = new Set();
 
     function minutosHora(valor) {
         if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(valor || '')) {
@@ -598,6 +599,7 @@
         const campoMes = document.querySelector('#formImportarPdf input[name="mes"]');
         registrosPdfAtuais = [];
         camposDetectadosPdf = new Set();
+        linhasInvalidasPdf = new Set();
         if (oculto) oculto.value = '';
         if (confirmar) confirmar.disabled = true;
         if (corpo) corpo.replaceChildren();
@@ -652,8 +654,9 @@
                 return registro[campo] === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(registro[campo]);
             });
         });
-        if (oculto) oculto.value = horariosValidos && algumRegistro ? JSON.stringify(registrosPdfAtuais) : '';
-        if (confirmar) confirmar.disabled = registrosPdfAtuais.length === 0 || !horariosValidos || !algumRegistro;
+        const estruturaValida = linhasInvalidasPdf.size === 0;
+        if (oculto) oculto.value = horariosValidos && estruturaValida && algumRegistro ? JSON.stringify(registrosPdfAtuais) : '';
+        if (confirmar) confirmar.disabled = registrosPdfAtuais.length === 0 || !horariosValidos || !estruturaValida || !algumRegistro;
     }
 
     function normalizarHorarioDigitado(valor) {
@@ -683,6 +686,93 @@
         return String(hora).padStart(2, '0') + ':' + String(minuto).padStart(2, '0');
     }
 
+    function preencherSituacaoPreview(coluna, observacao, revisar) {
+        coluna.replaceChildren();
+        const etiqueta = document.createElement('span');
+
+        if (revisar) {
+            etiqueta.className = 'badge bg-danger';
+            etiqueta.textContent = 'Revisar horários';
+            coluna.appendChild(etiqueta);
+            return;
+        }
+
+        if (/^feriado\b/i.test(observacao)) {
+            etiqueta.className = 'badge bg-primary';
+            etiqueta.textContent = observacao;
+        } else if (/^atestado\b/i.test(observacao)) {
+            etiqueta.className = 'badge bg-info text-dark';
+            etiqueta.textContent = observacao;
+        } else if (/^folga\b/i.test(observacao)) {
+            etiqueta.className = 'badge bg-secondary';
+            etiqueta.textContent = 'Folga';
+        } else {
+            coluna.textContent = '-';
+            return;
+        }
+
+        coluna.appendChild(etiqueta);
+    }
+
+    function validarRegistroPreview(indice, registro, linha, colunaSituacao, inputs) {
+        const camposInvalidos = new Set();
+        const campos = ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'];
+        const especial = /^(?:feriado|folga|atestado)\b/i.test(registro.observacao);
+
+        if (!especial) {
+            campos.forEach(function (campo) {
+                if (inputs[campo]?.dataset.revisarOcr === '1') {
+                    camposInvalidos.add(campo);
+                }
+                if (registro[campo] !== '' && minutosHora(registro[campo]) === null) {
+                    camposInvalidos.add(campo);
+                }
+            });
+
+            const primeiroParIncompleto = Boolean(registro.entrada_1) !== Boolean(registro.saida_1);
+            const segundoParIncompleto = Boolean(registro.entrada_2) !== Boolean(registro.saida_2);
+
+            if (primeiroParIncompleto) {
+                camposInvalidos.add('entrada_1');
+                camposInvalidos.add('saida_1');
+            }
+            if (segundoParIncompleto) {
+                camposInvalidos.add('entrada_2');
+                camposInvalidos.add('saida_2');
+            }
+            if ((registro.entrada_2 || registro.saida_2) && (!registro.entrada_1 || !registro.saida_1)) {
+                campos.forEach(function (campo) { camposInvalidos.add(campo); });
+            }
+            if (registro.entrada_1 && registro.saida_1 && minutosIntervalo(registro.entrada_1, registro.saida_1) <= 0) {
+                camposInvalidos.add('entrada_1');
+                camposInvalidos.add('saida_1');
+            }
+            if (registro.entrada_2 && registro.saida_2 && minutosIntervalo(registro.entrada_2, registro.saida_2) <= 0) {
+                camposInvalidos.add('entrada_2');
+                camposInvalidos.add('saida_2');
+            }
+            if (
+                registro.saida_1
+                && registro.entrada_2
+                && minutosHora(registro.entrada_2) < minutosHora(registro.saida_1)
+            ) {
+                camposInvalidos.add('saida_1');
+                camposInvalidos.add('entrada_2');
+            }
+        }
+
+        campos.forEach(function (campo) {
+            inputs[campo]?.classList.toggle('ponto-preview-hora-invalida', camposInvalidos.has(campo));
+        });
+
+        const invalido = camposInvalidos.size > 0;
+        linha.classList.toggle('ponto-preview-linha-invalida', invalido);
+        if (invalido) linhasInvalidasPdf.add(indice);
+        else linhasInvalidasPdf.delete(indice);
+        preencherSituacaoPreview(colunaSituacao, registro.observacao, invalido);
+        return !invalido;
+    }
+
     function mostrarPreviewPdf(registros, leituraOcr) {
         const corpo = document.getElementById('corpoImportacaoPdf');
         const preview = document.getElementById('previewImportacaoPdf');
@@ -692,6 +782,7 @@
         if (!corpo || !preview) return;
         corpo.replaceChildren();
         camposDetectadosPdf = new Set();
+        linhasInvalidasPdf = new Set();
         registrosPdfAtuais = registros.map(function (registro) {
             return {
                 data: registro.data,
@@ -714,24 +805,8 @@
             linha.appendChild(colunaDia);
 
             const colunaSituacao = document.createElement('td');
-            if (/^feriado\b/i.test(registro.observacao)) {
-                const etiqueta = document.createElement('span');
-                etiqueta.className = 'badge bg-primary';
-                etiqueta.textContent = registro.observacao;
-                colunaSituacao.appendChild(etiqueta);
-            } else if (/^atestado\b/i.test(registro.observacao)) {
-                const etiqueta = document.createElement('span');
-                etiqueta.className = 'badge bg-info text-dark';
-                etiqueta.textContent = registro.observacao;
-                colunaSituacao.appendChild(etiqueta);
-            } else if (/^folga\b/i.test(registro.observacao)) {
-                const etiqueta = document.createElement('span');
-                etiqueta.className = 'badge bg-secondary';
-                etiqueta.textContent = 'Folga';
-                colunaSituacao.appendChild(etiqueta);
-            } else {
-                colunaSituacao.textContent = '-';
-            }
+            const inputs = {};
+            preencherSituacaoPreview(colunaSituacao, registro.observacao, false);
             linha.appendChild(colunaSituacao);
 
             ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].forEach(function (campo) {
@@ -763,18 +838,23 @@
                 input.className = 'form-control form-control-sm ponto-preview-hora';
                 input.value = registro[campo];
                 input.disabled = /^(?:folga|atestado)\b/i.test(registro.observacao);
+                input.dataset.revisarOcr = registroOriginal._revisar?.[campo] ? '1' : '0';
                 input.classList.toggle('ponto-preview-hora-sugerida', Boolean(imagemRecorte && registro[campo]));
                 input.setAttribute('aria-label', campo + ' de ' + formatarDataBr(registro.data));
+                inputs[campo] = input;
                 input.addEventListener('input', function () {
                     input.classList.remove('ponto-preview-hora-sugerida');
+                    input.dataset.revisarOcr = '0';
                     registrosPdfAtuais[indice][campo] = input.value;
+                    validarRegistroPreview(indice, registrosPdfAtuais[indice], linha, colunaSituacao, inputs);
                     sincronizarRegistrosPdf();
                 });
                 input.addEventListener('blur', function () {
                     const horario = normalizarHorarioDigitado(input.value);
                     input.value = horario;
-                    input.classList.toggle('is-invalid', input.value === '' && input.dataset.preenchido === '1');
+                    input.dataset.revisarOcr = '0';
                     registrosPdfAtuais[indice][campo] = horario;
+                    validarRegistroPreview(indice, registrosPdfAtuais[indice], linha, colunaSituacao, inputs);
                     sincronizarRegistrosPdf();
                 });
                 input.addEventListener('keydown', function (evento) {
@@ -791,6 +871,7 @@
                 linha.appendChild(coluna);
             });
             corpo.appendChild(linha);
+            validarRegistroPreview(indice, registro, linha, colunaSituacao, inputs);
         });
 
         sincronizarRegistrosPdf();
@@ -811,7 +892,9 @@
         const largura = Math.max(1, Math.floor(area.x1 - area.x0));
         const altura = Math.max(1, Math.floor(area.y1 - area.y0));
         const imagem = contexto.getImageData(x0, y0, largura, altura);
-        const ativos = [];
+        let ativos = [];
+        const pixelsPorLinha = new Uint16Array(altura);
+        const pixelsPorColuna = new Uint16Array(largura);
         let minimoX = largura;
         let minimoY = altura;
         let maximoX = 0;
@@ -833,12 +916,23 @@
 
                 if (!ativo) continue;
                 ativos.push([x, y]);
-                minimoX = Math.min(minimoX, x);
-                minimoY = Math.min(minimoY, y);
-                maximoX = Math.max(maximoX, x);
-                maximoY = Math.max(maximoY, y);
+                pixelsPorLinha[y] += 1;
+                pixelsPorColuna[x] += 1;
             }
         }
+
+        ativos = ativos.filter(function (ponto) {
+            const linhaDaGrade = pixelsPorLinha[ponto[1]] > largura * .82;
+            const colunaDaGrade = pixelsPorColuna[ponto[0]] > altura * .92;
+            return !linhaDaGrade && !colunaDaGrade;
+        });
+
+        ativos.forEach(function (ponto) {
+            minimoX = Math.min(minimoX, ponto[0]);
+            minimoY = Math.min(minimoY, ponto[1]);
+            maximoX = Math.max(maximoX, ponto[0]);
+            maximoY = Math.max(maximoY, ponto[1]);
+        });
 
         const minimoPixels = 30;
         if (ativos.length < minimoPixels) {
@@ -852,6 +946,11 @@
         maximoY = Math.min(altura - 1, maximoY + margem);
         const recorteLargura = maximoX - minimoX + 1;
         const recorteAltura = maximoY - minimoY + 1;
+
+        if (recorteAltura < Math.max(4, altura * .08) && recorteLargura > largura * .55) {
+            return null;
+        }
+
         const recorte = document.createElement('canvas');
         recorte.width = recorteLargura;
         recorte.height = recorteAltura;
@@ -920,6 +1019,51 @@
         return linhas;
     }
 
+    function horarioDoTextoManuscrito(texto) {
+        const preparado = String(texto || '')
+            .replace(/[oO]/g, '0')
+            .replace(/[bB]/g, '8')
+            .replace(/[iIlL|]/g, '1')
+            .replace(/[sS]/g, '5')
+            .replace(/\s+/g, '');
+        const comSeparador = preparado.match(/([0-2]?\d)\s*[:hH.,]\s*([0-5]?\d)?/);
+
+        if (comSeparador) {
+            return normalizarHorarioDigitado(comSeparador[1] + ':' + (comSeparador[2] || '00'));
+        }
+
+        const digitos = preparado.replace(/\D/g, '');
+        return digitos.length >= 1 && digitos.length <= 4 ? normalizarHorarioDigitado(digitos) : '';
+    }
+
+    async function reconhecerHorariosManuscritos(tarefas) {
+        if (!window.Tesseract?.createWorker || tarefas.length === 0) return tarefas;
+
+        const worker = await window.Tesseract.createWorker('por', 1);
+
+        try {
+            await worker.setParameters({
+                tessedit_char_whitelist: '0123456789:hH.,',
+                tessedit_pageseg_mode: '7',
+                preserve_interword_spaces: '1'
+            });
+
+            for (let indice = 0; indice < tarefas.length; indice += 1) {
+                atualizarStatusImportacao(
+                    'Lendo marcações manuscritas... '
+                    + (indice + 1) + ' de ' + tarefas.length
+                );
+                const resultado = await worker.recognize(tarefas[indice].canvas);
+                tarefas[indice].horario = horarioDoTextoManuscrito(resultado?.data?.text || '');
+                tarefas[indice].confianca = Number(resultado?.data?.confidence || 0);
+            }
+        } finally {
+            await worker.terminate();
+        }
+
+        return tarefas;
+    }
+
     function registrosOcrConfiaveis(registros) {
         const diasComPares = registros.filter(function (registro) {
             const horarios = [registro.entrada_1, registro.saida_1, registro.entrada_2, registro.saida_2].filter(Boolean);
@@ -928,13 +1072,15 @@
         return diasComPares.length >= 2;
     }
 
-    async function registrosDoPdfDigitalizado(pdf, mesSelecionado) {
+    async function registrosDoPdfDigitalizado(pdf, mesSelecionado, textoOcr) {
         atualizarStatusImportacao('Separando os horários escritos em cada dia...');
         const canvas = await canvasPaginaPdf(pdf, 1, 2.4);
-
+        const textoModelo = textoNormalizado(textoOcr);
+        const modeloListaFrequencia = /lista de frequencia/.test(textoModelo)
+            || (/dia\s*(?:do\s*)?mes/.test(textoModelo) && /repouso/.test(textoModelo));
         const limitesX = [.168, .258, .351, .445, .535];
-        const topoLinhas = canvas.height * .204;
-        const baseLinhas = canvas.height * .840;
+        const topoLinhas = canvas.height * (modeloListaFrequencia ? .224 : .204);
+        const baseLinhas = canvas.height * (modeloListaFrequencia ? .852 : .840);
         const alturaLinha = (baseLinhas - topoLinhas) / 31;
         const partesMes = mesSelecionado.split('-').map(Number);
         const quantidadeDias = new Date(partesMes[0], partesMes[1], 0).getDate();
@@ -943,11 +1089,14 @@
 
         for (let dia = 1; dia <= quantidadeDias; dia += 1) {
             for (let coluna = 0; coluna < campos.length; coluna += 1) {
+                const larguraCelula = canvas.width * (limitesX[coluna + 1] - limitesX[coluna]);
+                const margemX = Math.max(8, larguraCelula * .055);
+                const margemY = Math.max(5, alturaLinha * .12);
                 const area = {
-                    x0: (canvas.width * limitesX[coluna]) + 6,
-                    x1: (canvas.width * limitesX[coluna + 1]) - 6,
-                    y0: topoLinhas + ((dia - 1) * alturaLinha) + 4,
-                    y1: topoLinhas + (dia * alturaLinha) - 4
+                    x0: (canvas.width * limitesX[coluna]) + margemX,
+                    x1: (canvas.width * limitesX[coluna + 1]) - margemX,
+                    y0: topoLinhas + ((dia - 1) * alturaLinha) + margemY,
+                    y1: topoLinhas + (dia * alturaLinha) - margemY
                 };
                 const recorte = recortarCelulaOcr(canvas, area);
                 if (recorte) tarefas.push({ dia: dia, campo: campos[coluna], canvas: recorte });
@@ -957,6 +1106,8 @@
         if (tarefas.length === 0) {
             throw new Error('Não encontrei marcações manuscritas neste modelo e o texto impresso também não formou registros válidos.');
         }
+
+        tarefas = await reconhecerHorariosManuscritos(tarefas);
 
         const porDia = new Map();
 
@@ -968,10 +1119,14 @@
                     saida_1: '',
                     entrada_2: '',
                     saida_2: '',
-                    _imagens: {}
+                    _imagens: {},
+                    _revisar: {}
                 });
             }
-            porDia.get(tarefa.dia)._imagens[tarefa.campo] = tarefa.canvas.toDataURL('image/png');
+            const registro = porDia.get(tarefa.dia);
+            registro._imagens[tarefa.campo] = tarefa.canvas.toDataURL('image/png');
+            registro[tarefa.campo] = tarefa.horario || '';
+            registro._revisar[tarefa.campo] = !tarefa.horario || tarefa.confianca < 45;
         });
 
         return Array.from(porDia.values()).sort(function (a, b) {
@@ -1025,11 +1180,13 @@
 
             let registros = totalItens > 0 ? registrosDasLinhas(linhas, mes) : [];
             let leituraOcr = false;
+            let textoOcr = '';
 
             if (registros.length === 0) {
                 try {
                     const linhasOcr = await linhasDoPdfPorOcr(pdf);
-                    const mesOcr = mesDoTextoPdf(linhasOcr.join(' '));
+                    textoOcr = linhasOcr.join(' ');
+                    const mesOcr = mesDoTextoPdf(textoOcr);
                     if (mesOcr) mes = definirMesImportacao(mesOcr);
                     const registrosOcr = registrosDasLinhas(linhasOcr, mes);
                     if (registrosOcrConfiaveis(registrosOcr)) registros = registrosOcr;
@@ -1040,7 +1197,7 @@
 
             if (registros.length === 0) {
                 leituraOcr = true;
-                registros = await registrosDoPdfDigitalizado(pdf, mes);
+                registros = await registrosDoPdfDigitalizado(pdf, mes, textoOcr);
             }
 
             if (registros.length === 0) {
