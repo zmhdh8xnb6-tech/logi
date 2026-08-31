@@ -340,8 +340,21 @@
     color: #475569;
 }
 
+.ponto-modal-importacao {
+    width: min(96vw, 1720px);
+    max-width: 1720px;
+    height: 94vh;
+    margin: 3vh auto;
+}
+
+.ponto-modal-importacao .modal-content {
+    max-height: 94vh;
+}
+
 .ponto-preview-tabela {
-    min-width: 720px;
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
 }
 
 .ponto-preview-tabela th {
@@ -355,8 +368,25 @@
     white-space: nowrap;
 }
 
+.ponto-preview-tabela th:nth-child(1) {
+    width: 11%;
+}
+
+.ponto-preview-tabela th:nth-child(2) {
+    width: 10%;
+}
+
+.ponto-preview-tabela th:nth-child(3) {
+    width: 15%;
+}
+
+.ponto-preview-tabela th:nth-child(n+4):nth-child(-n+7) {
+    width: 16%;
+}
+
 .ponto-preview-hora {
-    min-width: 106px;
+    width: 100%;
+    min-width: 0;
     text-align: center;
 }
 
@@ -368,7 +398,7 @@
 .ponto-preview-celula {
     display: grid;
     gap: 5px;
-    min-width: 110px;
+    min-width: 0;
 }
 
 .ponto-preview-recorte {
@@ -392,7 +422,8 @@
 }
 
 #previewImportacaoPdf .table-responsive {
-    max-height: 350px;
+    max-height: none;
+    overflow-x: visible;
 }
 
 .ponto-impressao-cabecalho {
@@ -415,6 +446,26 @@
 }
 
 @media (max-width: 768px) {
+    .ponto-modal-importacao {
+        width: calc(100vw - 24px);
+        max-width: calc(100vw - 24px);
+        height: calc(100vh - 24px);
+        margin: 12px auto;
+    }
+
+    .ponto-modal-importacao .modal-content {
+        max-height: calc(100vh - 24px);
+    }
+
+    .ponto-preview-tabela {
+        min-width: 760px;
+        table-layout: auto;
+    }
+
+    #previewImportacaoPdf .table-responsive {
+        overflow-x: auto;
+    }
+
     .ponto-cabecalho {
         align-items: flex-start;
         flex-direction: column;

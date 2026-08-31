@@ -1167,7 +1167,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
 
         <?php if ($funcionarioSelecionado): ?>
             <div class="modal fade" id="modalImportarPdf" tabindex="-1" aria-hidden="true">
-                <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable ponto-modal-importacao">
                     <div class="modal-content">
                         <form method="post" id="formImportarPdf">
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(folhaPontoToken()) ?>">
