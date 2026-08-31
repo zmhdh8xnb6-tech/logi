@@ -1048,103 +1048,51 @@
     }
 
     function recortarCelulaOcr(canvasPagina, area) {
-        const contexto = canvasPagina.getContext('2d', { willReadFrequently: true });
         const x0 = Math.max(0, Math.floor(area.x0));
         const y0 = Math.max(0, Math.floor(area.y0));
-        const largura = Math.max(1, Math.floor(area.x1 - area.x0));
-        const altura = Math.max(1, Math.floor(area.y1 - area.y0));
-        const imagem = contexto.getImageData(x0, y0, largura, altura);
-        const pixelsEscuros = [];
-        const pixelsColoridos = [];
-        let ativos = [];
-        const pixelsPorLinha = new Uint16Array(altura);
-        const pixelsPorColuna = new Uint16Array(largura);
-        let minimoX = largura;
-        let minimoY = altura;
-        let maximoX = 0;
-        let maximoY = 0;
+        const largura = Math.max(1, Math.min(canvasPagina.width - x0, Math.floor(area.x1 - area.x0)));
+        const altura = Math.max(1, Math.min(canvasPagina.height - y0, Math.floor(area.y1 - area.y0)));
+        const escalaVisual = 3;
+        const visual = document.createElement('canvas');
+        visual.width = largura * escalaVisual;
+        visual.height = altura * escalaVisual;
+        const contextoVisual = visual.getContext('2d');
+        contextoVisual.fillStyle = '#fff';
+        contextoVisual.fillRect(0, 0, visual.width, visual.height);
+        contextoVisual.imageSmoothingEnabled = true;
+        contextoVisual.drawImage(
+            canvasPagina,
+            x0,
+            y0,
+            largura,
+            altura,
+            0,
+            0,
+            visual.width,
+            visual.height
+        );
 
-        for (let y = 0; y < altura; y += 1) {
-            for (let x = 0; x < largura; x += 1) {
-                const indice = ((y * largura) + x) * 4;
-                const vermelho = imagem.data[indice];
-                const verde = imagem.data[indice + 1];
-                const azul = imagem.data[indice + 2];
-                const luminancia = (vermelho * .299) + (verde * .587) + (azul * .114);
-                const maiorCanal = Math.max(vermelho, verde, azul);
-                const menorCanal = Math.min(vermelho, verde, azul);
-                const saturacao = maiorCanal - menorCanal;
-                const tintaEscura = luminancia < 135;
-                const tintaColorida = saturacao > 35 && menorCanal < 210 && luminancia < 220;
-                if (tintaEscura) pixelsEscuros.push([x, y]);
-                if (tintaColorida) pixelsColoridos.push([x, y]);
-            }
-        }
+        const escalaOcr = 4;
+        const ocr = document.createElement('canvas');
+        ocr.width = largura * escalaOcr;
+        ocr.height = altura * escalaOcr;
+        const contextoOcr = ocr.getContext('2d');
+        contextoOcr.fillStyle = '#fff';
+        contextoOcr.fillRect(0, 0, ocr.width, ocr.height);
+        contextoOcr.imageSmoothingEnabled = true;
+        contextoOcr.drawImage(
+            canvasPagina,
+            x0,
+            y0,
+            largura,
+            altura,
+            0,
+            0,
+            ocr.width,
+            ocr.height
+        );
 
-        // Em folhas coloridas, isola a caneta para não misturar a grade preta impressa.
-        ativos = pixelsColoridos.length >= 20 ? pixelsColoridos : pixelsEscuros;
-        ativos.forEach(function (ponto) {
-            pixelsPorLinha[ponto[1]] += 1;
-            pixelsPorColuna[ponto[0]] += 1;
-        });
-
-        ativos = ativos.filter(function (ponto) {
-            const linhaDaGrade = pixelsPorLinha[ponto[1]] > largura * .82;
-            const colunaDaGrade = pixelsPorColuna[ponto[0]] > altura * .92;
-            return !linhaDaGrade && !colunaDaGrade;
-        });
-
-        ativos.forEach(function (ponto) {
-            minimoX = Math.min(minimoX, ponto[0]);
-            minimoY = Math.min(minimoY, ponto[1]);
-            maximoX = Math.max(maximoX, ponto[0]);
-            maximoY = Math.max(maximoY, ponto[1]);
-        });
-
-        const minimoPixels = 30;
-        if (ativos.length < minimoPixels) {
-            return null;
-        }
-
-        const margem = 4;
-        minimoX = Math.max(0, minimoX - margem);
-        minimoY = Math.max(0, minimoY - margem);
-        maximoX = Math.min(largura - 1, maximoX + margem);
-        maximoY = Math.min(altura - 1, maximoY + margem);
-        const recorteLargura = maximoX - minimoX + 1;
-        const recorteAltura = maximoY - minimoY + 1;
-
-        if (recorteAltura < Math.max(4, altura * .08) && recorteLargura > largura * .55) {
-            return null;
-        }
-
-        const recorte = document.createElement('canvas');
-        recorte.width = recorteLargura;
-        recorte.height = recorteAltura;
-        const contextoRecorte = recorte.getContext('2d');
-        const binaria = contextoRecorte.createImageData(recorteLargura, recorteAltura);
-        binaria.data.fill(255);
-
-        ativos.forEach(function (ponto) {
-            if (ponto[0] < minimoX || ponto[0] > maximoX || ponto[1] < minimoY || ponto[1] > maximoY) return;
-            const destino = (((ponto[1] - minimoY) * recorteLargura) + (ponto[0] - minimoX)) * 4;
-            binaria.data[destino] = 0;
-            binaria.data[destino + 1] = 0;
-            binaria.data[destino + 2] = 0;
-            binaria.data[destino + 3] = 255;
-        });
-        contextoRecorte.putImageData(binaria, 0, 0);
-
-        const escala = Math.max(3, Math.ceil(96 / recorteAltura));
-        const ampliada = document.createElement('canvas');
-        ampliada.width = (recorteLargura * escala) + 24;
-        ampliada.height = (recorteAltura * escala) + 24;
-        const contextoAmpliado = ampliada.getContext('2d');
-        contextoAmpliado.fillStyle = '#fff';
-        contextoAmpliado.fillRect(0, 0, ampliada.width, ampliada.height);
-        contextoAmpliado.imageSmoothingEnabled = false;
-        contextoAmpliado.drawImage(recorte, 12, 12, recorteLargura * escala, recorteAltura * escala);
-        return ampliada;
+        return { visual: visual, ocr: ocr };
     }
 
     async function canvasPaginaPdf(pdf, paginaNumero, escala) {
@@ -1304,13 +1252,21 @@
         const inclinacaoHorizontal = retaCabecalho && Math.abs(retaCabecalho.inclinacao) <= .25
             ? retaCabecalho.inclinacao
             : 0;
+        const retaColunas = ajustarReta(pontosDias.map(function (ponto) {
+            return { x: ponto.y, y: ponto.xOriginal };
+        }));
+        const inclinacaoVertical = retaColunas && Math.abs(retaColunas.inclinacao) <= .25
+            ? retaColunas.inclinacao
+            : 0;
 
         return {
             limitesX: limitesX,
             centroPrimeiroDia: retaDias.intercepto,
             alturaLinha: retaDias.inclinacao,
             xDias: pontosDias.reduce(function (total, ponto) { return total + ponto.xOriginal; }, 0) / pontosDias.length,
-            inclinacaoHorizontal: inclinacaoHorizontal
+            inclinacaoHorizontal: inclinacaoHorizontal,
+            inclinacaoVertical: inclinacaoVertical,
+            yReferenciaColunas: centros.reduce(function (total, centro) { return total + centro.y; }, 0) / centros.length
         };
     }
 
@@ -1363,35 +1319,9 @@
         return digitos.length >= 1 && digitos.length <= 4 ? normalizarHorarioDigitado(digitos) : '';
     }
 
-    function diferencaMinutosHorario(horarioA, horarioB) {
-        const minutosA = minutosHora(horarioA);
-        const minutosB = minutosHora(horarioB);
-        if (minutosA === null || minutosB === null) return Number.POSITIVE_INFINITY;
-        return Math.abs(minutosA - minutosB);
-    }
-
-    function pontuarHorarioOcr(horario, confianca, esperado) {
+    function pontuarHorarioOcr(horario, confianca) {
         if (!horario || minutosHora(horario) === null) return Number.NEGATIVE_INFINITY;
-        let pontos = Math.max(0, Number(confianca || 0));
-
-        if (esperado) {
-            const diferenca = diferencaMinutosHorario(horario, esperado);
-            if (diferenca <= 20) pontos += 45;
-            else if (diferenca <= 60) pontos += 32;
-            else if (diferenca <= 180) pontos += 16;
-            else if (diferenca > 300) pontos -= 45;
-        }
-
-        return pontos;
-    }
-
-    function jornadaDaTarefa(tarefa, mesSelecionado, horariosFuncionario) {
-        const partesMes = mesSelecionado.split('-').map(Number);
-        const diaJs = new Date(partesMes[0], partesMes[1] - 1, tarefa.dia, 12).getDay();
-        const diaSemana = diaJs === 0 ? 7 : diaJs;
-        return horariosFuncionario.find(function (horario) {
-            return Number(horario.dia_semana) === diaSemana;
-        }) || null;
+        return Math.max(0, Number(confianca || 0));
     }
 
     function sequenciaHorariosValida(tarefasDia) {
@@ -1409,11 +1339,10 @@
         return preenchidos[preenchidos.length - 1] - preenchidos[0] <= 18 * 60;
     }
 
-    async function reconhecerHorariosManuscritos(tarefas, mesSelecionado) {
+    async function reconhecerHorariosManuscritos(tarefas) {
         if (!window.Tesseract?.createWorker || tarefas.length === 0) return tarefas;
 
         const worker = await window.Tesseract.createWorker('por', 1);
-        const horariosFuncionario = horariosFuncionarioSelecionado();
 
         try {
             await worker.setParameters({
@@ -1428,16 +1357,12 @@
                     'Lendo marcações manuscritas... '
                     + (indice + 1) + ' de ' + tarefas.length
                 );
-                const resultado = await worker.recognize(tarefas[indice].canvas);
+                const resultado = await worker.recognize(tarefas[indice].canvasOcr || tarefas[indice].canvas);
                 const horario = horarioDoTextoManuscrito(resultado?.data?.text || '');
                 const confianca = Number(resultado?.data?.confidence || 0);
-                const jornada = jornadaDaTarefa(tarefas[indice], mesSelecionado, horariosFuncionario);
-                const esperado = jornada && Number(jornada.trabalha) === 1
-                    ? String(jornada[tarefas[indice].campo] || '').slice(0, 5)
-                    : '';
                 tarefas[indice].horario = horario;
                 tarefas[indice].confianca = confianca;
-                tarefas[indice].pontuacao = pontuarHorarioOcr(horario, confianca, esperado);
+                tarefas[indice].pontuacao = pontuarHorarioOcr(horario, confianca);
             }
 
             const horariosPendentes = tarefas.filter(function (tarefa) {
@@ -1455,14 +1380,10 @@
                         'Confirmando horários manuscritos... '
                         + (indice + 1) + ' de ' + horariosPendentes.length
                     );
-                    const resultado = await worker.recognize(horariosPendentes[indice].canvas);
+                    const resultado = await worker.recognize(horariosPendentes[indice].canvasOcr || horariosPendentes[indice].canvas);
                     const horario = horarioDoTextoManuscrito(resultado?.data?.text || '');
                     const confianca = Number(resultado?.data?.confidence || 0);
-                    const jornada = jornadaDaTarefa(horariosPendentes[indice], mesSelecionado, horariosFuncionario);
-                    const esperado = jornada && Number(jornada.trabalha) === 1
-                        ? String(jornada[horariosPendentes[indice].campo] || '').slice(0, 5)
-                        : '';
-                    const pontuacao = pontuarHorarioOcr(horario, confianca, esperado);
+                    const pontuacao = pontuarHorarioOcr(horario, confianca);
 
                     if (pontuacao > horariosPendentes[indice].pontuacao) {
                         horariosPendentes[indice].horario = horario;
@@ -1483,7 +1404,7 @@
                 });
 
                 for (let indice = 0; indice < situacoesPendentes.length; indice += 1) {
-                    const resultado = await worker.recognize(situacoesPendentes[indice].canvas);
+                    const resultado = await worker.recognize(situacoesPendentes[indice].canvasOcr || situacoesPendentes[indice].canvas);
                     const texto = textoNormalizado(resultado?.data?.text || '');
                     if (/folga/.test(texto)) situacoesPendentes[indice].situacao = 'Folga';
                     else if (/atestado/.test(texto)) situacoesPendentes[indice].situacao = 'Atestado';
@@ -1563,29 +1484,45 @@
         for (let dia = 1; dia <= quantidadeDias; dia += 1) {
             for (let coluna = 0; coluna < campos.length; coluna += 1) {
                 const larguraCelula = limitesX[coluna + 1] - limitesX[coluna];
-                const margemX = Math.max(8, larguraCelula * .055);
-                const margemY = Math.max(4, alturaLinha * .10);
-                const centroX = (limitesX[coluna] + limitesX[coluna + 1]) / 2;
-                const centroY = geometriaOcr
+                const margemX = Math.max(3, larguraCelula * .018);
+                const margemY = Math.max(2, alturaLinha * .045);
+                const centroXBase = (limitesX[coluna] + limitesX[coluna + 1]) / 2;
+                const centroYBase = geometriaOcr
                     ? geometriaOcr.centroPrimeiroDia
                     + ((dia - 1) * alturaLinha)
-                    + (inclinacaoHorizontal * (centroX - xReferenciaLinhas))
+                    + (inclinacaoHorizontal * (centroXBase - xReferenciaLinhas))
                     : topoLinhas
                     + ((dia - .5) * alturaLinha)
-                    + (inclinacaoHorizontal * (centroX - xReferenciaLinhas));
+                    + (inclinacaoHorizontal * (centroXBase - xReferenciaLinhas));
+                const deslocamentoX = geometriaOcr
+                    ? geometriaOcr.inclinacaoVertical
+                    * (centroYBase - geometriaOcr.yReferenciaColunas)
+                    : 0;
+                const limiteEsquerdo = limitesX[coluna] + deslocamentoX;
+                const limiteDireito = limitesX[coluna + 1] + deslocamentoX;
+                const centroX = (limiteEsquerdo + limiteDireito) / 2;
+                const centroY = centroYBase
+                    + (inclinacaoHorizontal * (centroX - centroXBase));
                 const area = {
-                    x0: limitesX[coluna] + margemX,
-                    x1: limitesX[coluna + 1] - margemX,
+                    x0: limiteEsquerdo + margemX,
+                    x1: limiteDireito - margemX,
                     y0: centroY - (alturaLinha / 2) + margemY,
                     y1: centroY + (alturaLinha / 2) - margemY
                 };
                 const recorte = recortarCelulaOcr(canvas, area);
-                if (recorte) tarefas.push({ dia: dia, campo: campos[coluna], canvas: recorte });
+                if (recorte) {
+                    tarefas.push({
+                        dia: dia,
+                        campo: campos[coluna],
+                        canvas: recorte.visual,
+                        canvasOcr: recorte.ocr
+                    });
+                }
             }
         }
 
         if (somenteRecortes && tarefas.length > 0) {
-            tarefas = await reconhecerHorariosManuscritos(tarefas, mesSelecionado);
+            tarefas = await reconhecerHorariosManuscritos(tarefas);
             tarefas.forEach(function (tarefa) {
                 if (tarefa.situacao) situacoes.set(tarefa.dia, tarefa.situacao);
             });
@@ -1593,8 +1530,11 @@
 
         if (somenteRecortes) {
             const porDiaAssistido = new Map();
-            const horariosFuncionario = horariosFuncionarioSelecionado();
             const diasEncontrados = new Set(tarefas.map(function (tarefa) { return tarefa.dia; }));
+
+            for (let dia = 1; dia <= quantidadeDias; dia += 1) {
+                diasEncontrados.add(dia);
+            }
 
             situacoes.forEach(function (observacao, dia) {
                 diasEncontrados.add(dia);
@@ -1602,28 +1542,21 @@
 
             Array.from(diasEncontrados).sort(function (a, b) { return a - b; }).forEach(function (dia) {
                 const dataIso = mesSelecionado + '-' + String(dia).padStart(2, '0');
-                const dataPartes = dataIso.split('-').map(Number);
-                const diaJs = new Date(dataPartes[0], dataPartes[1] - 1, dataPartes[2], 12).getDay();
-                const diaSemana = diaJs === 0 ? 7 : diaJs;
-                const jornada = horariosFuncionario.find(function (horario) {
-                    return Number(horario.dia_semana) === diaSemana;
-                });
                 const observacao = situacoes.get(dia) || '';
-                const sugerirJornada = !observacao && jornada && Number(jornada.trabalha) === 1;
                 porDiaAssistido.set(dia, {
                     data: dataIso,
-                    entrada_1: sugerirJornada ? String(jornada.entrada_1 || '').slice(0, 5) : '',
-                    saida_1: sugerirJornada ? String(jornada.saida_1 || '').slice(0, 5) : '',
-                    entrada_2: sugerirJornada ? String(jornada.entrada_2 || '').slice(0, 5) : '',
-                    saida_2: sugerirJornada ? String(jornada.saida_2 || '').slice(0, 5) : '',
+                    entrada_1: '',
+                    saida_1: '',
+                    entrada_2: '',
+                    saida_2: '',
                     observacao: observacao,
                     _imagens: {},
                     _revisar: {},
                     _sugeridos: {
-                        entrada_1: sugerirJornada && Boolean(jornada.entrada_1),
-                        saida_1: sugerirJornada && Boolean(jornada.saida_1),
-                        entrada_2: sugerirJornada && Boolean(jornada.entrada_2),
-                        saida_2: sugerirJornada && Boolean(jornada.saida_2)
+                        entrada_1: false,
+                        saida_1: false,
+                        entrada_2: false,
+                        saida_2: false
                     }
                 });
             });
@@ -1645,7 +1578,7 @@
             throw new Error('Não encontrei marcações manuscritas neste modelo e o texto impresso também não formou registros válidos.');
         }
 
-        if (tarefas.length > 0) tarefas = await reconhecerHorariosManuscritos(tarefas, mesSelecionado);
+        if (tarefas.length > 0) tarefas = await reconhecerHorariosManuscritos(tarefas);
 
         tarefas.forEach(function (tarefa) {
             if (tarefa.situacao) situacoes.set(tarefa.dia, tarefa.situacao);
