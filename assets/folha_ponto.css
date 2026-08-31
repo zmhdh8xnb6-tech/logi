@@ -407,15 +407,6 @@
     overflow-y: auto;
 }
 
-.ponto-texto-reconhecido {
-    min-height: 340px;
-    resize: vertical;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-    font-size: .9rem;
-    line-height: 1.65;
-    white-space: pre;
-}
-
 .ponto-preview-tabela {
     width: 100%;
     min-width: 0;

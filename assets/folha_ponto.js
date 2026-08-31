@@ -11,7 +11,8 @@
         7: { trabalha: false, entrada_1: '', saida_1: '', entrada_2: '', saida_2: '' }
     };
     let registrosPdfAtuais = [];
-    let registrosTextoReconhecido = [];
+    let registrosAssistidosPdf = [];
+    let indiceAssistidoPdf = 0;
     let camposDetectadosPdf = new Set();
     let linhasInvalidasPdf = new Set();
 
@@ -592,28 +593,24 @@
 
     function limparImportacaoPdf() {
         document.getElementById('erroImportacaoPdf')?.classList.add('d-none');
-        document.getElementById('etapaTextoImportacaoPdf')?.classList.add('d-none');
+        document.getElementById('etapaAssistidaPdf')?.classList.add('d-none');
         document.getElementById('previewImportacaoPdf')?.classList.add('d-none');
         document.getElementById('avisoRevisaoOcr')?.classList.add('d-none');
         document.getElementById('avisoMesImportacaoPdf')?.classList.add('d-none');
         const oculto = document.getElementById('registrosPdf');
         const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
         const corpo = document.getElementById('corpoImportacaoPdf');
-        const textoReconhecido = document.getElementById('textoReconhecidoPdf');
         const voltarTexto = document.getElementById('btnVoltarTextoPdf');
         const textoStatus = document.getElementById('statusImportacaoTexto');
         const campoMes = document.querySelector('#formImportarPdf input[name="mes"]');
         registrosPdfAtuais = [];
-        registrosTextoReconhecido = [];
+        registrosAssistidosPdf = [];
+        indiceAssistidoPdf = 0;
         camposDetectadosPdf = new Set();
         linhasInvalidasPdf = new Set();
         if (oculto) oculto.value = '';
         if (confirmar) confirmar.disabled = true;
         if (corpo) corpo.replaceChildren();
-        if (textoReconhecido) {
-            textoReconhecido.value = '';
-            textoReconhecido.classList.remove('is-invalid');
-        }
         voltarTexto?.classList.add('d-none');
         if (textoStatus) textoStatus.textContent = 'Lendo o arquivo...';
         if (campoMes?.dataset.mesOriginal) definirMesImportacao(campoMes.dataset.mesOriginal);
@@ -628,6 +625,182 @@
         const partes = dataIso.split('-').map(Number);
         const nomes = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
         return nomes[new Date(partes[0], partes[1] - 1, partes[2], 12).getDay()];
+    }
+
+    function horariosFuncionarioSelecionado() {
+        const botao = document.getElementById('btnEditarFuncionario');
+        try {
+            const horarios = JSON.parse(botao?.dataset.horarios || '[]');
+            return Array.isArray(horarios) ? horarios : [];
+        } catch (erro) {
+            return [];
+        }
+    }
+
+    function registroAssistidoAtual() {
+        return registrosAssistidosPdf[indiceAssistidoPdf] || null;
+    }
+
+    function salvarCamposDiaAssistido() {
+        const registro = registroAssistidoAtual();
+        if (!registro || /^(?:folga|atestado|feriado)\b/i.test(registro.observacao || '')) return true;
+        let valido = true;
+
+        document.querySelectorAll('.ponto-assistido-hora').forEach(function (input) {
+            const texto = input.value.trim();
+            const horario = texto ? normalizarHorarioDigitado(texto) : '';
+            input.classList.toggle('is-invalid', Boolean(texto && !horario));
+            if (texto && !horario) {
+                valido = false;
+                return;
+            }
+            input.value = horario;
+            registro[input.dataset.campo] = horario;
+        });
+        return valido;
+    }
+
+    function mostrarDiaAssistido(focarPrimeiro) {
+        const registro = registroAssistidoAtual();
+        if (!registro) return;
+        const data = document.getElementById('dataAssistidaPdf');
+        const diaSemana = document.getElementById('diaSemanaAssistidoPdf');
+        const progresso = document.getElementById('progressoAssistidoPdf');
+        const especial = /^(?:folga|atestado|feriado)\b/i.test(registro.observacao || '');
+
+        if (data) data.textContent = formatarDataBr(registro.data);
+        if (diaSemana) diaSemana.textContent = nomeDiaSemana(registro.data);
+        if (progresso) progresso.textContent = (indiceAssistidoPdf + 1) + ' de ' + registrosAssistidosPdf.length;
+
+        ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].forEach(function (campo) {
+            const input = document.getElementById('assistido_' + campo);
+            const imagem = document.getElementById('recorte_' + campo);
+            const semRecorte = document.getElementById('sem_recorte_' + campo);
+            const origem = registro._imagens?.[campo] || '';
+            if (input) {
+                input.value = registro[campo] || '';
+                input.disabled = especial;
+                input.classList.remove('is-invalid');
+            }
+            if (imagem) {
+                imagem.src = origem;
+                imagem.classList.toggle('d-none', !origem);
+            }
+            semRecorte?.classList.toggle('d-none', Boolean(origem));
+        });
+
+        document.querySelectorAll('.ponto-assistido-situacao').forEach(function (botao) {
+            botao.classList.toggle('active', botao.dataset.situacao === registro.observacao);
+            botao.setAttribute('aria-pressed', botao.dataset.situacao === registro.observacao ? 'true' : 'false');
+        });
+        const anterior = document.getElementById('btnDiaAssistidoAnterior');
+        const proximo = document.getElementById('btnDiaAssistidoProximo');
+        if (anterior) anterior.disabled = indiceAssistidoPdf === 0;
+        if (proximo) proximo.disabled = indiceAssistidoPdf >= registrosAssistidosPdf.length - 1;
+
+        if (focarPrimeiro && !especial) {
+            window.setTimeout(function () {
+                document.getElementById('assistido_entrada_1')?.focus();
+            }, 0);
+        }
+    }
+
+    function mostrarImportacaoAssistida(registros) {
+        const etapa = document.getElementById('etapaAssistidaPdf');
+        if (!etapa) return;
+        registrosAssistidosPdf = registros.map(function (registro) {
+            return {
+                data: registro.data,
+                entrada_1: registro.entrada_1 || '',
+                saida_1: registro.saida_1 || '',
+                entrada_2: registro.entrada_2 || '',
+                saida_2: registro.saida_2 || '',
+                observacao: registro.observacao || '',
+                _imagens: registro._imagens || {}
+            };
+        });
+        indiceAssistidoPdf = 0;
+        document.getElementById('erroImportacaoPdf')?.classList.add('d-none');
+        document.getElementById('previewImportacaoPdf')?.classList.add('d-none');
+        etapa.classList.remove('d-none');
+        const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
+        if (confirmar) confirmar.disabled = true;
+        mostrarDiaAssistido(true);
+    }
+
+    function navegarDiaAssistido(deslocamento) {
+        if (!salvarCamposDiaAssistido()) return;
+        const novoIndice = Math.max(0, Math.min(registrosAssistidosPdf.length - 1, indiceAssistidoPdf + deslocamento));
+        if (novoIndice === indiceAssistidoPdf) return;
+        indiceAssistidoPdf = novoIndice;
+        mostrarDiaAssistido(true);
+    }
+
+    function definirSituacaoAssistida(situacao) {
+        const registro = registroAssistidoAtual();
+        if (!registro) return;
+        const mesmaSituacao = registro.observacao === situacao;
+        registro.observacao = mesmaSituacao ? '' : situacao;
+        if (!mesmaSituacao) {
+            registro.entrada_1 = '';
+            registro.saida_1 = '';
+            registro.entrada_2 = '';
+            registro.saida_2 = '';
+        }
+        mostrarDiaAssistido(!registro.observacao);
+    }
+
+    function usarJornadaNoDiaAssistido() {
+        const registro = registroAssistidoAtual();
+        if (!registro) return;
+        const partes = registro.data.split('-').map(Number);
+        const diaJs = new Date(partes[0], partes[1] - 1, partes[2], 12).getDay();
+        const diaSemana = diaJs === 0 ? 7 : diaJs;
+        const jornada = horariosFuncionarioSelecionado().find(function (horario) {
+            return Number(horario.dia_semana) === diaSemana;
+        });
+
+        if (!jornada || Number(jornada.trabalha) !== 1) {
+            registro.observacao = 'Folga';
+            registro.entrada_1 = '';
+            registro.saida_1 = '';
+            registro.entrada_2 = '';
+            registro.saida_2 = '';
+        } else {
+            registro.observacao = '';
+            ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].forEach(function (campo) {
+                registro[campo] = String(jornada[campo] || '').slice(0, 5);
+            });
+        }
+        mostrarDiaAssistido(false);
+    }
+
+    function limparDiaAssistido() {
+        const registro = registroAssistidoAtual();
+        if (!registro) return;
+        registro.observacao = '';
+        registro.entrada_1 = '';
+        registro.saida_1 = '';
+        registro.entrada_2 = '';
+        registro.saida_2 = '';
+        mostrarDiaAssistido(true);
+    }
+
+    function concluirImportacaoAssistida() {
+        if (!salvarCamposDiaAssistido()) return;
+        const preenchidos = registrosAssistidosPdf.filter(function (registro) {
+            return Boolean(registro.observacao)
+                || ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].some(function (campo) {
+                    return Boolean(registro[campo]);
+                });
+        });
+        if (preenchidos.length === 0) {
+            mostrarErroPdf('Preencha pelo menos um dia antes de concluir.');
+            return;
+        }
+        document.getElementById('erroImportacaoPdf')?.classList.add('d-none');
+        document.getElementById('etapaAssistidaPdf')?.classList.add('d-none');
+        mostrarPreviewPdf(preenchidos, false);
     }
 
     function sincronizarRegistrosPdf() {
@@ -760,151 +933,6 @@
         return !invalido;
     }
 
-    function textoEstruturadoDosRegistros(registros) {
-        const cabecalho = 'DATA | ENTRADA | ALMOCO | RETORNO | SAIDA | SITUACAO';
-        const linhas = registros.map(function (registro) {
-            const campos = ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].map(function (campo) {
-                return registro._revisar?.[campo] ? '?' : (registro[campo] || '');
-            });
-            const observacao = String(registro.observacao || '').replace(/\|/g, '/');
-            return [formatarDataBr(registro.data)].concat(campos, observacao).join(' | ');
-        });
-        return [cabecalho].concat(linhas).join('\n');
-    }
-
-    function dataDoTextoReconhecido(valor) {
-        const texto = String(valor || '').trim();
-        const brasileira = texto.match(/^([0-3]?\d)\s*[\/.\-]\s*([01]?\d)\s*[\/.\-]\s*(20\d{2})$/);
-        const iso = texto.match(/^(20\d{2})-([01]?\d)-([0-3]?\d)$/);
-        let ano;
-        let mes;
-        let dia;
-
-        if (brasileira) {
-            dia = Number(brasileira[1]);
-            mes = Number(brasileira[2]);
-            ano = Number(brasileira[3]);
-        } else if (iso) {
-            ano = Number(iso[1]);
-            mes = Number(iso[2]);
-            dia = Number(iso[3]);
-        } else {
-            return '';
-        }
-
-        return dataIsoValida(ano, mes, dia)
-            ? ano + '-' + String(mes).padStart(2, '0') + '-' + String(dia).padStart(2, '0')
-            : '';
-    }
-
-    function registrosDoTextoReconhecido(texto) {
-        const originais = new Map(registrosTextoReconhecido.map(function (registro) {
-            return [registro.data, registro];
-        }));
-        const registros = [];
-        const erros = [];
-
-        String(texto || '').split(/[\r\n]+/).forEach(function (linha, indice) {
-            const limpa = linha.trim();
-            if (!limpa || /^data\s*\|/i.test(limpa)) return;
-            const colunas = limpa.split('|').map(function (coluna) { return coluna.trim(); });
-            if (colunas.length !== 6) {
-                erros.push('Linha ' + (indice + 1) + ': use seis colunas separadas por |.');
-                return;
-            }
-
-            const data = dataDoTextoReconhecido(colunas[0]);
-            if (!data) {
-                erros.push('Linha ' + (indice + 1) + ': data inválida.');
-                return;
-            }
-
-            const original = originais.get(data) || {};
-            const registro = {
-                data: data,
-                entrada_1: '',
-                saida_1: '',
-                entrada_2: '',
-                saida_2: '',
-                observacao: colunas[5],
-                _imagens: original._imagens || {},
-                _revisar: {}
-            };
-
-            ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].forEach(function (campo, campoIndice) {
-                const valor = colunas[campoIndice + 1];
-                if (valor === '?') {
-                    registro._revisar[campo] = true;
-                    return;
-                }
-                if (!valor) {
-                    registro._revisar[campo] = false;
-                    return;
-                }
-                const horario = normalizarHorarioDigitado(valor);
-                if (!horario) {
-                    erros.push('Linha ' + (indice + 1) + ': horário "' + valor + '" inválido.');
-                    return;
-                }
-                registro[campo] = horario;
-                registro._revisar[campo] = false;
-            });
-
-            if (/^(?:folga|atestado|feriado)\b/i.test(registro.observacao)) {
-                registro.entrada_1 = '';
-                registro.saida_1 = '';
-                registro.entrada_2 = '';
-                registro.saida_2 = '';
-                registro._revisar = {};
-            }
-            registros.push(registro);
-        });
-
-        const datas = new Set();
-        registros.forEach(function (registro) {
-            if (datas.has(registro.data)) erros.push('A data ' + formatarDataBr(registro.data) + ' está repetida.');
-            datas.add(registro.data);
-        });
-
-        registros.sort(function (a, b) { return a.data.localeCompare(b.data); });
-        return { registros: registros, erros: erros };
-    }
-
-    function mostrarTextoReconhecido(registros) {
-        const etapa = document.getElementById('etapaTextoImportacaoPdf');
-        const campo = document.getElementById('textoReconhecidoPdf');
-        const quantidade = document.getElementById('quantidadeTextoImportacaoPdf');
-        const preview = document.getElementById('previewImportacaoPdf');
-        const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
-        if (!etapa || !campo) return;
-
-        registrosTextoReconhecido = registros;
-        campo.value = textoEstruturadoDosRegistros(registros);
-        campo.classList.remove('is-invalid');
-        if (quantidade) quantidade.textContent = registros.length + (registros.length === 1 ? ' dia' : ' dias');
-        preview?.classList.add('d-none');
-        etapa.classList.remove('d-none');
-        if (confirmar) confirmar.disabled = true;
-    }
-
-    function aplicarTextoReconhecido() {
-        const campo = document.getElementById('textoReconhecidoPdf');
-        const erro = document.getElementById('erroImportacaoPdf');
-        if (!campo) return;
-        const resultado = registrosDoTextoReconhecido(campo.value);
-
-        if (resultado.erros.length > 0 || resultado.registros.length === 0) {
-            campo.classList.add('is-invalid');
-            mostrarErroPdf(resultado.erros[0] || 'Nenhum dia válido foi encontrado no texto reconhecido.');
-            return;
-        }
-
-        campo.classList.remove('is-invalid');
-        erro?.classList.add('d-none');
-        document.getElementById('etapaTextoImportacaoPdf')?.classList.add('d-none');
-        mostrarPreviewPdf(resultado.registros, true);
-    }
-
     function mostrarPreviewPdf(registros, leituraOcr) {
         const corpo = document.getElementById('corpoImportacaoPdf');
         const preview = document.getElementById('previewImportacaoPdf');
@@ -969,7 +997,10 @@
                 input.value = registro[campo];
                 input.disabled = /^(?:feriado|folga|atestado)\b/i.test(registro.observacao);
                 input.dataset.revisarOcr = registroOriginal._revisar?.[campo] ? '1' : '0';
-                input.classList.toggle('ponto-preview-hora-sugerida', Boolean(imagemRecorte && registro[campo]));
+                const horarioSugerido = registroOriginal._sugeridos
+                    ? Boolean(registroOriginal._sugeridos[campo])
+                    : Boolean(imagemRecorte && registro[campo]);
+                input.classList.toggle('ponto-preview-hora-sugerida', horarioSugerido);
                 input.setAttribute('aria-label', campo + ' de ' + formatarDataBr(registro.data));
                 inputs[campo] = input;
                 input.addEventListener('input', function () {
@@ -1006,7 +1037,7 @@
 
         sincronizarRegistrosPdf();
         avisoOcr?.classList.toggle('d-none', !leituraOcr);
-        voltarTexto?.classList.toggle('d-none', registrosTextoReconhecido.length === 0);
+        voltarTexto?.classList.toggle('d-none', registrosAssistidosPdf.length === 0);
         if (quantidade) quantidade.textContent = registrosPdfAtuais.length + (registrosPdfAtuais.length === 1 ? ' dia' : ' dias');
         preview.classList.remove('d-none');
     }
@@ -1409,7 +1440,7 @@
         return diasComPares.length >= 2;
     }
 
-    async function registrosDoPdfDigitalizado(pdf, mesSelecionado, textoOcr, paginasOcr) {
+    async function registrosDoPdfDigitalizado(pdf, mesSelecionado, textoOcr, paginasOcr, somenteRecortes) {
         atualizarStatusImportacao('Separando os horários escritos em cada dia...');
         const paginaOcr = paginasOcr?.[0] || null;
         const canvasOriginal = paginaOcr?.canvas || await canvasPaginaPdf(pdf, 1, 2.4);
@@ -1473,6 +1504,52 @@
                 const recorte = recortarCelulaOcr(canvas, area);
                 if (recorte) tarefas.push({ dia: dia, campo: campos[coluna], canvas: recorte });
             }
+        }
+
+        if (somenteRecortes) {
+            const porDiaAssistido = new Map();
+            const horariosFuncionario = horariosFuncionarioSelecionado();
+            const diasEncontrados = new Set(tarefas.map(function (tarefa) { return tarefa.dia; }));
+
+            situacoes.forEach(function (observacao, dia) {
+                diasEncontrados.add(dia);
+            });
+
+            Array.from(diasEncontrados).sort(function (a, b) { return a - b; }).forEach(function (dia) {
+                const dataIso = mesSelecionado + '-' + String(dia).padStart(2, '0');
+                const dataPartes = dataIso.split('-').map(Number);
+                const diaJs = new Date(dataPartes[0], dataPartes[1] - 1, dataPartes[2], 12).getDay();
+                const diaSemana = diaJs === 0 ? 7 : diaJs;
+                const jornada = horariosFuncionario.find(function (horario) {
+                    return Number(horario.dia_semana) === diaSemana;
+                });
+                const observacao = situacoes.get(dia) || '';
+                const sugerirJornada = !observacao && jornada && Number(jornada.trabalha) === 1;
+                porDiaAssistido.set(dia, {
+                    data: dataIso,
+                    entrada_1: sugerirJornada ? String(jornada.entrada_1 || '').slice(0, 5) : '',
+                    saida_1: sugerirJornada ? String(jornada.saida_1 || '').slice(0, 5) : '',
+                    entrada_2: sugerirJornada ? String(jornada.entrada_2 || '').slice(0, 5) : '',
+                    saida_2: sugerirJornada ? String(jornada.saida_2 || '').slice(0, 5) : '',
+                    observacao: observacao,
+                    _imagens: {},
+                    _revisar: {},
+                    _sugeridos: {
+                        entrada_1: sugerirJornada && Boolean(jornada.entrada_1),
+                        saida_1: sugerirJornada && Boolean(jornada.saida_1),
+                        entrada_2: sugerirJornada && Boolean(jornada.entrada_2),
+                        saida_2: sugerirJornada && Boolean(jornada.saida_2)
+                    }
+                });
+            });
+
+            tarefas.forEach(function (tarefa) {
+                const registro = porDiaAssistido.get(tarefa.dia);
+                if (!registro || situacoes.has(tarefa.dia)) return;
+                registro._imagens[tarefa.campo] = tarefa.canvas.toDataURL('image/png');
+            });
+
+            return Array.from(porDiaAssistido.values());
         }
 
         if (tarefas.length === 0 && situacoes.size === 0) {
@@ -1590,15 +1667,14 @@
 
             if (registros.length === 0) {
                 leituraOcr = true;
-                registros = await registrosDoPdfDigitalizado(pdf, mes, textoOcr, paginasOcr);
+                registros = await registrosDoPdfDigitalizado(pdf, mes, textoOcr, paginasOcr, true);
             }
 
             if (registros.length === 0) {
-                throw new Error('A imagem foi lida, mas nenhum horário pôde ser reconhecido. Tente uma digitalização mais nítida.');
+                throw new Error('A imagem foi lida, mas não foi possível localizar os dias e horários desta folha.');
             }
 
-            if (leituraOcr) mostrarTextoReconhecido(registros);
-            else mostrarPreviewPdf(registros, false);
+            mostrarPreviewPdf(registros, leituraOcr);
         } catch (erro) {
             mostrarErroPdf(erro?.message || 'Não foi possível ler este PDF.');
         } finally {
@@ -1721,19 +1797,6 @@
 
         document.getElementById('arquivoPontoPdf')?.addEventListener('change', limparImportacaoPdf);
         document.getElementById('btnLerPdf')?.addEventListener('click', lerPdf);
-        document.getElementById('btnAplicarTextoPdf')?.addEventListener('click', aplicarTextoReconhecido);
-        document.getElementById('textoReconhecidoPdf')?.addEventListener('input', function (evento) {
-            evento.currentTarget.classList.remove('is-invalid');
-            document.getElementById('erroImportacaoPdf')?.classList.add('d-none');
-        });
-        document.getElementById('btnVoltarTextoPdf')?.addEventListener('click', function () {
-            document.getElementById('previewImportacaoPdf')?.classList.add('d-none');
-            document.getElementById('etapaTextoImportacaoPdf')?.classList.remove('d-none');
-            const oculto = document.getElementById('registrosPdf');
-            const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
-            if (oculto) oculto.value = '';
-            if (confirmar) confirmar.disabled = true;
-        });
         document.getElementById('formImportarPdf')?.addEventListener('submit', function (evento) {
             if (!document.getElementById('registrosPdf')?.value) {
                 evento.preventDefault();
