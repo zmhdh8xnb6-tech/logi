@@ -1363,16 +1363,64 @@
         return digitos.length >= 1 && digitos.length <= 4 ? normalizarHorarioDigitado(digitos) : '';
     }
 
-    async function reconhecerHorariosManuscritos(tarefas) {
+    function diferencaMinutosHorario(horarioA, horarioB) {
+        const minutosA = minutosHora(horarioA);
+        const minutosB = minutosHora(horarioB);
+        if (minutosA === null || minutosB === null) return Number.POSITIVE_INFINITY;
+        return Math.abs(minutosA - minutosB);
+    }
+
+    function pontuarHorarioOcr(horario, confianca, esperado) {
+        if (!horario || minutosHora(horario) === null) return Number.NEGATIVE_INFINITY;
+        let pontos = Math.max(0, Number(confianca || 0));
+
+        if (esperado) {
+            const diferenca = diferencaMinutosHorario(horario, esperado);
+            if (diferenca <= 20) pontos += 45;
+            else if (diferenca <= 60) pontos += 32;
+            else if (diferenca <= 180) pontos += 16;
+            else if (diferenca > 300) pontos -= 45;
+        }
+
+        return pontos;
+    }
+
+    function jornadaDaTarefa(tarefa, mesSelecionado, horariosFuncionario) {
+        const partesMes = mesSelecionado.split('-').map(Number);
+        const diaJs = new Date(partesMes[0], partesMes[1] - 1, tarefa.dia, 12).getDay();
+        const diaSemana = diaJs === 0 ? 7 : diaJs;
+        return horariosFuncionario.find(function (horario) {
+            return Number(horario.dia_semana) === diaSemana;
+        }) || null;
+    }
+
+    function sequenciaHorariosValida(tarefasDia) {
+        const ordem = ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'];
+        const minutos = ordem.map(function (campo) {
+            const tarefa = tarefasDia.find(function (item) { return item.campo === campo; });
+            return tarefa?.horario ? minutosHora(tarefa.horario) : null;
+        });
+        const preenchidos = minutos.filter(function (valor) { return valor !== null; });
+
+        if (preenchidos.length < 2) return false;
+        for (let indice = 1; indice < preenchidos.length; indice += 1) {
+            if (preenchidos[indice] <= preenchidos[indice - 1]) return false;
+        }
+        return preenchidos[preenchidos.length - 1] - preenchidos[0] <= 18 * 60;
+    }
+
+    async function reconhecerHorariosManuscritos(tarefas, mesSelecionado) {
         if (!window.Tesseract?.createWorker || tarefas.length === 0) return tarefas;
 
         const worker = await window.Tesseract.createWorker('por', 1);
+        const horariosFuncionario = horariosFuncionarioSelecionado();
 
         try {
             await worker.setParameters({
                 tessedit_char_whitelist: '0123456789:hH.,',
                 tessedit_pageseg_mode: '7',
-                preserve_interword_spaces: '1'
+                preserve_interword_spaces: '1',
+                user_defined_dpi: '300'
             });
 
             for (let indice = 0; indice < tarefas.length; indice += 1) {
@@ -1381,11 +1429,20 @@
                     + (indice + 1) + ' de ' + tarefas.length
                 );
                 const resultado = await worker.recognize(tarefas[indice].canvas);
-                tarefas[indice].horario = horarioDoTextoManuscrito(resultado?.data?.text || '');
-                tarefas[indice].confianca = Number(resultado?.data?.confidence || 0);
+                const horario = horarioDoTextoManuscrito(resultado?.data?.text || '');
+                const confianca = Number(resultado?.data?.confidence || 0);
+                const jornada = jornadaDaTarefa(tarefas[indice], mesSelecionado, horariosFuncionario);
+                const esperado = jornada && Number(jornada.trabalha) === 1
+                    ? String(jornada[tarefas[indice].campo] || '').slice(0, 5)
+                    : '';
+                tarefas[indice].horario = horario;
+                tarefas[indice].confianca = confianca;
+                tarefas[indice].pontuacao = pontuarHorarioOcr(horario, confianca, esperado);
             }
 
-            const horariosPendentes = tarefas.filter(function (tarefa) { return !tarefa.horario; });
+            const horariosPendentes = tarefas.filter(function (tarefa) {
+                return !tarefa.horario || tarefa.pontuacao < 62;
+            });
             if (horariosPendentes.length > 0) {
                 await worker.setParameters({
                     tessedit_char_whitelist: '0123456789:hH.,',
@@ -1399,16 +1456,24 @@
                         + (indice + 1) + ' de ' + horariosPendentes.length
                     );
                     const resultado = await worker.recognize(horariosPendentes[indice].canvas);
-                    horariosPendentes[indice].horario = horarioDoTextoManuscrito(resultado?.data?.text || '');
-                    horariosPendentes[indice].confianca = Math.max(
-                        horariosPendentes[indice].confianca || 0,
-                        Number(resultado?.data?.confidence || 0)
-                    );
+                    const horario = horarioDoTextoManuscrito(resultado?.data?.text || '');
+                    const confianca = Number(resultado?.data?.confidence || 0);
+                    const jornada = jornadaDaTarefa(horariosPendentes[indice], mesSelecionado, horariosFuncionario);
+                    const esperado = jornada && Number(jornada.trabalha) === 1
+                        ? String(jornada[horariosPendentes[indice].campo] || '').slice(0, 5)
+                        : '';
+                    const pontuacao = pontuarHorarioOcr(horario, confianca, esperado);
+
+                    if (pontuacao > horariosPendentes[indice].pontuacao) {
+                        horariosPendentes[indice].horario = horario;
+                        horariosPendentes[indice].confianca = confianca;
+                        horariosPendentes[indice].pontuacao = pontuacao;
+                    }
                 }
             }
 
             const situacoesPendentes = tarefas.filter(function (tarefa) {
-                return tarefa.campo === 'entrada_1' && !tarefa.horario;
+                return tarefa.campo === 'entrada_1' && (!tarefa.horario || tarefa.pontuacao < 45);
             });
             if (situacoesPendentes.length > 0) {
                 await worker.setParameters({
@@ -1425,6 +1490,19 @@
                     else if (/feriado/.test(texto)) situacoesPendentes[indice].situacao = 'Feriado';
                 }
             }
+
+            const tarefasPorDia = new Map();
+            tarefas.forEach(function (tarefa) {
+                if (!tarefasPorDia.has(tarefa.dia)) tarefasPorDia.set(tarefa.dia, []);
+                tarefasPorDia.get(tarefa.dia).push(tarefa);
+            });
+            tarefasPorDia.forEach(function (tarefasDia) {
+                const sequenciaValida = sequenciaHorariosValida(tarefasDia);
+                tarefasDia.forEach(function (tarefa) {
+                    tarefa.confiavel = Boolean(tarefa.horario)
+                        && (tarefa.pontuacao >= 62 || (sequenciaValida && tarefa.pontuacao >= 42));
+                });
+            });
         } finally {
             await worker.terminate();
         }
@@ -1506,6 +1584,13 @@
             }
         }
 
+        if (somenteRecortes && tarefas.length > 0) {
+            tarefas = await reconhecerHorariosManuscritos(tarefas, mesSelecionado);
+            tarefas.forEach(function (tarefa) {
+                if (tarefa.situacao) situacoes.set(tarefa.dia, tarefa.situacao);
+            });
+        }
+
         if (somenteRecortes) {
             const porDiaAssistido = new Map();
             const horariosFuncionario = horariosFuncionarioSelecionado();
@@ -1547,6 +1632,10 @@
                 const registro = porDiaAssistido.get(tarefa.dia);
                 if (!registro || situacoes.has(tarefa.dia)) return;
                 registro._imagens[tarefa.campo] = tarefa.canvas.toDataURL('image/png');
+                if (tarefa.confiavel) {
+                    registro[tarefa.campo] = tarefa.horario;
+                    registro._sugeridos[tarefa.campo] = false;
+                }
             });
 
             return Array.from(porDiaAssistido.values());
@@ -1556,7 +1645,7 @@
             throw new Error('Não encontrei marcações manuscritas neste modelo e o texto impresso também não formou registros válidos.');
         }
 
-        if (tarefas.length > 0) tarefas = await reconhecerHorariosManuscritos(tarefas);
+        if (tarefas.length > 0) tarefas = await reconhecerHorariosManuscritos(tarefas, mesSelecionado);
 
         tarefas.forEach(function (tarefa) {
             if (tarefa.situacao) situacoes.set(tarefa.dia, tarefa.situacao);
