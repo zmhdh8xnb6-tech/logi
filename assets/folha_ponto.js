@@ -1047,6 +1047,45 @@
         if (texto) texto.textContent = mensagem;
     }
 
+    function canvasSomenteTintaColorida(canvasOriginal) {
+        const contextoOriginal = canvasOriginal.getContext('2d', { willReadFrequently: true });
+        const imagem = contextoOriginal.getImageData(0, 0, canvasOriginal.width, canvasOriginal.height);
+        const pontos = [];
+
+        for (let y = 0; y < canvasOriginal.height; y += 1) {
+            for (let x = 0; x < canvasOriginal.width; x += 1) {
+                const indice = ((y * canvasOriginal.width) + x) * 4;
+                const vermelho = imagem.data[indice];
+                const verde = imagem.data[indice + 1];
+                const azul = imagem.data[indice + 2];
+                const maiorCanal = Math.max(vermelho, verde, azul);
+                const menorCanal = Math.min(vermelho, verde, azul);
+                const saturacao = maiorCanal - menorCanal;
+                const luminancia = (vermelho * .299) + (verde * .587) + (azul * .114);
+
+                if (saturacao > 34 && menorCanal < 220 && luminancia < 235) {
+                    pontos.push([x, y]);
+                }
+            }
+        }
+
+        const minimoPontos = Math.max(60, Math.floor((canvasOriginal.width * canvasOriginal.height) * .001));
+        if (pontos.length < minimoPontos) return null;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasOriginal.width;
+        canvas.height = canvasOriginal.height;
+        const contexto = canvas.getContext('2d');
+        contexto.fillStyle = '#fff';
+        contexto.fillRect(0, 0, canvas.width, canvas.height);
+        contexto.fillStyle = '#000';
+
+        pontos.forEach(function (ponto) {
+            contexto.fillRect(ponto[0] - 1, ponto[1] - 1, 3, 3);
+        });
+        return canvas;
+    }
+
     function recortarCelulaOcr(canvasPagina, area) {
         const x0 = Math.max(0, Math.floor(area.x0));
         const y0 = Math.max(0, Math.floor(area.y0));
@@ -1092,7 +1131,11 @@
             ocr.height
         );
 
-        return { visual: visual, ocr: ocr };
+        return {
+            visual: visual,
+            ocr: canvasSomenteTintaColorida(ocr) || ocr,
+            ocrOriginal: ocr
+        };
     }
 
     async function canvasPaginaPdf(pdf, paginaNumero, escala) {
@@ -1319,6 +1362,64 @@
         return digitos.length >= 1 && digitos.length <= 4 ? normalizarHorarioDigitado(digitos) : '';
     }
 
+    function canvasComContrasteOcr(canvasOriginal) {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasOriginal.width;
+        canvas.height = canvasOriginal.height;
+        const contexto = canvas.getContext('2d', { willReadFrequently: true });
+        contexto.drawImage(canvasOriginal, 0, 0);
+        const imagem = contexto.getImageData(0, 0, canvas.width, canvas.height);
+        const histograma = new Uint32Array(256);
+
+        for (let indice = 0; indice < imagem.data.length; indice += 4) {
+            const cinza = Math.round(
+                (imagem.data[indice] * .299)
+                + (imagem.data[indice + 1] * .587)
+                + (imagem.data[indice + 2] * .114)
+            );
+            histograma[cinza] += 1;
+        }
+
+        const totalPixels = canvas.width * canvas.height;
+        const limiteEscuro = totalPixels * .04;
+        const limiteClaro = totalPixels * .92;
+        let acumulado = 0;
+        let nivelEscuro = 0;
+        let nivelClaro = 255;
+
+        for (let nivel = 0; nivel < 256; nivel += 1) {
+            acumulado += histograma[nivel];
+            if (acumulado >= limiteEscuro) {
+                nivelEscuro = nivel;
+                break;
+            }
+        }
+
+        acumulado = 0;
+        for (let nivel = 0; nivel < 256; nivel += 1) {
+            acumulado += histograma[nivel];
+            if (acumulado >= limiteClaro) {
+                nivelClaro = nivel;
+                break;
+            }
+        }
+
+        const intervalo = Math.max(35, nivelClaro - nivelEscuro);
+        for (let indice = 0; indice < imagem.data.length; indice += 4) {
+            const cinza =
+                (imagem.data[indice] * .299)
+                + (imagem.data[indice + 1] * .587)
+                + (imagem.data[indice + 2] * .114);
+            const ajustado = Math.max(0, Math.min(255, Math.round(((cinza - nivelEscuro) / intervalo) * 255)));
+            imagem.data[indice] = ajustado;
+            imagem.data[indice + 1] = ajustado;
+            imagem.data[indice + 2] = ajustado;
+            imagem.data[indice + 3] = 255;
+        }
+        contexto.putImageData(imagem, 0, 0);
+        return canvas;
+    }
+
     function pontuarHorarioOcr(horario, confianca) {
         if (!horario || minutosHora(horario) === null) return Number.NEGATIVE_INFINITY;
         return Math.max(0, Number(confianca || 0));
@@ -1337,6 +1438,18 @@
             if (preenchidos[indice] <= preenchidos[indice - 1]) return false;
         }
         return preenchidos[preenchidos.length - 1] - preenchidos[0] <= 18 * 60;
+    }
+
+    function guardarMelhorLeituraHorario(tarefa, resultado) {
+        const horario = horarioDoTextoManuscrito(resultado?.data?.text || '');
+        const confianca = Number(resultado?.data?.confidence || 0);
+        const pontuacao = pontuarHorarioOcr(horario, confianca);
+
+        if (pontuacao > (tarefa.pontuacao ?? Number.NEGATIVE_INFINITY)) {
+            tarefa.horario = horario;
+            tarefa.confianca = confianca;
+            tarefa.pontuacao = pontuacao;
+        }
     }
 
     async function reconhecerHorariosManuscritos(tarefas) {
@@ -1358,11 +1471,7 @@
                     + (indice + 1) + ' de ' + tarefas.length
                 );
                 const resultado = await worker.recognize(tarefas[indice].canvasOcr || tarefas[indice].canvas);
-                const horario = horarioDoTextoManuscrito(resultado?.data?.text || '');
-                const confianca = Number(resultado?.data?.confidence || 0);
-                tarefas[indice].horario = horario;
-                tarefas[indice].confianca = confianca;
-                tarefas[indice].pontuacao = pontuarHorarioOcr(horario, confianca);
+                guardarMelhorLeituraHorario(tarefas[indice], resultado);
             }
 
             const horariosPendentes = tarefas.filter(function (tarefa) {
@@ -1380,16 +1489,40 @@
                         'Confirmando horários manuscritos... '
                         + (indice + 1) + ' de ' + horariosPendentes.length
                     );
-                    const resultado = await worker.recognize(horariosPendentes[indice].canvasOcr || horariosPendentes[indice].canvas);
-                    const horario = horarioDoTextoManuscrito(resultado?.data?.text || '');
-                    const confianca = Number(resultado?.data?.confidence || 0);
-                    const pontuacao = pontuarHorarioOcr(horario, confianca);
+                    horariosPendentes[indice].canvasOcrContraste = horariosPendentes[indice].canvasOcrContraste
+                        || canvasComContrasteOcr(
+                            horariosPendentes[indice].canvasOcrOriginal
+                            || horariosPendentes[indice].canvasOcr
+                            || horariosPendentes[indice].canvas
+                        );
+                    const resultado = await worker.recognize(horariosPendentes[indice].canvasOcrContraste);
+                    guardarMelhorLeituraHorario(horariosPendentes[indice], resultado);
+                }
+            }
 
-                    if (pontuacao > horariosPendentes[indice].pontuacao) {
-                        horariosPendentes[indice].horario = horario;
-                        horariosPendentes[indice].confianca = confianca;
-                        horariosPendentes[indice].pontuacao = pontuacao;
-                    }
+            const horariosAindaPendentes = tarefas.filter(function (tarefa) {
+                return !tarefa.horario || tarefa.pontuacao < 48;
+            });
+            if (horariosAindaPendentes.length > 0) {
+                await worker.setParameters({
+                    tessedit_char_whitelist: '0123456789:hH.,',
+                    tessedit_pageseg_mode: '13',
+                    preserve_interword_spaces: '1'
+                });
+
+                for (let indice = 0; indice < horariosAindaPendentes.length; indice += 1) {
+                    atualizarStatusImportacao(
+                        'Tentando outra leitura... '
+                        + (indice + 1) + ' de ' + horariosAindaPendentes.length
+                    );
+                    horariosAindaPendentes[indice].canvasOcrContraste = horariosAindaPendentes[indice].canvasOcrContraste
+                        || canvasComContrasteOcr(
+                            horariosAindaPendentes[indice].canvasOcrOriginal
+                            || horariosAindaPendentes[indice].canvasOcr
+                            || horariosAindaPendentes[indice].canvas
+                        );
+                    const resultado = await worker.recognize(horariosAindaPendentes[indice].canvasOcrContraste);
+                    guardarMelhorLeituraHorario(horariosAindaPendentes[indice], resultado);
                 }
             }
 
@@ -1404,7 +1537,11 @@
                 });
 
                 for (let indice = 0; indice < situacoesPendentes.length; indice += 1) {
-                    const resultado = await worker.recognize(situacoesPendentes[indice].canvasOcr || situacoesPendentes[indice].canvas);
+                    const resultado = await worker.recognize(
+                        situacoesPendentes[indice].canvasOcrOriginal
+                        || situacoesPendentes[indice].canvasOcr
+                        || situacoesPendentes[indice].canvas
+                    );
                     const texto = textoNormalizado(resultado?.data?.text || '');
                     if (/folga/.test(texto)) situacoesPendentes[indice].situacao = 'Folga';
                     else if (/atestado/.test(texto)) situacoesPendentes[indice].situacao = 'Atestado';
@@ -1419,9 +1556,16 @@
             });
             tarefasPorDia.forEach(function (tarefasDia) {
                 const sequenciaValida = sequenciaHorariosValida(tarefasDia);
+                const quantidadeReconhecida = tarefasDia.filter(function (tarefa) {
+                    return Boolean(tarefa.horario);
+                }).length;
                 tarefasDia.forEach(function (tarefa) {
                     tarefa.confiavel = Boolean(tarefa.horario)
-                        && (tarefa.pontuacao >= 62 || (sequenciaValida && tarefa.pontuacao >= 42));
+                        && (
+                            tarefa.pontuacao >= 58
+                            || (sequenciaValida && quantidadeReconhecida >= 3 && tarefa.pontuacao >= 8)
+                            || (sequenciaValida && quantidadeReconhecida === 2 && tarefa.pontuacao >= 32)
+                        );
                 });
             });
         } finally {
@@ -1515,7 +1659,8 @@
                         dia: dia,
                         campo: campos[coluna],
                         canvas: recorte.visual,
-                        canvasOcr: recorte.ocr
+                        canvasOcr: recorte.ocr,
+                        canvasOcrOriginal: recorte.ocrOriginal
                     });
                 }
             }
