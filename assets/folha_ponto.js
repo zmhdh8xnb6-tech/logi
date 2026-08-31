@@ -1023,6 +1023,8 @@
         const largura = Math.max(1, Math.floor(area.x1 - area.x0));
         const altura = Math.max(1, Math.floor(area.y1 - area.y0));
         const imagem = contexto.getImageData(x0, y0, largura, altura);
+        const pixelsEscuros = [];
+        const pixelsColoridos = [];
         let ativos = [];
         const pixelsPorLinha = new Uint16Array(altura);
         const pixelsPorColuna = new Uint16Array(largura);
@@ -1043,14 +1045,17 @@
                 const saturacao = maiorCanal - menorCanal;
                 const tintaEscura = luminancia < 135;
                 const tintaColorida = saturacao > 35 && menorCanal < 210 && luminancia < 220;
-                const ativo = tintaEscura || tintaColorida;
-
-                if (!ativo) continue;
-                ativos.push([x, y]);
-                pixelsPorLinha[y] += 1;
-                pixelsPorColuna[x] += 1;
+                if (tintaEscura) pixelsEscuros.push([x, y]);
+                if (tintaColorida) pixelsColoridos.push([x, y]);
             }
         }
+
+        // Em folhas coloridas, isola a caneta para não misturar a grade preta impressa.
+        ativos = pixelsColoridos.length >= 20 ? pixelsColoridos : pixelsEscuros;
+        ativos.forEach(function (ponto) {
+            pixelsPorLinha[ponto[1]] += 1;
+            pixelsPorColuna[ponto[0]] += 1;
+        });
 
         ativos = ativos.filter(function (ponto) {
             const linhaDaGrade = pixelsPorLinha[ponto[1]] > largura * .82;
@@ -1203,6 +1208,15 @@
         if (!centros.every(function (centro, indice) {
             return indice === 0 || centro.x > centros[indice - 1].x;
         })) return null;
+        const intervalos = centros.slice(1).map(function (centro, indice) {
+            return centro.x - centros[indice].x;
+        });
+        const intervaloMedio = intervalos.reduce(function (total, valor) { return total + valor; }, 0) / intervalos.length;
+        if (
+            centros[0].x < canvas.width * .10
+            || centros[3].x > canvas.width * .75
+            || intervalos.some(function (valor) { return valor < intervaloMedio * .55 || valor > intervaloMedio * 1.55; })
+        ) return null;
 
         const limitesX = [
             centros[0].x - ((centros[1].x - centros[0].x) / 2),
@@ -1247,6 +1261,11 @@
         if (pontosDias.length < Math.min(8, quantidadeDias)) return null;
         retaDias = ajustarReta(pontosDias);
         if (!retaDias) return null;
+        if (
+            retaDias.intercepto < canvas.height * .15
+            || retaDias.intercepto > canvas.height * .40
+            || retaDias.intercepto + ((quantidadeDias - 1) * retaDias.inclinacao) > canvas.height * .90
+        ) return null;
 
         const retaCabecalho = ajustarReta(centros.map(function (centro) {
             return { x: centro.x, y: centro.y };
@@ -1333,6 +1352,47 @@
                 const resultado = await worker.recognize(tarefas[indice].canvas);
                 tarefas[indice].horario = horarioDoTextoManuscrito(resultado?.data?.text || '');
                 tarefas[indice].confianca = Number(resultado?.data?.confidence || 0);
+            }
+
+            const horariosPendentes = tarefas.filter(function (tarefa) { return !tarefa.horario; });
+            if (horariosPendentes.length > 0) {
+                await worker.setParameters({
+                    tessedit_char_whitelist: '0123456789:hH.,',
+                    tessedit_pageseg_mode: '8',
+                    preserve_interword_spaces: '1'
+                });
+
+                for (let indice = 0; indice < horariosPendentes.length; indice += 1) {
+                    atualizarStatusImportacao(
+                        'Confirmando horários manuscritos... '
+                        + (indice + 1) + ' de ' + horariosPendentes.length
+                    );
+                    const resultado = await worker.recognize(horariosPendentes[indice].canvas);
+                    horariosPendentes[indice].horario = horarioDoTextoManuscrito(resultado?.data?.text || '');
+                    horariosPendentes[indice].confianca = Math.max(
+                        horariosPendentes[indice].confianca || 0,
+                        Number(resultado?.data?.confidence || 0)
+                    );
+                }
+            }
+
+            const situacoesPendentes = tarefas.filter(function (tarefa) {
+                return tarefa.campo === 'entrada_1' && !tarefa.horario;
+            });
+            if (situacoesPendentes.length > 0) {
+                await worker.setParameters({
+                    tessedit_char_whitelist: '',
+                    tessedit_pageseg_mode: '7',
+                    preserve_interword_spaces: '1'
+                });
+
+                for (let indice = 0; indice < situacoesPendentes.length; indice += 1) {
+                    const resultado = await worker.recognize(situacoesPendentes[indice].canvas);
+                    const texto = textoNormalizado(resultado?.data?.text || '');
+                    if (/folga/.test(texto)) situacoesPendentes[indice].situacao = 'Folga';
+                    else if (/atestado/.test(texto)) situacoesPendentes[indice].situacao = 'Atestado';
+                    else if (/feriado/.test(texto)) situacoesPendentes[indice].situacao = 'Feriado';
+                }
             }
         } finally {
             await worker.terminate();
@@ -1421,6 +1481,10 @@
 
         if (tarefas.length > 0) tarefas = await reconhecerHorariosManuscritos(tarefas);
 
+        tarefas.forEach(function (tarefa) {
+            if (tarefa.situacao) situacoes.set(tarefa.dia, tarefa.situacao);
+        });
+
         const porDia = new Map();
 
         situacoes.forEach(function (observacao, dia) {
@@ -1451,9 +1515,8 @@
             }
             const registro = porDia.get(tarefa.dia);
             registro._imagens[tarefa.campo] = tarefa.canvas.toDataURL('image/png');
-            const horarioConfiavel = tarefa.horario && tarefa.confianca >= 45;
-            registro[tarefa.campo] = horarioConfiavel ? tarefa.horario : '';
-            registro._revisar[tarefa.campo] = !horarioConfiavel;
+            registro[tarefa.campo] = tarefa.horario || '';
+            registro._revisar[tarefa.campo] = !tarefa.horario;
         });
 
         return Array.from(porDia.values()).sort(function (a, b) {
