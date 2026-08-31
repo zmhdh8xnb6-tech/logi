@@ -1054,7 +1054,6 @@
         const largura = Math.max(1, Math.floor(area.x1 - area.x0));
         const altura = Math.max(1, Math.floor(area.y1 - area.y0));
         const imagem = contexto.getImageData(x0, y0, largura, altura);
-        const pixelsEscuros = [];
         const pixelsColoridos = [];
         let ativos = [];
         const pixelsPorLinha = new Uint16Array(altura);
@@ -1074,14 +1073,13 @@
                 const maiorCanal = Math.max(vermelho, verde, azul);
                 const menorCanal = Math.min(vermelho, verde, azul);
                 const saturacao = maiorCanal - menorCanal;
-                const tintaEscura = luminancia < 135;
                 const tintaColorida = saturacao > 35 && menorCanal < 210 && luminancia < 220;
-                if (tintaEscura) pixelsEscuros.push([x, y]);
                 if (tintaColorida) pixelsColoridos.push([x, y]);
             }
         }
 
-        ativos = pixelsColoridos.length >= 20 ? pixelsColoridos : pixelsEscuros;
+        if (pixelsColoridos.length < 20) return null;
+        ativos = pixelsColoridos;
         ativos.forEach(function (ponto) {
             pixelsPorLinha[ponto[1]] += 1;
             pixelsPorColuna[ponto[0]] += 1;
@@ -1673,6 +1671,12 @@
             const porDiaAssistido = new Map();
             const horariosFuncionario = horariosFuncionarioSelecionado();
             const diasEncontrados = new Set(tarefas.map(function (tarefa) { return tarefa.dia; }));
+            const camposEncontrados = new Map();
+
+            tarefas.forEach(function (tarefa) {
+                if (!camposEncontrados.has(tarefa.dia)) camposEncontrados.set(tarefa.dia, new Set());
+                camposEncontrados.get(tarefa.dia).add(tarefa.campo);
+            });
 
             situacoes.forEach(function (observacao, dia) {
                 diasEncontrados.add(dia);
@@ -1688,20 +1692,24 @@
                 });
                 const observacao = situacoes.get(dia) || '';
                 const sugerirJornada = !observacao && jornada && Number(jornada.trabalha) === 1;
+                const camposDoDia = camposEncontrados.get(dia) || new Set();
+                const sugerirCampo = function (campo) {
+                    return sugerirJornada && camposDoDia.has(campo) && Boolean(jornada[campo]);
+                };
                 porDiaAssistido.set(dia, {
                     data: dataIso,
-                    entrada_1: sugerirJornada ? String(jornada.entrada_1 || '').slice(0, 5) : '',
-                    saida_1: sugerirJornada ? String(jornada.saida_1 || '').slice(0, 5) : '',
-                    entrada_2: sugerirJornada ? String(jornada.entrada_2 || '').slice(0, 5) : '',
-                    saida_2: sugerirJornada ? String(jornada.saida_2 || '').slice(0, 5) : '',
+                    entrada_1: sugerirCampo('entrada_1') ? String(jornada.entrada_1).slice(0, 5) : '',
+                    saida_1: sugerirCampo('saida_1') ? String(jornada.saida_1).slice(0, 5) : '',
+                    entrada_2: sugerirCampo('entrada_2') ? String(jornada.entrada_2).slice(0, 5) : '',
+                    saida_2: sugerirCampo('saida_2') ? String(jornada.saida_2).slice(0, 5) : '',
                     observacao: observacao,
                     _imagens: {},
                     _revisar: {},
                     _sugeridos: {
-                        entrada_1: sugerirJornada && Boolean(jornada.entrada_1),
-                        saida_1: sugerirJornada && Boolean(jornada.saida_1),
-                        entrada_2: sugerirJornada && Boolean(jornada.entrada_2),
-                        saida_2: sugerirJornada && Boolean(jornada.saida_2)
+                        entrada_1: sugerirCampo('entrada_1'),
+                        saida_1: sugerirCampo('saida_1'),
+                        entrada_2: sugerirCampo('entrada_2'),
+                        saida_2: sugerirCampo('saida_2')
                     }
                 });
             });
