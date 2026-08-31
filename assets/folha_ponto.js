@@ -204,7 +204,17 @@
         const total = linha.querySelector('.ponto-total-dia');
         const saldo = linha.querySelector('.ponto-saldo-dia');
         const status = linha.querySelector('.ponto-status-dia');
-        const previsto = Number(total?.dataset.previsto || 0);
+        const previstoTexto = linha.querySelector('.ponto-previsto');
+        const observacao = linha.querySelector('.ponto-observacao')?.value.trim() || '';
+        const feriadoInformado = /^feriado\b/i.test(observacao);
+        const feriadoNacional = linha.dataset.feriadoNacional === '1';
+        const feriado = feriadoNacional || feriadoInformado;
+        const descricaoInformada = feriadoInformado
+            ? observacao.replace(/^feriado\s*:?\s*/i, '').trim()
+            : '';
+        const feriadoNome = descricaoInformada || linha.dataset.feriadoNome || '';
+        const previstoJornada = Number(total?.dataset.previstoJornada || total?.dataset.previsto || 0);
+        const previsto = feriado ? 0 : previstoJornada;
         const possuiMarcacao = horarios.some(Boolean);
         const incompleto = possuiMarcacao && (
             !horarios[0]
@@ -216,7 +226,10 @@
         let statusTexto = 'Registrado';
         let statusClasse = 'bg-success';
 
-        if (total) total.textContent = formatarMinutos(trabalhado, false);
+        if (total) {
+            total.textContent = formatarMinutos(trabalhado, false);
+            total.dataset.previsto = String(previsto);
+        }
         if (saldo) {
             const diferenca = trabalhado - previsto;
             saldo.textContent = formatarMinutos(diferenca, true);
@@ -224,7 +237,19 @@
             saldo.classList.toggle('text-success', diferenca >= 0);
         }
 
-        if (!possuiMarcacao && previsto <= 0) {
+        linha.classList.toggle('ponto-dia-folga', previsto <= 0);
+        linha.classList.toggle('ponto-dia-feriado', feriado);
+
+        if (previstoTexto) {
+            previstoTexto.textContent = feriado
+                ? 'Feriado' + (feriadoNome ? ': ' + feriadoNome : '')
+                : (linha.dataset.jornadaPrevista || 'Folga');
+        }
+
+        if (feriado) {
+            statusTexto = 'Feriado';
+            statusClasse = 'bg-primary';
+        } else if (!possuiMarcacao && previsto <= 0) {
             statusTexto = 'Folga';
             statusClasse = 'bg-secondary';
         } else if (!possuiMarcacao && data > hoje) {
@@ -403,6 +428,13 @@
         return removerTotalCalculado(horariosDaLinha(textoRealizado)).slice(0, 4);
     }
 
+    function observacaoEspecialDaLinha(texto) {
+        if (!/\bferiado\b/i.test(textoNormalizado(texto))) return '';
+
+        const descricao = String(texto || '').match(/feriado\s*:\s*(.+)$/i);
+        return descricao?.[1]?.trim() ? 'Feriado: ' + descricao[1].trim() : 'Feriado';
+    }
+
     function dataDaLinha(texto, mesSelecionado) {
         const partesMes = mesSelecionado.split('-').map(Number);
         let ano = partesMes[0];
@@ -493,6 +525,7 @@
             }
 
             horarios = horarios.slice(0, 4);
+            const observacao = observacaoEspecialDaLinha(textoRegistro);
             const identificadaComoDia = Boolean(data) && (
                 possuiDiaSemana(textoRegistro)
                 || /(?:^|\D)[0-3]?\d\s*[\/.\-]\s*[01]?\d/.test(textoRegistro)
@@ -500,13 +533,15 @@
                 || /^\s*[0-3]?\d(?=\s|$|\|)/.test(textoRegistro)
             );
 
-            if (!identificadaComoDia || horarios.length === 0) {
+            if (!identificadaComoDia || (horarios.length === 0 && observacao === '')) {
                 return;
             }
 
             const anterior = encontrados.get(data);
             if (!anterior || horarios.length > anterior.horarios.length) {
-                encontrados.set(data, { data: data, horarios: horarios });
+                encontrados.set(data, { data: data, horarios: horarios, observacao: observacao });
+            } else if (observacao && !anterior.observacao) {
+                anterior.observacao = observacao;
             }
         });
 
@@ -518,7 +553,8 @@
                     entrada_1: item.horarios[0] || '',
                     saida_1: item.horarios[1] || '',
                     entrada_2: item.horarios[2] || '',
-                    saida_2: item.horarios[3] || ''
+                    saida_2: item.horarios[3] || '',
+                    observacao: item.observacao || ''
                 };
             });
     }
@@ -586,8 +622,8 @@
     function sincronizarRegistrosPdf() {
         const oculto = document.getElementById('registrosPdf');
         const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
-        const algumHorario = registrosPdfAtuais.some(function (registro) {
-            return ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].some(function (campo) {
+        const algumRegistro = registrosPdfAtuais.some(function (registro) {
+            return registro.observacao !== '' || ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].some(function (campo) {
                 return registro[campo] !== '';
             });
         });
@@ -596,8 +632,8 @@
                 return registro[campo] === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(registro[campo]);
             });
         });
-        if (oculto) oculto.value = horariosValidos && algumHorario ? JSON.stringify(registrosPdfAtuais) : '';
-        if (confirmar) confirmar.disabled = registrosPdfAtuais.length === 0 || !horariosValidos || !algumHorario;
+        if (oculto) oculto.value = horariosValidos && algumRegistro ? JSON.stringify(registrosPdfAtuais) : '';
+        if (confirmar) confirmar.disabled = registrosPdfAtuais.length === 0 || !horariosValidos || !algumRegistro;
     }
 
     function normalizarHorarioDigitado(valor) {
@@ -642,7 +678,8 @@
                 entrada_1: registro.entrada_1 || '',
                 saida_1: registro.saida_1 || '',
                 entrada_2: registro.entrada_2 || '',
-                saida_2: registro.saida_2 || ''
+                saida_2: registro.saida_2 || '',
+                observacao: registro.observacao || ''
             };
         });
 
@@ -655,6 +692,17 @@
             colunaDia.textContent = nomeDiaSemana(registro.data);
             linha.appendChild(colunaData);
             linha.appendChild(colunaDia);
+
+            const colunaSituacao = document.createElement('td');
+            if (/^feriado\b/i.test(registro.observacao)) {
+                const etiqueta = document.createElement('span');
+                etiqueta.className = 'badge bg-primary';
+                etiqueta.textContent = registro.observacao;
+                colunaSituacao.appendChild(etiqueta);
+            } else {
+                colunaSituacao.textContent = '-';
+            }
+            linha.appendChild(colunaSituacao);
 
             ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].forEach(function (campo) {
                 const coluna = document.createElement('td');
@@ -1059,6 +1107,10 @@
         });
 
         document.querySelectorAll('.ponto-hora-registro').forEach(function (campo) {
+            campo.addEventListener('input', atualizarResumoRegistros);
+            campo.addEventListener('change', atualizarResumoRegistros);
+        });
+        document.querySelectorAll('.ponto-observacao').forEach(function (campo) {
             campo.addEventListener('input', atualizarResumoRegistros);
             campo.addEventListener('change', atualizarResumoRegistros);
         });

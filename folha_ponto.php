@@ -2,6 +2,37 @@
 require 'config.php';
 require 'includes/folha_ponto_funcoes.php';
 
+function folhaPontoFeriadoNacional(string $data): ?string
+{
+    $dataValida = DateTime::createFromFormat('!Y-m-d', $data);
+
+    if (!$dataValida || $dataValida->format('Y-m-d') !== $data) {
+        return null;
+    }
+
+    $ano = (int)$dataValida->format('Y');
+    $mesDia = $dataValida->format('m-d');
+    $feriados = [
+        '01-01' => 'Confraternização Universal',
+        '04-21' => 'Tiradentes',
+        '05-01' => 'Dia do Trabalho',
+        '09-07' => 'Independência do Brasil',
+        '11-02' => 'Finados',
+        '11-15' => 'Proclamação da República',
+        '12-25' => 'Natal',
+    ];
+
+    if ($ano >= 1980) {
+        $feriados['10-12'] = 'Nossa Senhora Aparecida';
+    }
+
+    if ($ano >= 2024) {
+        $feriados['11-20'] = 'Dia Nacional de Zumbi e da Consciência Negra';
+    }
+
+    return $feriados[$mesDia] ?? null;
+}
+
 exigirPermissao('folha_ponto');
 
 $tabelas = [
@@ -254,7 +285,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     saida_1 = VALUES(saida_1),
                     entrada_2 = VALUES(entrada_2),
                     saida_2 = VALUES(saida_2),
-                    observacao = VALUES(observacao),
+                    observacao = COALESCE(VALUES(observacao), observacao),
                     origem = 'manual',
                     usuario_id = VALUES(usuario_id),
                     atualizado_em = CURRENT_TIMESTAMP
@@ -368,12 +399,13 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     empresa_id, funcionario_id, data_registro,
                     entrada_1, saida_1, entrada_2, saida_2,
                     observacao, origem, usuario_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'pdf', ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pdf', ?)
                 ON DUPLICATE KEY UPDATE
                     entrada_1 = VALUES(entrada_1),
                     saida_1 = VALUES(saida_1),
                     entrada_2 = VALUES(entrada_2),
                     saida_2 = VALUES(saida_2),
+                    observacao = VALUES(observacao),
                     origem = 'pdf',
                     usuario_id = VALUES(usuario_id),
                     atualizado_em = CURRENT_TIMESTAMP
@@ -404,7 +436,13 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     $valores[$campo] = folhaPontoHoraValida($valor) && $valor !== '' ? $valor : null;
                 }
 
-                if (array_filter($valores, static fn($valor) => $valor !== null) === []) {
+                $observacao = trim((string)($registro['observacao'] ?? ''));
+                $observacao = function_exists('mb_substr')
+                    ? mb_substr($observacao, 0, 255)
+                    : substr($observacao, 0, 255);
+                $feriado = preg_match('/^feriado\b/i', $observacao) === 1;
+
+                if (array_filter($valores, static fn($valor) => $valor !== null) === [] && !$feriado) {
                     continue;
                 }
 
@@ -416,6 +454,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     $valores['saida_1'],
                     $valores['entrada_2'],
                     $valores['saida_2'],
+                    $observacao !== '' ? $observacao : null,
                     $usuarioId,
                 ]);
                 $datasProcessadas[$data] = true;
@@ -559,7 +598,22 @@ if ($funcionarioSelecionado) {
             'observacao' => '',
             'origem' => 'manual',
         ];
-        $previsto = !empty($horario['trabalha']) ? folhaPontoMinutosMarcacoes($horario) : 0;
+        $observacaoRegistro = trim((string)($registro['observacao'] ?? ''));
+        $feriadoInformado = preg_match('/^feriado\b/i', $observacaoRegistro) === 1;
+        $feriadoNacional = folhaPontoFeriadoNacional($dataIso);
+        $feriado = $feriadoInformado || $feriadoNacional !== null;
+        $feriadoNome = $feriadoNacional ?? '';
+
+        if ($feriadoInformado) {
+            $feriadoNomeInformado = trim((string)preg_replace('/^feriado\s*:?\s*/i', '', $observacaoRegistro));
+
+            if ($feriadoNomeInformado !== '') {
+                $feriadoNome = $feriadoNomeInformado;
+            }
+        }
+
+        $previstoJornada = !empty($horario['trabalha']) ? folhaPontoMinutosMarcacoes($horario) : 0;
+        $previsto = $feriado ? 0 : $previstoJornada;
         $trabalhado = folhaPontoMinutosMarcacoes($registro);
         $marcacoes = array_filter([
             $registro['entrada_1'] ?? '',
@@ -575,7 +629,9 @@ if ($funcionarioSelecionado) {
                 && (empty($registro['entrada_2']) || empty($registro['saida_2'])))
         );
 
-        if (!$possuiMarcacao && $previsto <= 0) {
+        if ($feriado) {
+            $status = ['Feriado', 'bg-primary'];
+        } elseif (!$possuiMarcacao && $previsto <= 0) {
             $status = ['Folga', 'bg-secondary'];
         } elseif (!$possuiMarcacao && $dataIso > $hoje) {
             $status = ['Aguardando', 'bg-light text-dark border'];
@@ -603,9 +659,14 @@ if ($funcionarioSelecionado) {
             'horario' => $horario,
             'registro' => $registro,
             'previsto' => $previsto,
+            'previsto_jornada' => $previstoJornada,
             'trabalhado' => $trabalhado,
             'saldo' => $trabalhado - $previsto,
             'status' => $status,
+            'feriado' => $feriado,
+            'feriado_nacional' => $feriadoNacional !== null,
+            'feriado_nome' => $feriadoNome,
+            'fim_semana' => $diaSemana >= 6,
         ];
         $data->modify('+1 day');
     }
@@ -902,7 +963,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                     <tbody>
                                         <?php foreach ($diasFolha as $dia): ?>
                                             <?php
-                                            $previstoTexto = !empty($dia['horario']['trabalha'])
+                                            $jornadaPrevistaTexto = !empty($dia['horario']['trabalha'])
                                                 ? trim(implode(' / ', array_filter([
                                                     ($dia['horario']['entrada_1'] ?? '') && ($dia['horario']['saida_1'] ?? '')
                                                         ? substr((string)$dia['horario']['entrada_1'], 0, 5) . '-' . substr((string)$dia['horario']['saida_1'], 0, 5)
@@ -912,8 +973,27 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                         : '',
                                                 ])))
                                                 : 'Folga';
+                                            $previstoTexto = !empty($dia['feriado'])
+                                                ? 'Feriado' . (!empty($dia['feriado_nome']) ? ': ' . $dia['feriado_nome'] : '')
+                                                : $jornadaPrevistaTexto;
+                                            $classesDia = ['ponto-registro-linha'];
+
+                                            if ($dia['previsto'] <= 0) {
+                                                $classesDia[] = 'ponto-dia-folga';
+                                            }
+                                            if (!empty($dia['fim_semana'])) {
+                                                $classesDia[] = 'ponto-dia-fim-semana';
+                                            }
+                                            if (!empty($dia['feriado'])) {
+                                                $classesDia[] = 'ponto-dia-feriado';
+                                            }
                                             ?>
-                                            <tr class="ponto-registro-linha <?= $dia['previsto'] <= 0 ? 'ponto-dia-folga' : '' ?>" data-data="<?= htmlspecialchars($dia['data']) ?>">
+                                            <tr
+                                                class="<?= implode(' ', $classesDia) ?>"
+                                                data-data="<?= htmlspecialchars($dia['data']) ?>"
+                                                data-feriado-nacional="<?= !empty($dia['feriado_nacional']) ? '1' : '0' ?>"
+                                                data-feriado-nome="<?= htmlspecialchars($dia['feriado_nome'] ?? '') ?>"
+                                                data-jornada-prevista="<?= htmlspecialchars($jornadaPrevistaTexto) ?>">
                                                 <td class="text-nowrap"><strong><?= $dia['data_br'] ?></strong></td>
                                                 <td class="text-nowrap"><?= htmlspecialchars($dia['dia_semana']) ?></td>
                                                 <td class="text-nowrap ponto-previsto"><?= htmlspecialchars($previstoTexto) ?></td>
@@ -927,7 +1007,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                             aria-label="<?= htmlspecialchars($campo . ' de ' . $dia['data_br']) ?>">
                                                     </td>
                                                 <?php endforeach; ?>
-                                                <td class="text-nowrap ponto-total-dia" data-previsto="<?= $dia['previsto'] ?>">
+                                                <td class="text-nowrap ponto-total-dia" data-previsto="<?= $dia['previsto'] ?>" data-previsto-jornada="<?= $dia['previsto_jornada'] ?>">
                                                     <?= folhaPontoFormatarMinutos($dia['trabalhado']) ?>
                                                 </td>
                                                 <td class="text-nowrap fw-semibold ponto-saldo-dia <?= $dia['saldo'] < 0 ? 'text-danger' : 'text-success' ?>">
@@ -1129,6 +1209,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                 <tr>
                                                     <th>Data</th>
                                                     <th>Dia da semana</th>
+                                                    <th>Situação</th>
                                                     <th>Entrada</th>
                                                     <th>Almoço</th>
                                                     <th>Retorno</th>
