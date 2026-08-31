@@ -1253,13 +1253,34 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                     <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
                                     <span id="statusImportacaoTexto">Lendo o arquivo...</span>
                                 </div>
+                                <div class="mt-4 d-none" id="etapaTextoImportacaoPdf">
+                                    <div class="d-flex justify-content-between align-items-center gap-3 mb-2">
+                                        <h6 class="mb-0">Texto reconhecido</h6>
+                                        <span class="badge bg-primary" id="quantidadeTextoImportacaoPdf"></span>
+                                    </div>
+                                    <textarea
+                                        class="form-control ponto-texto-reconhecido"
+                                        id="textoReconhecidoPdf"
+                                        spellcheck="false"
+                                        aria-label="Texto reconhecido da folha de ponto"></textarea>
+                                    <div class="d-flex justify-content-end mt-3">
+                                        <button type="button" class="btn btn-primary" id="btnAplicarTextoPdf">
+                                            <i class="bi bi-table"></i> Montar tabela
+                                        </button>
+                                    </div>
+                                </div>
                                 <div class="mt-4 d-none" id="previewImportacaoPdf">
                                     <div class="d-flex justify-content-between align-items-center gap-3 mb-2">
                                         <h6 class="mb-0">Pré-visualização</h6>
-                                        <span class="badge bg-primary" id="quantidadeImportacaoPdf"></span>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="btnVoltarTextoPdf">
+                                                <i class="bi bi-arrow-left"></i> Texto reconhecido
+                                            </button>
+                                            <span class="badge bg-primary" id="quantidadeImportacaoPdf"></span>
+                                        </div>
                                     </div>
                                     <div class="alert alert-warning py-2 d-none" id="avisoRevisaoOcr">
-                                        Os campos amarelos foram sugeridos pela jornada cadastrada. Confira cada recorte e corrija somente os horários diferentes. Você também pode digitar 8, 12 ou 1320.
+                                        Confira os horários com os recortes. Campos em vermelho não tiveram leitura confiável e precisam ser corrigidos antes da importação. Você também pode digitar 8, 12 ou 1320.
                                     </div>
                                     <div class="table-responsive">
                                         <table class="table table-sm align-middle mb-0 ponto-preview-tabela">

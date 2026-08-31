@@ -11,6 +11,7 @@
         7: { trabalha: false, entrada_1: '', saida_1: '', entrada_2: '', saida_2: '' }
     };
     let registrosPdfAtuais = [];
+    let registrosTextoReconhecido = [];
     let camposDetectadosPdf = new Set();
     let linhasInvalidasPdf = new Set();
 
@@ -348,9 +349,11 @@
             outubro: '10', out: '10', novembro: '11', nov: '11', dezembro: '12', dez: '12'
         };
         const periodo = normalizado.match(/(?:periodo|competencia|de)\s*:?\s*[0-3]?\d\s*[\/.\-]\s*([01]?\d)\s*[\/.\-]\s*(20\d{2})\s*(?:ate|a|-)\s*[0-3]?\d\s*[\/.\-]\s*[01]?\d\s*[\/.\-]\s*20\d{2}/);
+        const periodoDireto = normalizado.match(/(?:^|\D)[0-3]?\d\s*[\/.\-]\s*([01]?\d)\s*[\/.\-]\s*(20\d{2})\s*(?:ate|a|-)\s*[0-3]?\d\s*[\/.\-]\s*[01]?\d\s*[\/.\-]\s*20\d{2}(?!\d)/);
 
-        if (periodo) {
-            return periodo[2] + '-' + String(Number(periodo[1])).padStart(2, '0');
+        if (periodo || periodoDireto) {
+            const encontrado = periodo || periodoDireto;
+            return encontrado[2] + '-' + String(Number(encontrado[1])).padStart(2, '0');
         }
 
         const frequencias = new Map();
@@ -589,20 +592,29 @@
 
     function limparImportacaoPdf() {
         document.getElementById('erroImportacaoPdf')?.classList.add('d-none');
+        document.getElementById('etapaTextoImportacaoPdf')?.classList.add('d-none');
         document.getElementById('previewImportacaoPdf')?.classList.add('d-none');
         document.getElementById('avisoRevisaoOcr')?.classList.add('d-none');
         document.getElementById('avisoMesImportacaoPdf')?.classList.add('d-none');
         const oculto = document.getElementById('registrosPdf');
         const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
         const corpo = document.getElementById('corpoImportacaoPdf');
+        const textoReconhecido = document.getElementById('textoReconhecidoPdf');
+        const voltarTexto = document.getElementById('btnVoltarTextoPdf');
         const textoStatus = document.getElementById('statusImportacaoTexto');
         const campoMes = document.querySelector('#formImportarPdf input[name="mes"]');
         registrosPdfAtuais = [];
+        registrosTextoReconhecido = [];
         camposDetectadosPdf = new Set();
         linhasInvalidasPdf = new Set();
         if (oculto) oculto.value = '';
         if (confirmar) confirmar.disabled = true;
         if (corpo) corpo.replaceChildren();
+        if (textoReconhecido) {
+            textoReconhecido.value = '';
+            textoReconhecido.classList.remove('is-invalid');
+        }
+        voltarTexto?.classList.add('d-none');
         if (textoStatus) textoStatus.textContent = 'Lendo o arquivo...';
         if (campoMes?.dataset.mesOriginal) definirMesImportacao(campoMes.dataset.mesOriginal);
     }
@@ -616,29 +628,6 @@
         const partes = dataIso.split('-').map(Number);
         const nomes = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
         return nomes[new Date(partes[0], partes[1] - 1, partes[2], 12).getDay()];
-    }
-
-    function horariosFuncionarioSelecionado() {
-        const botao = document.getElementById('btnEditarFuncionario');
-
-        try {
-            const horarios = JSON.parse(botao?.dataset.horarios || '[]');
-            return Array.isArray(horarios) ? horarios : [];
-        } catch (erro) {
-            return [];
-        }
-    }
-
-    function horarioPrevistoPdf(dataIso, campo) {
-        const partes = dataIso.split('-').map(Number);
-        const diaJs = new Date(partes[0], partes[1] - 1, partes[2], 12).getDay();
-        const diaSemana = diaJs === 0 ? 7 : diaJs;
-        const horarioDia = horariosFuncionarioSelecionado().find(function (horario) {
-            return Number(horario.dia_semana) === diaSemana;
-        });
-
-        if (!horarioDia || Number(horarioDia.trabalha) !== 1) return '';
-        return String(horarioDia[campo] || '').slice(0, 5);
     }
 
     function sincronizarRegistrosPdf() {
@@ -691,9 +680,7 @@
         const etiqueta = document.createElement('span');
 
         if (revisar) {
-            etiqueta.className = 'badge bg-danger';
-            etiqueta.textContent = 'Revisar horários';
-            coluna.appendChild(etiqueta);
+            coluna.textContent = '-';
             return;
         }
 
@@ -773,11 +760,157 @@
         return !invalido;
     }
 
+    function textoEstruturadoDosRegistros(registros) {
+        const cabecalho = 'DATA | ENTRADA | ALMOCO | RETORNO | SAIDA | SITUACAO';
+        const linhas = registros.map(function (registro) {
+            const campos = ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].map(function (campo) {
+                return registro._revisar?.[campo] ? '?' : (registro[campo] || '');
+            });
+            const observacao = String(registro.observacao || '').replace(/\|/g, '/');
+            return [formatarDataBr(registro.data)].concat(campos, observacao).join(' | ');
+        });
+        return [cabecalho].concat(linhas).join('\n');
+    }
+
+    function dataDoTextoReconhecido(valor) {
+        const texto = String(valor || '').trim();
+        const brasileira = texto.match(/^([0-3]?\d)\s*[\/.\-]\s*([01]?\d)\s*[\/.\-]\s*(20\d{2})$/);
+        const iso = texto.match(/^(20\d{2})-([01]?\d)-([0-3]?\d)$/);
+        let ano;
+        let mes;
+        let dia;
+
+        if (brasileira) {
+            dia = Number(brasileira[1]);
+            mes = Number(brasileira[2]);
+            ano = Number(brasileira[3]);
+        } else if (iso) {
+            ano = Number(iso[1]);
+            mes = Number(iso[2]);
+            dia = Number(iso[3]);
+        } else {
+            return '';
+        }
+
+        return dataIsoValida(ano, mes, dia)
+            ? ano + '-' + String(mes).padStart(2, '0') + '-' + String(dia).padStart(2, '0')
+            : '';
+    }
+
+    function registrosDoTextoReconhecido(texto) {
+        const originais = new Map(registrosTextoReconhecido.map(function (registro) {
+            return [registro.data, registro];
+        }));
+        const registros = [];
+        const erros = [];
+
+        String(texto || '').split(/[\r\n]+/).forEach(function (linha, indice) {
+            const limpa = linha.trim();
+            if (!limpa || /^data\s*\|/i.test(limpa)) return;
+            const colunas = limpa.split('|').map(function (coluna) { return coluna.trim(); });
+            if (colunas.length !== 6) {
+                erros.push('Linha ' + (indice + 1) + ': use seis colunas separadas por |.');
+                return;
+            }
+
+            const data = dataDoTextoReconhecido(colunas[0]);
+            if (!data) {
+                erros.push('Linha ' + (indice + 1) + ': data inválida.');
+                return;
+            }
+
+            const original = originais.get(data) || {};
+            const registro = {
+                data: data,
+                entrada_1: '',
+                saida_1: '',
+                entrada_2: '',
+                saida_2: '',
+                observacao: colunas[5],
+                _imagens: original._imagens || {},
+                _revisar: {}
+            };
+
+            ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].forEach(function (campo, campoIndice) {
+                const valor = colunas[campoIndice + 1];
+                if (valor === '?') {
+                    registro._revisar[campo] = true;
+                    return;
+                }
+                if (!valor) {
+                    registro._revisar[campo] = false;
+                    return;
+                }
+                const horario = normalizarHorarioDigitado(valor);
+                if (!horario) {
+                    erros.push('Linha ' + (indice + 1) + ': horário "' + valor + '" inválido.');
+                    return;
+                }
+                registro[campo] = horario;
+                registro._revisar[campo] = false;
+            });
+
+            if (/^(?:folga|atestado|feriado)\b/i.test(registro.observacao)) {
+                registro.entrada_1 = '';
+                registro.saida_1 = '';
+                registro.entrada_2 = '';
+                registro.saida_2 = '';
+                registro._revisar = {};
+            }
+            registros.push(registro);
+        });
+
+        const datas = new Set();
+        registros.forEach(function (registro) {
+            if (datas.has(registro.data)) erros.push('A data ' + formatarDataBr(registro.data) + ' está repetida.');
+            datas.add(registro.data);
+        });
+
+        registros.sort(function (a, b) { return a.data.localeCompare(b.data); });
+        return { registros: registros, erros: erros };
+    }
+
+    function mostrarTextoReconhecido(registros) {
+        const etapa = document.getElementById('etapaTextoImportacaoPdf');
+        const campo = document.getElementById('textoReconhecidoPdf');
+        const quantidade = document.getElementById('quantidadeTextoImportacaoPdf');
+        const preview = document.getElementById('previewImportacaoPdf');
+        const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
+        if (!etapa || !campo) return;
+
+        registrosTextoReconhecido = registros;
+        campo.value = textoEstruturadoDosRegistros(registros);
+        campo.classList.remove('is-invalid');
+        if (quantidade) quantidade.textContent = registros.length + (registros.length === 1 ? ' dia' : ' dias');
+        preview?.classList.add('d-none');
+        etapa.classList.remove('d-none');
+        if (confirmar) confirmar.disabled = true;
+    }
+
+    function aplicarTextoReconhecido() {
+        const campo = document.getElementById('textoReconhecidoPdf');
+        const erro = document.getElementById('erroImportacaoPdf');
+        if (!campo) return;
+        const resultado = registrosDoTextoReconhecido(campo.value);
+
+        if (resultado.erros.length > 0 || resultado.registros.length === 0) {
+            campo.classList.add('is-invalid');
+            mostrarErroPdf(resultado.erros[0] || 'Nenhum dia válido foi encontrado no texto reconhecido.');
+            return;
+        }
+
+        campo.classList.remove('is-invalid');
+        erro?.classList.add('d-none');
+        document.getElementById('etapaTextoImportacaoPdf')?.classList.add('d-none');
+        mostrarPreviewPdf(resultado.registros, true);
+    }
+
     function mostrarPreviewPdf(registros, leituraOcr) {
         const corpo = document.getElementById('corpoImportacaoPdf');
         const preview = document.getElementById('previewImportacaoPdf');
         const quantidade = document.getElementById('quantidadeImportacaoPdf');
         const avisoOcr = document.getElementById('avisoRevisaoOcr');
+        const voltarTexto = document.getElementById('btnVoltarTextoPdf');
 
         if (!corpo || !preview) return;
         corpo.replaceChildren();
@@ -825,9 +958,6 @@
                     grupo.appendChild(imagem);
                     camposDetectadosPdf.add(indice + ':' + campo);
 
-                    if (!registro[campo]) {
-                        registro[campo] = horarioPrevistoPdf(registro.data, campo);
-                    }
                 }
 
                 input.type = 'text';
@@ -837,7 +967,7 @@
                 input.placeholder = '--:--';
                 input.className = 'form-control form-control-sm ponto-preview-hora';
                 input.value = registro[campo];
-                input.disabled = /^(?:folga|atestado)\b/i.test(registro.observacao);
+                input.disabled = /^(?:feriado|folga|atestado)\b/i.test(registro.observacao);
                 input.dataset.revisarOcr = registroOriginal._revisar?.[campo] ? '1' : '0';
                 input.classList.toggle('ponto-preview-hora-sugerida', Boolean(imagemRecorte && registro[campo]));
                 input.setAttribute('aria-label', campo + ' de ' + formatarDataBr(registro.data));
@@ -876,6 +1006,7 @@
 
         sincronizarRegistrosPdf();
         avisoOcr?.classList.toggle('d-none', !leituraOcr);
+        voltarTexto?.classList.toggle('d-none', registrosTextoReconhecido.length === 0);
         if (quantidade) quantidade.textContent = registrosPdfAtuais.length + (registrosPdfAtuais.length === 1 ? ' dia' : ' dias');
         preview.classList.remove('d-none');
     }
@@ -990,8 +1121,151 @@
         return canvas;
     }
 
+    function normalizarOrientacaoFolha(canvas) {
+        if (canvas.width <= canvas.height) return canvas;
+
+        const girado = document.createElement('canvas');
+        girado.width = canvas.height;
+        girado.height = canvas.width;
+        girado.dataset.rotacionado = '1';
+        const contexto = girado.getContext('2d');
+        contexto.fillStyle = '#fff';
+        contexto.fillRect(0, 0, girado.width, girado.height);
+        contexto.translate(girado.width, 0);
+        contexto.rotate(Math.PI / 2);
+        contexto.drawImage(canvas, 0, 0);
+        return girado;
+    }
+
+    function palavrasDoTsv(tsv) {
+        return String(tsv || '').split(/[\r\n]+/).slice(1).map(function (linha) {
+            const colunas = linha.split('\t');
+            if (colunas.length < 12 || Number(colunas[0]) !== 5) return null;
+            const texto = colunas.slice(11).join('\t').trim();
+            if (!texto) return null;
+            return {
+                texto: texto,
+                normalizado: textoNormalizado(texto).replace(/[^a-z0-9]/g, ''),
+                x0: Number(colunas[6]),
+                y0: Number(colunas[7]),
+                x1: Number(colunas[6]) + Number(colunas[8]),
+                y1: Number(colunas[7]) + Number(colunas[9]),
+                confianca: Number(colunas[10])
+            };
+        }).filter(Boolean);
+    }
+
+    function centroPalavra(palavra) {
+        return {
+            x: (palavra.x0 + palavra.x1) / 2,
+            y: (palavra.y0 + palavra.y1) / 2
+        };
+    }
+
+    function ajustarReta(pontos) {
+        if (pontos.length < 2) return null;
+        const mediaX = pontos.reduce(function (total, ponto) { return total + ponto.x; }, 0) / pontos.length;
+        const mediaY = pontos.reduce(function (total, ponto) { return total + ponto.y; }, 0) / pontos.length;
+        let numerador = 0;
+        let denominador = 0;
+
+        pontos.forEach(function (ponto) {
+            numerador += (ponto.x - mediaX) * (ponto.y - mediaY);
+            denominador += Math.pow(ponto.x - mediaX, 2);
+        });
+
+        if (denominador === 0) return null;
+        const inclinacao = numerador / denominador;
+        return { inclinacao: inclinacao, intercepto: mediaY - (inclinacao * mediaX) };
+    }
+
+    function geometriaTabelaOcr(canvas, palavras, quantidadeDias) {
+        if (!palavras?.length) return null;
+        const rotulos = [
+            ['entrada'],
+            ['repouso', 'almoco'],
+            ['retorno'],
+            ['saida']
+        ];
+        const cabecalhos = rotulos.map(function (opcoes) {
+            return palavras.filter(function (palavra) {
+                const centro = centroPalavra(palavra);
+                return opcoes.includes(palavra.normalizado)
+                    && centro.y > canvas.height * .10
+                    && centro.y < canvas.height * .48;
+            }).sort(function (a, b) {
+                return centroPalavra(a).y - centroPalavra(b).y;
+            }).pop() || null;
+        });
+
+        if (cabecalhos.some(function (palavra) { return !palavra; })) return null;
+        const centros = cabecalhos.map(centroPalavra);
+        if (!centros.every(function (centro, indice) {
+            return indice === 0 || centro.x > centros[indice - 1].x;
+        })) return null;
+
+        const limitesX = [
+            centros[0].x - ((centros[1].x - centros[0].x) / 2),
+            (centros[0].x + centros[1].x) / 2,
+            (centros[1].x + centros[2].x) / 2,
+            (centros[2].x + centros[3].x) / 2,
+            centros[3].x + ((centros[3].x - centros[2].x) / 2)
+        ];
+        const topoCabecalho = Math.max.apply(null, cabecalhos.map(function (palavra) { return palavra.y1; }));
+        const numerosDia = palavras.map(function (palavra) {
+            const textoDia = palavra.texto.replace(/[oO]/g, '0').replace(/\D/g, '');
+            const dia = /^\d{1,2}$/.test(textoDia) ? Number(textoDia) : 0;
+            const centro = centroPalavra(palavra);
+            if (
+                dia < 1
+                || dia > quantidadeDias
+                || centro.x >= limitesX[0]
+                || centro.y <= topoCabecalho
+                || centro.y >= canvas.height * .90
+            ) return null;
+            return { dia: dia, x: centro.x, y: centro.y };
+        }).filter(Boolean);
+        const porDia = new Map();
+
+        numerosDia.forEach(function (ponto) {
+            if (!porDia.has(ponto.dia)) porDia.set(ponto.dia, ponto);
+        });
+
+        let pontosDias = Array.from(porDia.values()).map(function (ponto) {
+            return { x: ponto.dia - 1, y: ponto.y, xOriginal: ponto.x };
+        });
+        let retaDias = ajustarReta(pontosDias);
+
+        if (!retaDias || retaDias.inclinacao < canvas.height * .010 || retaDias.inclinacao > canvas.height * .030) {
+            return null;
+        }
+
+        pontosDias = pontosDias.filter(function (ponto) {
+            const previsto = retaDias.intercepto + (retaDias.inclinacao * ponto.x);
+            return Math.abs(ponto.y - previsto) <= retaDias.inclinacao * .55;
+        });
+        if (pontosDias.length < Math.min(8, quantidadeDias)) return null;
+        retaDias = ajustarReta(pontosDias);
+        if (!retaDias) return null;
+
+        const retaCabecalho = ajustarReta(centros.map(function (centro) {
+            return { x: centro.x, y: centro.y };
+        }));
+        const inclinacaoHorizontal = retaCabecalho && Math.abs(retaCabecalho.inclinacao) <= .25
+            ? retaCabecalho.inclinacao
+            : 0;
+
+        return {
+            limitesX: limitesX,
+            centroPrimeiroDia: retaDias.intercepto,
+            alturaLinha: retaDias.inclinacao,
+            xDias: pontosDias.reduce(function (total, ponto) { return total + ponto.xOriginal; }, 0) / pontosDias.length,
+            inclinacaoHorizontal: inclinacaoHorizontal
+        };
+    }
+
     async function linhasDoPdfPorOcr(pdf) {
-        if (!window.Tesseract?.createWorker) return [];
+        if (!window.Tesseract?.createWorker) return { linhas: [], paginas: [] };
 
         atualizarStatusImportacao('O relatório é uma imagem. Iniciando a leitura do texto impresso...');
         const worker = await window.Tesseract.createWorker('por', 1, {
@@ -1001,22 +1275,25 @@
             }
         });
         const linhas = [];
+        const paginas = [];
 
         try {
             await worker.setParameters({ preserve_interword_spaces: '1' });
 
             for (let paginaNumero = 1; paginaNumero <= pdf.numPages; paginaNumero += 1) {
-                const canvas = await canvasPaginaPdf(pdf, paginaNumero, 3.5);
-                const resultado = await worker.recognize(canvas);
+                const canvasOriginal = await canvasPaginaPdf(pdf, paginaNumero, 3.5);
+                const canvas = normalizarOrientacaoFolha(canvasOriginal);
+                const resultado = await worker.recognize(canvas, {}, { text: true, tsv: true });
                 linhas.push.apply(linhas, String(resultado?.data?.text || '').split(/[\r\n]+/).map(function (linha) {
                     return linha.replace(/\s+/g, ' ').trim();
                 }).filter(Boolean));
+                paginas.push({ canvas: canvas, palavras: palavrasDoTsv(resultado?.data?.tsv) });
             }
         } finally {
             await worker.terminate();
         }
 
-        return linhas;
+        return { linhas: linhas, paginas: paginas };
     }
 
     function horarioDoTextoManuscrito(texto) {
@@ -1072,46 +1349,95 @@
         return diasComPares.length >= 2;
     }
 
-    async function registrosDoPdfDigitalizado(pdf, mesSelecionado, textoOcr) {
+    async function registrosDoPdfDigitalizado(pdf, mesSelecionado, textoOcr, paginasOcr) {
         atualizarStatusImportacao('Separando os horários escritos em cada dia...');
-        const canvas = await canvasPaginaPdf(pdf, 1, 2.4);
+        const paginaOcr = paginasOcr?.[0] || null;
+        const canvasOriginal = paginaOcr?.canvas || await canvasPaginaPdf(pdf, 1, 2.4);
+        const canvas = paginaOcr?.canvas || normalizarOrientacaoFolha(canvasOriginal);
+        const palavras = paginaOcr?.palavras || [];
         const textoModelo = textoNormalizado(textoOcr);
         const modeloListaFrequencia = /lista de frequencia/.test(textoModelo)
             || (/dia\s*(?:do\s*)?mes/.test(textoModelo) && /repouso/.test(textoModelo));
-        const limitesX = [.168, .258, .351, .445, .535];
-        const topoLinhas = canvas.height * (modeloListaFrequencia ? .224 : .204);
-        const baseLinhas = canvas.height * (modeloListaFrequencia ? .852 : .840);
-        const alturaLinha = (baseLinhas - topoLinhas) / 31;
         const partesMes = mesSelecionado.split('-').map(Number);
         const quantidadeDias = new Date(partesMes[0], partesMes[1], 0).getDate();
+        const geometriaOcr = geometriaTabelaOcr(canvas, palavras, quantidadeDias);
+        const perfilFotoRotacionada = canvas.dataset.rotacionado === '1';
+        const limitesXProporcao = perfilFotoRotacionada
+            ? [.192, .260, .329, .399, .471]
+            : [.168, .258, .351, .445, .535];
+        const limitesX = geometriaOcr?.limitesX || limitesXProporcao.map(function (valor) {
+            return canvas.width * valor;
+        });
+        const topoLinhas = canvas.height * (perfilFotoRotacionada ? .225 : (modeloListaFrequencia ? .224 : .204));
+        const baseLinhas = canvas.height * (perfilFotoRotacionada ? .763 : (modeloListaFrequencia ? .852 : .840));
+        const alturaLinha = geometriaOcr?.alturaLinha || ((baseLinhas - topoLinhas) / 31);
+        const inclinacaoHorizontal = geometriaOcr?.inclinacaoHorizontal || (perfilFotoRotacionada ? -.11 : 0);
+        const xReferenciaLinhas = geometriaOcr?.xDias || (perfilFotoRotacionada ? canvas.width * .226 : 0);
         const campos = ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'];
+        const situacoes = new Map();
         let tarefas = [];
+
+        palavras.forEach(function (palavra) {
+            let observacao = '';
+            if (palavra.normalizado.includes('atestado')) observacao = 'Atestado';
+            else if (palavra.normalizado.includes('feriado')) observacao = 'Feriado';
+            else if (palavra.normalizado.includes('folga')) observacao = 'Folga';
+            if (!observacao) return;
+
+            const centro = centroPalavra(palavra);
+            const centroPrimeiro = geometriaOcr?.centroPrimeiroDia || (topoLinhas + (alturaLinha / 2));
+            const yCorrigido = centro.y - (inclinacaoHorizontal * (centro.x - xReferenciaLinhas));
+            const dia = Math.round((yCorrigido - centroPrimeiro) / alturaLinha) + 1;
+            if (dia >= 1 && dia <= quantidadeDias) situacoes.set(dia, observacao);
+        });
 
         for (let dia = 1; dia <= quantidadeDias; dia += 1) {
             for (let coluna = 0; coluna < campos.length; coluna += 1) {
-                const larguraCelula = canvas.width * (limitesX[coluna + 1] - limitesX[coluna]);
+                const larguraCelula = limitesX[coluna + 1] - limitesX[coluna];
                 const margemX = Math.max(8, larguraCelula * .055);
-                const margemY = Math.max(5, alturaLinha * .12);
+                const margemY = Math.max(4, alturaLinha * .10);
+                const centroX = (limitesX[coluna] + limitesX[coluna + 1]) / 2;
+                const centroY = geometriaOcr
+                    ? geometriaOcr.centroPrimeiroDia
+                    + ((dia - 1) * alturaLinha)
+                    + (inclinacaoHorizontal * (centroX - xReferenciaLinhas))
+                    : topoLinhas
+                    + ((dia - .5) * alturaLinha)
+                    + (inclinacaoHorizontal * (centroX - xReferenciaLinhas));
                 const area = {
-                    x0: (canvas.width * limitesX[coluna]) + margemX,
-                    x1: (canvas.width * limitesX[coluna + 1]) - margemX,
-                    y0: topoLinhas + ((dia - 1) * alturaLinha) + margemY,
-                    y1: topoLinhas + (dia * alturaLinha) - margemY
+                    x0: limitesX[coluna] + margemX,
+                    x1: limitesX[coluna + 1] - margemX,
+                    y0: centroY - (alturaLinha / 2) + margemY,
+                    y1: centroY + (alturaLinha / 2) - margemY
                 };
                 const recorte = recortarCelulaOcr(canvas, area);
                 if (recorte) tarefas.push({ dia: dia, campo: campos[coluna], canvas: recorte });
             }
         }
 
-        if (tarefas.length === 0) {
+        if (tarefas.length === 0 && situacoes.size === 0) {
             throw new Error('Não encontrei marcações manuscritas neste modelo e o texto impresso também não formou registros válidos.');
         }
 
-        tarefas = await reconhecerHorariosManuscritos(tarefas);
+        if (tarefas.length > 0) tarefas = await reconhecerHorariosManuscritos(tarefas);
 
         const porDia = new Map();
 
+        situacoes.forEach(function (observacao, dia) {
+            porDia.set(dia, {
+                data: mesSelecionado + '-' + String(dia).padStart(2, '0'),
+                entrada_1: '',
+                saida_1: '',
+                entrada_2: '',
+                saida_2: '',
+                observacao: observacao,
+                _imagens: {},
+                _revisar: {}
+            });
+        });
+
         tarefas.forEach(function (tarefa) {
+            if (situacoes.has(tarefa.dia)) return;
             if (!porDia.has(tarefa.dia)) {
                 porDia.set(tarefa.dia, {
                     data: mesSelecionado + '-' + String(tarefa.dia).padStart(2, '0'),
@@ -1125,8 +1451,9 @@
             }
             const registro = porDia.get(tarefa.dia);
             registro._imagens[tarefa.campo] = tarefa.canvas.toDataURL('image/png');
-            registro[tarefa.campo] = tarefa.horario || '';
-            registro._revisar[tarefa.campo] = !tarefa.horario || tarefa.confianca < 45;
+            const horarioConfiavel = tarefa.horario && tarefa.confianca >= 45;
+            registro[tarefa.campo] = horarioConfiavel ? tarefa.horario : '';
+            registro._revisar[tarefa.campo] = !horarioConfiavel;
         });
 
         return Array.from(porDia.values()).sort(function (a, b) {
@@ -1181,10 +1508,13 @@
             let registros = totalItens > 0 ? registrosDasLinhas(linhas, mes) : [];
             let leituraOcr = false;
             let textoOcr = '';
+            let paginasOcr = [];
 
             if (registros.length === 0) {
                 try {
-                    const linhasOcr = await linhasDoPdfPorOcr(pdf);
+                    const dadosOcr = await linhasDoPdfPorOcr(pdf);
+                    const linhasOcr = dadosOcr.linhas;
+                    paginasOcr = dadosOcr.paginas;
                     textoOcr = linhasOcr.join(' ');
                     const mesOcr = mesDoTextoPdf(textoOcr);
                     if (mesOcr) mes = definirMesImportacao(mesOcr);
@@ -1197,14 +1527,15 @@
 
             if (registros.length === 0) {
                 leituraOcr = true;
-                registros = await registrosDoPdfDigitalizado(pdf, mes, textoOcr);
+                registros = await registrosDoPdfDigitalizado(pdf, mes, textoOcr, paginasOcr);
             }
 
             if (registros.length === 0) {
                 throw new Error('A imagem foi lida, mas nenhum horário pôde ser reconhecido. Tente uma digitalização mais nítida.');
             }
 
-            mostrarPreviewPdf(registros, leituraOcr);
+            if (leituraOcr) mostrarTextoReconhecido(registros);
+            else mostrarPreviewPdf(registros, false);
         } catch (erro) {
             mostrarErroPdf(erro?.message || 'Não foi possível ler este PDF.');
         } finally {
@@ -1327,6 +1658,19 @@
 
         document.getElementById('arquivoPontoPdf')?.addEventListener('change', limparImportacaoPdf);
         document.getElementById('btnLerPdf')?.addEventListener('click', lerPdf);
+        document.getElementById('btnAplicarTextoPdf')?.addEventListener('click', aplicarTextoReconhecido);
+        document.getElementById('textoReconhecidoPdf')?.addEventListener('input', function (evento) {
+            evento.currentTarget.classList.remove('is-invalid');
+            document.getElementById('erroImportacaoPdf')?.classList.add('d-none');
+        });
+        document.getElementById('btnVoltarTextoPdf')?.addEventListener('click', function () {
+            document.getElementById('previewImportacaoPdf')?.classList.add('d-none');
+            document.getElementById('etapaTextoImportacaoPdf')?.classList.remove('d-none');
+            const oculto = document.getElementById('registrosPdf');
+            const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
+            if (oculto) oculto.value = '';
+            if (confirmar) confirmar.disabled = true;
+        });
         document.getElementById('formImportarPdf')?.addEventListener('submit', function (evento) {
             if (!document.getElementById('registrosPdf')?.value) {
                 evento.preventDefault();
