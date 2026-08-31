@@ -196,16 +196,19 @@
             return null;
         }
 
-        const horarios = Array.from(linha.querySelectorAll('.ponto-hora-registro')).map(function (item) {
+        const camposHorario = Array.from(linha.querySelectorAll('.ponto-hora-registro'));
+        const horarios = camposHorario.map(function (item) {
             return item.value;
         });
-        const trabalhado = minutosIntervalo(horarios[0], horarios[1])
-            + minutosIntervalo(horarios[2], horarios[3]);
         const total = linha.querySelector('.ponto-total-dia');
         const saldo = linha.querySelector('.ponto-saldo-dia');
         const status = linha.querySelector('.ponto-status-dia');
         const previstoTexto = linha.querySelector('.ponto-previsto');
         const observacao = linha.querySelector('.ponto-observacao')?.value.trim() || '';
+        const atestado = linha.querySelector('.ponto-atestado-check')?.checked === true;
+        const trabalhado = atestado
+            ? 0
+            : minutosIntervalo(horarios[0], horarios[1]) + minutosIntervalo(horarios[2], horarios[3]);
         const feriadoInformado = /^feriado\b/i.test(observacao);
         const folgaInformada = /^folga\b/i.test(observacao);
         const feriadoNacional = linha.dataset.feriadoNacional === '1';
@@ -215,7 +218,7 @@
             : '';
         const feriadoNome = descricaoInformada || linha.dataset.feriadoNome || '';
         const previstoJornada = Number(total?.dataset.previstoJornada || total?.dataset.previsto || 0);
-        const previsto = feriado || folgaInformada ? 0 : previstoJornada;
+        const previsto = feriado || folgaInformada || atestado ? 0 : previstoJornada;
         const possuiMarcacao = horarios.some(Boolean);
         const incompleto = possuiMarcacao && (
             !horarios[0]
@@ -239,17 +242,21 @@
         }
 
         linha.classList.toggle('ponto-dia-folga', previsto <= 0);
+        linha.classList.toggle('ponto-dia-atestado', atestado);
         linha.classList.toggle('ponto-dia-feriado', feriado);
 
         if (previstoTexto) {
             previstoTexto.textContent = feriado
                 ? 'Feriado' + (feriadoNome ? ': ' + feriadoNome : '')
-                : (linha.dataset.jornadaPrevista || 'Folga');
+                : (atestado ? 'Atestado' : (linha.dataset.jornadaPrevista || 'Folga'));
         }
 
         if (feriado) {
             statusTexto = 'Feriado';
             statusClasse = 'bg-primary';
+        } else if (atestado) {
+            statusTexto = 'Atestado';
+            statusClasse = 'bg-info text-dark';
         } else if (folgaInformada) {
             statusTexto = 'Folga';
             statusClasse = 'bg-secondary';
@@ -434,6 +441,10 @@
 
     function observacaoEspecialDaLinha(texto) {
         const normalizado = textoNormalizado(texto);
+        if (/\batestado\b/i.test(normalizado)) {
+            const descricaoAtestado = String(texto || '').match(/atestado\s*:\s*(.+)$/i);
+            return descricaoAtestado?.[1]?.trim() ? 'Atestado: ' + descricaoAtestado[1].trim() : 'Atestado';
+        }
         if (/\bfolga\b/i.test(normalizado)) return 'Folga';
         if (!/\bferiado\b/i.test(normalizado)) return '';
 
@@ -518,10 +529,12 @@
         linhas.forEach(function (linha, indice) {
             const data = dataDaLinha(linha, mesSelecionado);
             const folga = /\bfolga\b/i.test(textoNormalizado(linha));
+            const atestado = /\batestado\b/i.test(textoNormalizado(linha));
+            const semMarcacao = folga || atestado;
             let textoRegistro = linha;
-            let horarios = folga ? [] : horariosRealizadosDaLinha(textoRegistro, possuiColunaPrevisto);
+            let horarios = semMarcacao ? [] : horariosRealizadosDaLinha(textoRegistro, possuiColunaPrevisto);
 
-            if (data && !folga && horarios.length < 4) {
+            if (data && !semMarcacao && horarios.length < 4) {
                 for (let proximoIndice = indice + 1; proximoIndice < Math.min(linhas.length, indice + 3); proximoIndice += 1) {
                     const proximaLinha = linhas[proximoIndice];
                     if (dataDaLinha(proximaLinha, mesSelecionado)) break;
@@ -706,6 +719,11 @@
                 etiqueta.className = 'badge bg-primary';
                 etiqueta.textContent = registro.observacao;
                 colunaSituacao.appendChild(etiqueta);
+            } else if (/^atestado\b/i.test(registro.observacao)) {
+                const etiqueta = document.createElement('span');
+                etiqueta.className = 'badge bg-info text-dark';
+                etiqueta.textContent = registro.observacao;
+                colunaSituacao.appendChild(etiqueta);
             } else if (/^folga\b/i.test(registro.observacao)) {
                 const etiqueta = document.createElement('span');
                 etiqueta.className = 'badge bg-secondary';
@@ -744,7 +762,7 @@
                 input.placeholder = '--:--';
                 input.className = 'form-control form-control-sm ponto-preview-hora';
                 input.value = registro[campo];
-                input.disabled = /^folga\b/i.test(registro.observacao);
+                input.disabled = /^(?:folga|atestado)\b/i.test(registro.observacao);
                 input.classList.toggle('ponto-preview-hora-sugerida', Boolean(imagemRecorte && registro[campo]));
                 input.setAttribute('aria-label', campo + ' de ' + formatarDataBr(registro.data));
                 input.addEventListener('input', function () {
@@ -786,7 +804,7 @@
         if (texto) texto.textContent = mensagem;
     }
 
-    function recortarCelulaOcr(canvasPagina, area, somenteAzul) {
+    function recortarCelulaOcr(canvasPagina, area) {
         const contexto = canvasPagina.getContext('2d', { willReadFrequently: true });
         const x0 = Math.max(0, Math.floor(area.x0));
         const y0 = Math.max(0, Math.floor(area.y0));
@@ -806,9 +824,12 @@
                 const verde = imagem.data[indice + 1];
                 const azul = imagem.data[indice + 2];
                 const luminancia = (vermelho * .299) + (verde * .587) + (azul * .114);
-                const ativo = somenteAzul
-                    ? azul - vermelho > 25 && azul > verde * 1.04 && azul > vermelho * 1.12
-                    : luminancia < 115;
+                const maiorCanal = Math.max(vermelho, verde, azul);
+                const menorCanal = Math.min(vermelho, verde, azul);
+                const saturacao = maiorCanal - menorCanal;
+                const tintaEscura = luminancia < 135;
+                const tintaColorida = saturacao > 35 && menorCanal < 210 && luminancia < 220;
+                const ativo = tintaEscura || tintaColorida;
 
                 if (!ativo) continue;
                 ativos.push([x, y]);
@@ -819,7 +840,7 @@
             }
         }
 
-        const minimoPixels = somenteAzul ? 18 : 45;
+        const minimoPixels = 30;
         if (ativos.length < minimoPixels) {
             return null;
         }
@@ -928,7 +949,7 @@
                     y0: topoLinhas + ((dia - 1) * alturaLinha) + 4,
                     y1: topoLinhas + (dia * alturaLinha) - 4
                 };
-                const recorte = recortarCelulaOcr(canvas, area, true);
+                const recorte = recortarCelulaOcr(canvas, area);
                 if (recorte) tarefas.push({ dia: dia, campo: campos[coluna], canvas: recorte });
             }
         }
@@ -1126,6 +1147,18 @@
         document.querySelectorAll('.ponto-observacao').forEach(function (campo) {
             campo.addEventListener('input', atualizarResumoRegistros);
             campo.addEventListener('change', atualizarResumoRegistros);
+        });
+        document.querySelectorAll('.ponto-atestado-check').forEach(function (campo) {
+            campo.addEventListener('change', function () {
+                const linha = campo.closest('.ponto-registro-linha');
+
+                linha?.querySelectorAll('.ponto-hora-registro').forEach(function (horario) {
+                    if (campo.checked) horario.value = '';
+                    horario.disabled = campo.checked;
+                });
+
+                atualizarResumoRegistros();
+            });
         });
         atualizarResumoRegistros();
 

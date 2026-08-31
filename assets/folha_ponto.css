@@ -285,6 +285,17 @@
     background-color: #fffdf3;
 }
 
+.ponto-tabela tbody tr.ponto-dia-atestado>td,
+.ponto-tabela tbody tr.ponto-dia-atestado:hover>td {
+    --bs-table-bg: #edf8fb;
+    background-color: #edf8fb;
+}
+
+.ponto-tabela tbody tr.ponto-dia-atestado .form-control {
+    border-color: #b9dce5;
+    background-color: #f7fcfd;
+}
+
 .ponto-tabela tbody tr.ponto-dia-feriado>td,
 .ponto-tabela tbody tr.ponto-dia-feriado:hover>td {
     --bs-table-bg: #fff0f1;
@@ -305,6 +316,30 @@
 .ponto-observacao {
     width: 190px;
     min-width: 190px;
+}
+
+.ponto-observacao-grupo {
+    display: grid;
+    min-width: 190px;
+    gap: 5px;
+}
+
+.ponto-atestado-controle {
+    display: inline-flex;
+    width: max-content;
+    min-height: 20px;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding-left: 0;
+    color: #475569;
+    font-size: .75rem;
+    font-weight: 700;
+}
+
+.ponto-atestado-controle .form-check-input {
+    float: none;
+    margin: 0;
 }
 
 .ponto-previsto {
