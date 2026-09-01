@@ -18,6 +18,9 @@ foreach ($tabelas as $tabela) {
     }
 }
 
+$cargaSemanalDisponivel = $estruturaDisponivel
+    && logiColunaExiste($pdo, 'folha_ponto_funcionarios', 'carga_semanal');
+
 $empresaId = (int)(empresaAtivaId($pdo) ?? 1);
 $empresaId = $empresaId > 0 ? $empresaId : 1;
 $usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
@@ -126,6 +129,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int)($_POST['id'] ?? 0);
         $nome = trim((string)($_POST['nome'] ?? ''));
         $ativo = !empty($_POST['ativo']) ? 1 : 0;
+        $cargaContratual = (int)($_POST['carga_semanal'] ?? 44);
         $horariosEntrada = is_array($_POST['horarios'] ?? null) ? $_POST['horarios'] : [];
         $horarios = [];
         $cargaSemanal = 0;
@@ -139,28 +143,66 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             folhaPontoRedirecionar($urlRetorno, 'Funcionário não encontrado nesta empresa.', 'danger');
         }
 
+        if (!in_array($cargaContratual, [36, 44], true)) {
+            $cargaContratual = 44;
+        }
+
+        if (!$cargaSemanalDisponivel && $cargaContratual === 36) {
+            folhaPontoRedirecionar(
+                $urlRetorno,
+                'Atualize o banco com o arquivo sql/folha_ponto_carga_semanal.sql antes de salvar a jornada.',
+                'danger'
+            );
+        }
+
         try {
             for ($dia = 1; $dia <= 7; $dia++) {
-                $horarios[$dia] = folhaPontoNormalizarHorario($horariosEntrada[$dia] ?? [], $dia);
+                $horarioEntrada = $horariosEntrada[$dia] ?? [];
+
+                if ($cargaContratual === 36) {
+                    $horarioEntrada['entrada_2'] = '';
+                    $horarioEntrada['saida_2'] = '';
+                }
+
+                $horarios[$dia] = folhaPontoNormalizarHorario($horarioEntrada, $dia);
                 $cargaSemanal += folhaPontoMinutosMarcacoes($horarios[$dia]);
             }
 
             $pdo->beginTransaction();
 
             if ($id > 0) {
-                $stmt = $pdo->prepare("
-                    UPDATE folha_ponto_funcionarios
-                    SET nome = ?, ativo = ?
-                    WHERE id = ? AND empresa_id = ?
-                ");
-                $stmt->execute([$nome, $ativo, $id, $empresaId]);
+                if ($cargaSemanalDisponivel) {
+                    $stmt = $pdo->prepare("
+                        UPDATE folha_ponto_funcionarios
+                        SET nome = ?, ativo = ?, carga_semanal = ?
+                        WHERE id = ? AND empresa_id = ?
+                    ");
+                    $stmt->execute([$nome, $ativo, $cargaContratual, $id, $empresaId]);
+                } else {
+                    $stmt = $pdo->prepare("
+                        UPDATE folha_ponto_funcionarios
+                        SET nome = ?, ativo = ?
+                        WHERE id = ? AND empresa_id = ?
+                    ");
+                    $stmt->execute([$nome, $ativo, $id, $empresaId]);
+                }
+
                 $funcionarioId = $id;
             } else {
-                $stmt = $pdo->prepare("
-                    INSERT INTO folha_ponto_funcionarios (empresa_id, nome, ativo)
-                    VALUES (?, ?, 1)
-                ");
-                $stmt->execute([$empresaId, $nome]);
+                if ($cargaSemanalDisponivel) {
+                    $stmt = $pdo->prepare("
+                        INSERT INTO folha_ponto_funcionarios (empresa_id, nome, ativo, carga_semanal)
+                        VALUES (?, ?, 1, ?)
+                    ");
+                    $stmt->execute([$empresaId, $nome, $cargaContratual]);
+                } else {
+                    $stmt = $pdo->prepare("
+                        INSERT INTO folha_ponto_funcionarios (empresa_id, nome, ativo)
+                        VALUES (?, ?, 1)
+                    ");
+                    $stmt->execute([$empresaId, $nome]);
+                }
+
                 $funcionarioId = (int)$pdo->lastInsertId();
                 $ativo = 1;
             }
@@ -204,6 +246,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 [
                     'nome' => $nome,
                     'ativo' => $ativo,
+                    'carga_contratual' => $cargaContratual . 'h semanais',
                     'carga_semanal' => folhaPontoFormatarMinutos($cargaSemanal),
                 ]
             );
@@ -212,8 +255,8 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 ? 'Funcionário e jornada atualizados com sucesso.'
                 : 'Funcionário cadastrado com sucesso.';
 
-            if ($cargaSemanal > 44 * 60) {
-                $mensagem .= ' Atenção: a jornada informada ultrapassa 44 horas semanais.';
+            if ($cargaSemanal > $cargaContratual * 60) {
+                $mensagem .= ' Atenção: a jornada informada ultrapassa ' . $cargaContratual . ' horas semanais.';
             }
 
             folhaPontoRedirecionar(
@@ -222,7 +265,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     'funcionario_id' => $funcionarioId,
                 ]),
                 $mensagem,
-                $cargaSemanal > 44 * 60 ? 'warning' : 'success'
+                $cargaSemanal > $cargaContratual * 60 ? 'warning' : 'success'
             );
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -240,6 +283,9 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$funcionario) {
             folhaPontoRedirecionar($urlRetorno, 'Selecione um funcionário válido.', 'danger');
         }
+
+        $jornadaFuncionario36 = $cargaSemanalDisponivel
+            && (int)($funcionario['carga_semanal'] ?? 44) === 36;
 
         try {
             $pdo->beginTransaction();
@@ -284,6 +330,11 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     $valores[$campo] = $valor !== '' ? $valor : null;
+                }
+
+                if ($jornadaFuncionario36) {
+                    $valores['entrada_2'] = null;
+                    $valores['saida_2'] = null;
                 }
 
                 if (
@@ -357,6 +408,9 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             folhaPontoRedirecionar($urlRetorno, 'Selecione um funcionário válido.', 'danger');
         }
 
+        $jornadaFuncionario36 = $cargaSemanalDisponivel
+            && (int)($funcionario['carga_semanal'] ?? 44) === 36;
+
         if (!is_array($registrosImportados) || $registrosImportados === [] || count($registrosImportados) > 31) {
             folhaPontoRedirecionar($urlRetorno, 'Nenhum registro válido foi encontrado no PDF.', 'danger');
         }
@@ -403,6 +457,11 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 foreach (['entrada_1', 'saida_1', 'entrada_2', 'saida_2'] as $campo) {
                     $valor = trim((string)($registro[$campo] ?? ''));
                     $valores[$campo] = folhaPontoHoraValida($valor) && $valor !== '' ? $valor : null;
+                }
+
+                if ($jornadaFuncionario36) {
+                    $valores['entrada_2'] = null;
+                    $valores['saida_2'] = null;
                 }
 
                 $observacao = trim((string)($registro['observacao'] ?? ''));
@@ -469,6 +528,7 @@ $funcionarioSelecionado = null;
 $horarios = folhaPontoHorarioPadrao();
 $horariosFuncionarios = [];
 $registros = [];
+$cargaContratualSelecionada = 44;
 
 if ($estruturaDisponivel) {
     $stmt = $pdo->prepare("
@@ -511,6 +571,12 @@ if ($estruturaDisponivel) {
     }
 
     if ($funcionarioSelecionado) {
+        $cargaContratualSelecionada = $cargaSemanalDisponivel
+            ? (int)($funcionarioSelecionado['carga_semanal'] ?? 44)
+            : 44;
+        $cargaContratualSelecionada = in_array($cargaContratualSelecionada, [36, 44], true)
+            ? $cargaContratualSelecionada
+            : 44;
         $horarios = $horariosFuncionarios[$funcionarioId] ?? folhaPontoHorarioPadrao();
 
         $stmt = $pdo->prepare("
@@ -527,6 +593,11 @@ if ($estruturaDisponivel) {
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $registro) {
             foreach (['entrada_1', 'saida_1', 'entrada_2', 'saida_2'] as $campo) {
                 $registro[$campo] = !empty($registro[$campo]) ? substr($registro[$campo], 0, 5) : '';
+            }
+
+            if ($cargaContratualSelecionada === 36) {
+                $registro['entrada_2'] = '';
+                $registro['saida_2'] = '';
             }
 
             $registros[$registro['data_registro']] = $registro;
@@ -647,8 +718,8 @@ if ($funcionarioSelecionado) {
 }
 
 $saldoAteHoje = $totalTrabalhadoAteHoje - $totalPrevistoAteHoje;
-$jornadaSemanalReferencia = 44 * 60;
-$referenciaMensal = 220 * 60;
+$jornadaSemanalReferencia = $cargaContratualSelecionada * 60;
+$referenciaMensal = ($cargaContratualSelecionada === 36 ? 180 : 220) * 60;
 $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 ?>
 
@@ -692,6 +763,12 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                 <?php if ($mensagem): ?>
                     <div class="alert alert-<?= htmlspecialchars($mensagem['tipo']) ?> alerta-temporario no-print">
                         <?= htmlspecialchars($mensagem['texto']) ?>
+                    </div>
+                <?php endif; ?>
+
+                <?php if (!$cargaSemanalDisponivel): ?>
+                    <div class="alert alert-warning no-print">
+                        Para liberar a jornada de 36 horas, execute <code>sql/folha_ponto_carga_semanal.sql</code> no banco de dados.
                     </div>
                 <?php endif; ?>
 
@@ -739,6 +816,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                 data-id="<?= (int)$funcionarioSelecionado['id'] ?>"
                                 data-nome="<?= htmlspecialchars($funcionarioSelecionado['nome'], ENT_QUOTES, 'UTF-8') ?>"
                                 data-ativo="<?= (int)$funcionarioSelecionado['ativo'] ?>"
+                                data-carga-semanal="<?= $cargaContratualSelecionada ?>"
                                 data-horarios="<?= htmlspecialchars($horariosJson, ENT_QUOTES, 'UTF-8') ?>"
                                 data-bs-toggle="modal"
                                 data-bs-target="#modalFuncionario">
@@ -788,6 +866,12 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                     <?php foreach ($funcionarios as $funcionario): ?>
                                         <?php
                                         $idFuncionarioLista = (int)$funcionario['id'];
+                                        $cargaContratualLista = $cargaSemanalDisponivel
+                                            ? (int)($funcionario['carga_semanal'] ?? 44)
+                                            : 44;
+                                        $cargaContratualLista = in_array($cargaContratualLista, [36, 44], true)
+                                            ? $cargaContratualLista
+                                            : 44;
                                         $horariosLista = $horariosFuncionarios[$idFuncionarioLista] ?? folhaPontoHorarioPadrao();
                                         $cargaLista = 0;
 
@@ -817,7 +901,10 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                     <?= (int)$funcionario['ativo'] === 1 ? 'Ativo' : 'Inativo' ?>
                                                 </span>
                                             </td>
-                                            <td><?= folhaPontoFormatarMinutos($cargaLista) ?> por semana</td>
+                                            <td>
+                                                <?= $cargaContratualLista ?>h contratuais
+                                                <span class="text-muted">· <?= folhaPontoFormatarMinutos($cargaLista) ?> configuradas</span>
+                                            </td>
                                             <td>
                                                 <div class="ponto-acoes-funcionario">
                                                     <a
@@ -835,6 +922,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                         data-id="<?= $idFuncionarioLista ?>"
                                                         data-nome="<?= htmlspecialchars($funcionario['nome'], ENT_QUOTES, 'UTF-8') ?>"
                                                         data-ativo="<?= (int)$funcionario['ativo'] ?>"
+                                                        data-carga-semanal="<?= $cargaContratualLista ?>"
                                                         data-horarios="<?= htmlspecialchars($horariosListaJson, ENT_QUOTES, 'UTF-8') ?>"
                                                         data-bs-toggle="modal"
                                                         data-bs-target="#modalFuncionario">
@@ -871,10 +959,10 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                         </div>
                     </div>
 
-                    <?php if ($cargaSemanal > 44 * 60): ?>
+                    <?php if ($cargaSemanal > $cargaContratualSelecionada * 60): ?>
                         <div class="alert alert-danger no-print">
-                            <strong>Jornada acima do limite geral.</strong>
-                            A carga cadastrada soma <?= folhaPontoFormatarMinutos($cargaSemanal) ?> por semana.
+                            <strong>Jornada acima da carga contratual.</strong>
+                            A carga cadastrada soma <?= folhaPontoFormatarMinutos($cargaSemanal) ?> para um contrato de <?= $cargaContratualSelecionada ?> horas semanais.
                         </div>
                     <?php endif; ?>
 
@@ -925,9 +1013,11 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                             <th>Dia</th>
                                             <th>Jornada prevista</th>
                                             <th>Entrada</th>
-                                            <th>Almoço</th>
-                                            <th>Retorno</th>
-                                            <th>Saída</th>
+                                            <th><?= $cargaContratualSelecionada === 36 ? 'Saída' : 'Almoço' ?></th>
+                                            <?php if ($cargaContratualSelecionada === 44): ?>
+                                                <th>Retorno</th>
+                                                <th>Saída</th>
+                                            <?php endif; ?>
                                             <th>Trabalhado</th>
                                             <th>Saldo</th>
                                             <th>Status</th>
@@ -968,7 +1058,10 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                 <td class="text-nowrap"><strong><?= $dia['data_br'] ?></strong></td>
                                                 <td class="text-nowrap"><?= htmlspecialchars($dia['dia_semana']) ?></td>
                                                 <td class="text-nowrap ponto-previsto"><?= htmlspecialchars($previstoTexto) ?></td>
-                                                <?php foreach (['entrada_1', 'saida_1', 'entrada_2', 'saida_2'] as $campo): ?>
+                                                <?php $camposRegistro = $cargaContratualSelecionada === 36
+                                                    ? ['entrada_1', 'saida_1']
+                                                    : ['entrada_1', 'saida_1', 'entrada_2', 'saida_2']; ?>
+                                                <?php foreach ($camposRegistro as $campo): ?>
                                                     <td>
                                                         <input
                                                             type="time"
@@ -1046,7 +1139,13 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                             <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-2">
                                 <div>
                                     <h6 class="mb-1">Jornada semanal</h6>
-                                    <p class="text-muted small mb-0">A segunda marcação é opcional quando não houver intervalo.</p>
+                                    <div class="btn-group mt-2" role="group" aria-label="Carga semanal contratual">
+                                        <input type="radio" class="btn-check jornada-carga-opcao" name="carga_semanal" id="jornadaCarga44" value="44" checked autocomplete="off">
+                                        <label class="btn btn-outline-primary" for="jornadaCarga44">44 horas</label>
+
+                                        <input type="radio" class="btn-check jornada-carga-opcao" name="carga_semanal" id="jornadaCarga36" value="36" autocomplete="off" <?= !$cargaSemanalDisponivel ? 'disabled' : '' ?>>
+                                        <label class="btn btn-outline-primary" for="jornadaCarga36">36 horas</label>
+                                    </div>
                                 </div>
                                 <div class="ponto-carga-semanal" id="cargaSemanalModal">44h00 por semana</div>
                             </div>
@@ -1058,9 +1157,9 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                             <th>Dia</th>
                                             <th>Trabalha</th>
                                             <th>Entrada</th>
-                                            <th>Almoço</th>
-                                            <th>Retorno</th>
-                                            <th>Saída</th>
+                                            <th id="cabecalhoSaidaPrimeiroPeriodo">Almoço</th>
+                                            <th class="jornada-intervalo-coluna">Retorno</th>
+                                            <th class="jornada-intervalo-coluna">Saída</th>
                                             <th>Total</th>
                                         </tr>
                                     </thead>
@@ -1074,7 +1173,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                     </div>
                                                 </td>
                                                 <?php foreach (['entrada_1', 'saida_1', 'entrada_2', 'saida_2'] as $campo): ?>
-                                                    <td>
+                                                    <td class="<?= in_array($campo, ['entrada_2', 'saida_2'], true) ? 'jornada-intervalo-coluna' : '' ?>">
                                                         <input type="time" class="form-control form-control-sm jornada-hora" name="horarios[<?= $numeroDia ?>][<?= $campo ?>]" data-campo="<?= $campo ?>">
                                                     </td>
                                                 <?php endforeach; ?>
@@ -1085,7 +1184,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                 </table>
                             </div>
                             <div class="alert alert-warning mt-3 mb-0 d-none" id="avisoCargaSemanal">
-                                A jornada cadastrada ultrapassa 44 horas semanais. O sistema permitirá salvar, mas manterá o alerta.
+                                A jornada cadastrada ultrapassa a carga semanal escolhida. O sistema permitirá salvar, mas manterá o alerta.
                             </div>
                         </div>
                         <div class="modal-footer justify-content-between">
@@ -1172,7 +1271,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                         <span class="badge bg-primary" id="quantidadeImportacaoPdf"></span>
                                     </div>
                                     <div class="alert alert-warning py-2 d-none" id="avisoRevisaoOcr">
-                                        Os campos amarelos foram sugeridos pela jornada cadastrada. Confira cada recorte e corrija somente os horários diferentes. Você também pode digitar 8, 12 ou 1320.
+                                        Os campos amarelos foram reconhecidos a partir da escrita. Confira os recortes; os campos vermelhos podem ser preenchidos manualmente com 8, 12 ou 1320.
                                     </div>
                                     <div class="table-responsive">
                                         <table class="table table-sm align-middle mb-0 ponto-preview-tabela">
@@ -1182,9 +1281,11 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                     <th>Dia da semana</th>
                                                     <th>Situação</th>
                                                     <th>Entrada</th>
-                                                    <th>Almoço</th>
-                                                    <th>Retorno</th>
-                                                    <th>Saída</th>
+                                                    <th><?= $cargaContratualSelecionada === 36 ? 'Saída' : 'Almoço' ?></th>
+                                                    <?php if ($cargaContratualSelecionada === 44): ?>
+                                                        <th>Retorno</th>
+                                                        <th>Saída</th>
+                                                    <?php endif; ?>
                                                 </tr>
                                             </thead>
                                             <tbody id="corpoImportacaoPdf"></tbody>

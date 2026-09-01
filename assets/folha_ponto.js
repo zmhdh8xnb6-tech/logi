@@ -46,6 +46,45 @@
         return sinal + Math.floor(absoluto / 60) + 'h' + String(absoluto % 60).padStart(2, '0');
     }
 
+    function cargaSemanalEscolhida() {
+        const opcao = document.querySelector('.jornada-carga-opcao:checked');
+        return Number(opcao?.value) === 36 ? 36 : 44;
+    }
+
+    function aplicarCargaSemanal(restaurarIntervalo) {
+        const cargaSemanal = cargaSemanalEscolhida();
+        const jornada36 = cargaSemanal === 36;
+        const modal = document.getElementById('modalFuncionario');
+        const cabecalhoSaida = document.getElementById('cabecalhoSaidaPrimeiroPeriodo');
+
+        modal?.classList.toggle('jornada-modo-36', jornada36);
+
+        if (cabecalhoSaida) {
+            cabecalhoSaida.textContent = jornada36 ? 'Saída' : 'Almoço';
+        }
+
+        document.querySelectorAll('.jornada-hora').forEach(function (campo) {
+            const campoIntervalo = campo.dataset.campo === 'entrada_2'
+                || campo.dataset.campo === 'saida_2';
+
+            if (!campoIntervalo) {
+                return;
+            }
+
+            if (jornada36) {
+                if (campo.value !== '') {
+                    campo.dataset.valorJornada44 = campo.value;
+                }
+
+                campo.value = '';
+            } else if (restaurarIntervalo && campo.value === '' && campo.dataset.valorJornada44) {
+                campo.value = campo.dataset.valorJornada44;
+            }
+        });
+
+        atualizarCargaSemanal();
+    }
+
     function dadosLinha(linha) {
         const dados = {};
         linha.querySelectorAll('.jornada-hora').forEach(function (campo) {
@@ -58,10 +97,13 @@
         const trabalha = linha.querySelector('.jornada-trabalha');
         const campos = linha.querySelectorAll('.jornada-hora');
         const ativa = Boolean(trabalha && trabalha.checked);
+        const jornada36 = cargaSemanalEscolhida() === 36;
 
         linha.classList.toggle('jornada-ativa', ativa);
         campos.forEach(function (campo) {
-            campo.disabled = !ativa;
+            const campoIntervalo = campo.dataset.campo === 'entrada_2'
+                || campo.dataset.campo === 'saida_2';
+            campo.disabled = !ativa || (jornada36 && campoIntervalo);
             campo.classList.remove('is-invalid');
         });
 
@@ -89,7 +131,7 @@
         }
 
         if (aviso) {
-            aviso.classList.toggle('d-none', total <= 44 * 60);
+            aviso.classList.toggle('d-none', total <= cargaSemanalEscolhida() * 60);
         }
     }
 
@@ -102,6 +144,7 @@
         const grupoAtivo = document.getElementById('grupoFuncionarioAtivo');
         const excluir = document.getElementById('btnExcluirFuncionario');
         const titulo = document.getElementById('tituloModalFuncionario');
+        const cargaSemanal = Number(dados.cargaSemanal) === 36 ? 36 : 44;
         const horarios = dados.horarios || Object.values(horariosPadrao);
         const porDia = {};
 
@@ -119,6 +162,10 @@
         if (excluir) excluir.classList.toggle('d-none', !editando);
         if (titulo) titulo.textContent = editando ? 'Editar funcionário e jornada' : 'Novo funcionário';
 
+        document.querySelectorAll('.jornada-carga-opcao').forEach(function (opcao) {
+            opcao.checked = Number(opcao.value) === cargaSemanal;
+        });
+
         document.querySelectorAll('.jornada-linha').forEach(function (linha) {
             const dia = Number(linha.dataset.dia);
             const horario = porDia[dia] || horariosPadrao[dia];
@@ -129,12 +176,13 @@
             }
 
             linha.querySelectorAll('.jornada-hora').forEach(function (campo) {
+                delete campo.dataset.valorJornada44;
                 campo.value = horario[campo.dataset.campo] || '';
                 campo.classList.remove('is-invalid');
             });
         });
 
-        atualizarCargaSemanal();
+        aplicarCargaSemanal(false);
     }
 
     function validarFuncionario(evento) {
@@ -174,7 +222,7 @@
                 valido = false;
             }
 
-            if (!segundoVazio && !segundoCompleto) {
+            if (cargaSemanalEscolhida() === 44 && !segundoVazio && !segundoCompleto) {
                 campos.entrada_2.classList.add('is-invalid');
                 campos.saida_2.classList.add('is-invalid');
                 valido = false;
@@ -607,6 +655,17 @@
         }
     }
 
+    function cargaSemanalFuncionarioSelecionado() {
+        const botao = document.getElementById('btnEditarFuncionario');
+        return Number(botao?.dataset.cargaSemanal) === 36 ? 36 : 44;
+    }
+
+    function camposRegistroFuncionarioSelecionado() {
+        return cargaSemanalFuncionarioSelecionado() === 36
+            ? ['entrada_1', 'saida_1']
+            : ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'];
+    }
+
     function horarioPrevistoPdf(dataIso, campo) {
         const partes = dataIso.split('-').map(Number);
         const diaJs = new Date(partes[0], partes[1] - 1, partes[2], 12).getDay();
@@ -659,6 +718,30 @@
         return String(hora).padStart(2, '0') + ':' + String(minuto).padStart(2, '0');
     }
 
+    function normalizarHorarioOcr(valor) {
+        let texto = String(valor || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toUpperCase()
+            .replace(/[IL|!]/g, '1')
+            .replace(/[OQD]/g, '0')
+            .replace(/S/g, '5')
+            .replace(/B/g, '8')
+            .replace(/G/g, '9')
+            .replace(/[^0-9:H]/g, '');
+
+        const comSeparador = texto.match(/(\d{1,2})[:H](\d{1,2})?/);
+
+        if (comSeparador) {
+            return normalizarHorarioDigitado(
+                comSeparador[1] + ':' + (comSeparador[2] || '00')
+            );
+        }
+
+        texto = texto.replace(/\D/g, '');
+        return normalizarHorarioDigitado(texto);
+    }
+
     function mostrarPreviewPdf(registros, leituraOcr) {
         const corpo = document.getElementById('corpoImportacaoPdf');
         const preview = document.getElementById('previewImportacaoPdf');
@@ -669,7 +752,7 @@
         corpo.replaceChildren();
         camposDetectadosPdf = new Set();
         registrosPdfAtuais = registros.map(function (registro) {
-            return {
+            const registroNormalizado = {
                 data: registro.data,
                 entrada_1: registro.entrada_1 || '',
                 saida_1: registro.saida_1 || '',
@@ -677,6 +760,13 @@
                 saida_2: registro.saida_2 || '',
                 observacao: registro.observacao || ''
             };
+
+            if (cargaSemanalFuncionarioSelecionado() === 36) {
+                registroNormalizado.entrada_2 = '';
+                registroNormalizado.saida_2 = '';
+            }
+
+            return registroNormalizado;
         });
 
         registrosPdfAtuais.forEach(function (registro, indice) {
@@ -700,7 +790,7 @@
             }
             linha.appendChild(colunaSituacao);
 
-            ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].forEach(function (campo) {
+            camposRegistroFuncionarioSelecionado().forEach(function (campo) {
                 const coluna = document.createElement('td');
                 const grupo = document.createElement('div');
                 const input = document.createElement('input');
@@ -899,6 +989,47 @@
         return diasComPares.length >= 2;
     }
 
+    async function reconhecerHorariosRecortados(tarefas, porDia) {
+        if (!window.Tesseract?.createWorker || tarefas.length === 0) {
+            return;
+        }
+
+        const worker = await window.Tesseract.createWorker('por', 1, {
+            logger: function (progresso) {
+                if (progresso.status !== 'recognizing text') return;
+                atualizarStatusImportacao('Reconhecendo os horários escritos... ' + Math.round((progresso.progress || 0) * 100) + '%');
+            }
+        });
+
+        try {
+            await worker.setParameters({
+                tessedit_pageseg_mode: '7',
+                tessedit_char_whitelist: '0123456789:hH'
+            });
+
+            for (let indice = 0; indice < tarefas.length; indice += 1) {
+                const tarefa = tarefas[indice];
+                atualizarStatusImportacao(
+                    'Reconhecendo horários escritos... ' + (indice + 1) + ' de ' + tarefas.length
+                );
+                let horario = '';
+
+                try {
+                    const resultado = await worker.recognize(tarefa.canvas);
+                    horario = normalizarHorarioOcr(resultado?.data?.text || '');
+                } catch (erro) {
+                    horario = '';
+                }
+
+                if (horario && porDia.has(tarefa.dia)) {
+                    porDia.get(tarefa.dia)[tarefa.campo] = horario;
+                }
+            }
+        } finally {
+            await worker.terminate();
+        }
+    }
+
     async function registrosDoPdfDigitalizado(pdf, mesSelecionado) {
         atualizarStatusImportacao('Separando os horários escritos em cada dia...');
         const canvas = await canvasPaginaPdf(pdf, 1, 2.4);
@@ -944,6 +1075,8 @@
             }
             porDia.get(tarefa.dia)._imagens[tarefa.campo] = tarefa.canvas.toDataURL('image/png');
         });
+
+        await reconhecerHorariosRecortados(tarefas, porDia);
 
         return Array.from(porDia.values()).sort(function (a, b) {
             return a.data.localeCompare(b.data);
@@ -1064,7 +1197,14 @@
                 id: botao?.dataset.id || '',
                 nome: botao?.dataset.nome || '',
                 ativo: Number(botao?.dataset.ativo ?? 1),
+                cargaSemanal: Number(botao?.dataset.cargaSemanal ?? 44),
                 horarios: horarios
+            });
+        });
+
+        document.querySelectorAll('.jornada-carga-opcao').forEach(function (opcao) {
+            opcao.addEventListener('change', function () {
+                aplicarCargaSemanal(true);
             });
         });
 

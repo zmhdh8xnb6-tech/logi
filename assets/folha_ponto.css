@@ -319,6 +319,10 @@
     color: #667085;
 }
 
+#modalFuncionario.jornada-modo-36 .jornada-intervalo-coluna {
+    display: none;
+}
+
 .jornada-linha .is-invalid {
     border-color: #dc3545;
     background-image: none;
