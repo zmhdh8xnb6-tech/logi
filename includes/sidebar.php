@@ -107,6 +107,13 @@
             </a>
         <?php endif; ?>
 
+        <?php if (usuarioPode('frota')): ?>
+            <a href="frota.php" class="sidebar-link" data-label="Gestão da Frota">
+                <i class="bi bi-car-front"></i>
+                <span>Gestão da Frota</span>
+            </a>
+        <?php endif; ?>
+
         <?php if (usuarioPode('legalizacao')): ?>
             <a href="legalizacao.php" class="sidebar-link" data-label="Legalização">
                 <i class="bi bi-diagram-3"></i>

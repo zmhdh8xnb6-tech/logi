@@ -118,6 +118,10 @@
     --card-accent: #0f766e;
 }
 
+.card-frota {
+    --card-accent: #0284c7;
+}
+
 .card-legalizacao {
     --card-accent: #0d6efd;
 }

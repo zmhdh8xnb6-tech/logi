@@ -17,6 +17,7 @@ if (!function_exists('modulosSistema')) {
             'paralisacoes' => 'Paralisações',
             'financeiro' => 'Financeiro',
             'folha_ponto' => 'Folha de Ponto',
+            'frota' => 'Gestão da Frota',
             'legalizacao' => 'Legalização',
             'usuarios' => 'Usuários e Permissões',
         ];

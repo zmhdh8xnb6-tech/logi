@@ -11,6 +11,10 @@ $resumoTarefas = [
     'pendentes' => 0,
     'concluidas_hoje' => 0,
 ];
+$resumoFrota = [
+    'veiculos' => 0,
+    'alertas' => 0,
+];
 $avisosSistema = [];
 
 if (usuarioPode('tarefas')) {
@@ -53,6 +57,42 @@ if (usuarioPode('pendencias')) {
         $avisosSistema = array_merge($avisosSistema, listarAvisosVencimentosSistema($pdo));
     } catch (Throwable $e) {
         $avisosSistema = $avisosSistema;
+    }
+}
+
+if (usuarioPode('frota')) {
+    try {
+        $estruturaFrota = logiTabelaExiste($pdo, 'frota_veiculos')
+            && logiTabelaExiste($pdo, 'frota_obrigacoes')
+            && logiTabelaExiste($pdo, 'frota_multas');
+
+        if ($estruturaFrota) {
+            $empresaIdFrota = max(1, (int)(empresaAtivaId($pdo) ?? 1));
+            $stmtFrota = $pdo->prepare("
+                SELECT
+                    (SELECT COUNT(*) FROM frota_veiculos WHERE empresa_id = ? AND situacao = 'ativo') AS veiculos,
+                    (
+                        (SELECT COUNT(*) FROM frota_obrigacoes WHERE empresa_id = ? AND situacao = 'pendente' AND vencimento <= DATE_ADD(CURDATE(), INTERVAL 30 DAY))
+                        +
+                        (SELECT COUNT(*) FROM frota_multas WHERE empresa_id = ? AND situacao = 'pendente' AND vencimento IS NOT NULL AND vencimento <= DATE_ADD(CURDATE(), INTERVAL 30 DAY))
+                    ) AS alertas
+            ");
+            $stmtFrota->execute([$empresaIdFrota, $empresaIdFrota, $empresaIdFrota]);
+            $resumoFrota = array_map('intval', $stmtFrota->fetch(PDO::FETCH_ASSOC) ?: $resumoFrota);
+
+            if ($resumoFrota['alertas'] > 0) {
+                $avisosSistema[] = [
+                    'icone' => 'bi-car-front',
+                    'url' => 'frota.php',
+                    'resolver_url' => 'frota.php',
+                    'titulo' => 'Frota com vencimentos para conferir',
+                    'texto' => 'Há documentos ou multas vencidos ou com vencimento nos próximos 30 dias.',
+                    'quantidade' => $resumoFrota['alertas'],
+                ];
+            }
+        }
+    } catch (Throwable $e) {
+        $resumoFrota = ['veiculos' => 0, 'alertas' => 0];
     }
 }
 ?>
@@ -205,6 +245,19 @@ if (usuarioPode('pendencias')) {
                             <div class="icon"><i class="bi bi-clock-history"></i></div>
                             <h5>Folha de Ponto</h5>
                             <p>Jornadas, horários e registros mensais</p>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+                <?php if (usuarioPode('frota')): ?>
+                    <div class="col-md-4">
+                        <div class="card-servico card-frota" onclick="location.href='frota.php'">
+                            <div class="icon"><i class="bi bi-car-front"></i></div>
+                            <h5>Gestão da Frota</h5>
+                            <p>
+                                <?= (int)$resumoFrota['veiculos'] ?> veículo<?= (int)$resumoFrota['veiculos'] === 1 ? '' : 's' ?> ativo<?= (int)$resumoFrota['veiculos'] === 1 ? '' : 's' ?>
+                                · <?= (int)$resumoFrota['alertas'] ?> alerta<?= (int)$resumoFrota['alertas'] === 1 ? '' : 's' ?>
+                            </p>
                         </div>
                     </div>
                 <?php endif; ?>

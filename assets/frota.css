@@ -1,0 +1,398 @@
+.frota-pagina {
+    padding: 26px 28px 40px;
+}
+
+.frota-cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 22px;
+}
+
+.frota-cabecalho h3 {
+    color: #172033;
+    font-weight: 700;
+}
+
+.frota-cabecalho-acoes {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.frota-cabecalho-acoes .btn,
+.frota-painel-titulo .btn {
+    min-height: 42px;
+}
+
+.frota-resumo {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+.frota-metrica {
+    min-height: 112px;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #dce3ec;
+    border-left: 5px solid var(--metrica-cor, #2563eb);
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+}
+
+.frota-metrica span {
+    display: block;
+    margin-bottom: 10px;
+    color: #64748b;
+    font-size: 0.86rem;
+    font-weight: 700;
+}
+
+.frota-metrica strong {
+    display: block;
+    color: #172033;
+    font-size: 1.65rem;
+    line-height: 1.1;
+}
+
+.metrica-veiculos {
+    --metrica-cor: #0284c7;
+}
+
+.metrica-vencidos {
+    --metrica-cor: #dc3545;
+}
+
+.metrica-proximos {
+    --metrica-cor: #d97706;
+}
+
+.metrica-multas {
+    --metrica-cor: #7c3aed;
+}
+
+.frota-abas {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    padding: 0 8px;
+    border-bottom: 1px solid #d7dfe9;
+}
+
+.frota-abas a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 0 18px;
+    color: #5b6b82;
+    border-bottom: 3px solid transparent;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.frota-abas a:hover {
+    color: #0d6efd;
+    background: #f8fafc;
+}
+
+.frota-abas a.ativo {
+    color: #0d6efd;
+    border-bottom-color: #0d6efd;
+}
+
+.frota-painel {
+    margin-top: 18px;
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid #dce3ec;
+    border-radius: 8px;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+}
+
+.frota-painel-titulo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 20px 22px 4px;
+}
+
+.frota-painel-titulo h5 {
+    margin: 0 0 4px;
+    color: #1e293b;
+    font-size: 1.05rem;
+}
+
+.frota-painel-titulo p {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.frota-filtros {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(190px, 240px) auto;
+    gap: 10px;
+    padding: 18px 22px;
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.frota-filtros-registros {
+    grid-template-columns: minmax(240px, 1fr) minmax(210px, 280px) auto;
+}
+
+.frota-busca {
+    position: relative;
+}
+
+.frota-busca i {
+    position: absolute;
+    top: 50%;
+    left: 13px;
+    z-index: 2;
+    color: #7b8798;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.frota-busca .form-control {
+    padding-left: 38px;
+}
+
+.frota-tabela {
+    min-width: 920px;
+    margin: 0;
+}
+
+.frota-tabela thead th {
+    padding: 14px 16px;
+    color: #5d6c81;
+    background: #f6f8fb;
+    border-bottom: 1px solid #dce3ec;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.frota-tabela tbody td {
+    padding: 14px 16px;
+    color: #263244;
+    border-color: #e7ebf1;
+    vertical-align: middle;
+}
+
+.frota-tabela tbody tr:hover td {
+    background: #fbfdff;
+}
+
+.frota-tabela td strong,
+.frota-tabela td small {
+    display: block;
+}
+
+.frota-tabela td small {
+    margin-top: 3px;
+    color: #738196;
+    font-size: 0.78rem;
+}
+
+.frota-placa {
+    display: inline-block;
+    min-width: 92px;
+    padding: 6px 8px;
+    color: #172033;
+    background: #f8fafc;
+    border: 1px solid #bac5d3;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92rem;
+    font-weight: 800;
+    text-align: center;
+    letter-spacing: 0;
+}
+
+.frota-placa-menor {
+    min-width: 82px;
+    padding: 4px 7px;
+    font-size: 0.82rem;
+}
+
+.frota-acoes {
+    min-width: 120px;
+    white-space: nowrap;
+}
+
+.frota-acoes .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 6px;
+}
+
+.frota-vazio {
+    height: 140px;
+    color: #718096 !important;
+    text-align: center;
+}
+
+.frota-ativacao {
+    padding: 28px;
+}
+
+.frota-ativacao>i {
+    float: left;
+    margin-right: 16px;
+    color: #0d6efd;
+    font-size: 2rem;
+}
+
+.frota-ativacao h5 {
+    margin-bottom: 6px;
+}
+
+.frota-ativacao p {
+    color: #657389;
+}
+
+.frota-ativacao-acoes {
+    clear: both;
+    padding-top: 8px;
+}
+
+.frota-ativacao-acoes .btn {
+    min-height: 42px;
+}
+
+.frota-ativacao details {
+    clear: both;
+    margin-top: 20px;
+}
+
+.frota-ativacao summary {
+    color: #0d6efd;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.frota-ativacao pre {
+    max-height: 420px;
+    margin: 14px 0 0;
+    padding: 18px;
+    overflow: auto;
+    color: #dbeafe;
+    background: #172033;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    white-space: pre-wrap;
+}
+
+.alerta-temporario {
+    margin-bottom: 18px;
+}
+
+.modal-content {
+    border: 0;
+    border-radius: 8px;
+}
+
+.modal-header,
+.modal-footer {
+    padding: 16px 20px;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal .form-label {
+    margin-bottom: 6px;
+    color: #475569;
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+
+.frota-form .invalid-feedback {
+    margin-top: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.frota-form .form-control.is-invalid,
+.frota-form .form-select.is-invalid {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+}
+
+@media (max-width: 1280px) {
+    .frota-resumo {
+        grid-template-columns: repeat(2, minmax(160px, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .frota-pagina {
+        padding: 20px 14px 32px;
+    }
+
+    .frota-cabecalho,
+    .frota-painel-titulo {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .frota-cabecalho-acoes .btn,
+    .frota-painel-titulo .btn {
+        flex: 1;
+    }
+
+    .frota-resumo {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .frota-metrica {
+        min-height: 100px;
+        padding: 16px;
+    }
+
+    .frota-metrica strong {
+        font-size: 1.35rem;
+    }
+
+    .frota-abas {
+        padding: 0;
+        overflow-x: auto;
+    }
+
+    .frota-abas a {
+        min-width: max-content;
+        padding: 0 14px;
+    }
+
+    .frota-filtros,
+    .frota-filtros-registros {
+        grid-template-columns: 1fr;
+        padding: 14px;
+    }
+
+    .frota-painel-titulo {
+        padding: 16px 14px 2px;
+    }
+}
+
+@media (max-width: 430px) {
+    .frota-resumo {
+        grid-template-columns: 1fr;
+    }
+}
