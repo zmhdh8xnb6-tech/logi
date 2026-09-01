@@ -323,6 +323,12 @@
     display: none;
 }
 
+#modalFuncionario .modal-body {
+    max-height: calc(100vh - 210px);
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+}
+
 .jornada-linha .is-invalid {
     border-color: #dc3545;
     background-image: none;

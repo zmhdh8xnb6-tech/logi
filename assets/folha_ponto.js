@@ -521,17 +521,20 @@
 
     function linhasDoPdf(itens) {
         const linhas = [];
+        const toleranciaVertical = 12;
 
         itens
             .filter(function (item) { return String(item.str || '').trim() !== ''; })
             .sort(function (a, b) {
                 const diferencaY = b.transform[5] - a.transform[5];
-                return Math.abs(diferencaY) > 4 ? diferencaY : a.transform[4] - b.transform[4];
+                return Math.abs(diferencaY) > toleranciaVertical
+                    ? diferencaY
+                    : a.transform[4] - b.transform[4];
             })
             .forEach(function (item) {
                 const y = item.transform[5];
                 let linha = linhas.find(function (existente) {
-                    return Math.abs(existente.y - y) <= 4;
+                    return Math.abs(existente.y - y) <= toleranciaVertical;
                 });
 
                 if (!linha) {
@@ -551,6 +554,37 @@
                 .trim();
             return texto.split(/[\r\n]+/).map(function (parte) { return parte.trim(); }).filter(Boolean);
         });
+    }
+
+    async function linhasDoWord(arquivo) {
+        if (!window.mammoth?.convertToHtml) {
+            throw new Error('O leitor de Word não carregou. Verifique a internet e tente novamente.');
+        }
+
+        atualizarStatusImportacao('Lendo as tabelas do Word...');
+        const resultado = await window.mammoth.convertToHtml({
+            arrayBuffer: await arquivo.arrayBuffer()
+        });
+        const documento = new DOMParser().parseFromString(resultado.value || '', 'text/html');
+        const linhas = [];
+
+        documento.body.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, tr').forEach(function (elemento) {
+            let texto = '';
+
+            if (elemento.matches('tr')) {
+                texto = Array.from(elemento.querySelectorAll(':scope > th, :scope > td'))
+                    .map(function (celula) { return celula.textContent.replace(/\s+/g, ' ').trim(); })
+                    .filter(Boolean)
+                    .join(' | ');
+            } else {
+                if (elemento.closest('tr')) return;
+                texto = elemento.textContent.replace(/\s+/g, ' ').trim();
+            }
+
+            if (texto) linhas.push(texto);
+        });
+
+        return linhas;
     }
 
     function registrosDasLinhas(linhas, mesSelecionado) {
@@ -605,6 +639,31 @@
                     observacao: item.observacao || ''
                 };
             });
+    }
+
+    function completarRegistrosDoMes(registros, mesSelecionado) {
+        const partes = String(mesSelecionado || '').split('-').map(Number);
+
+        if (partes.length !== 2 || !partes[0] || partes[1] < 1 || partes[1] > 12) {
+            return registros;
+        }
+
+        const quantidadeDias = new Date(partes[0], partes[1], 0).getDate();
+        const porData = new Map(registros.map(function (registro) {
+            return [registro.data, registro];
+        }));
+
+        return Array.from({ length: quantidadeDias }, function (_, indice) {
+            const data = mesSelecionado + '-' + String(indice + 1).padStart(2, '0');
+            return porData.get(data) || {
+                data: data,
+                entrada_1: '',
+                saida_1: '',
+                entrada_2: '',
+                saida_2: '',
+                observacao: ''
+            };
+        });
     }
 
     function mostrarErroPdf(mensagem) {
@@ -742,6 +801,33 @@
         return normalizarHorarioDigitado(texto);
     }
 
+    function validarHorarioOcr(horario, esperado, confianca) {
+        if (!horario) return '';
+
+        const minutosLidos = minutosHora(horario);
+        const minutosEsperados = minutosHora(esperado);
+        let horarioValidado = horario;
+
+        if (minutosEsperados !== null && minutosLidos !== null) {
+            const horaLida = Math.floor(minutosLidos / 60);
+            const horaEsperada = Math.floor(minutosEsperados / 60);
+            const minutoLido = minutosLidos % 60;
+
+            if (horaLida < 10 && horaEsperada >= 10 && horaLida + 10 === horaEsperada) {
+                horarioValidado = String(horaLida + 10).padStart(2, '0')
+                    + ':' + String(minutoLido).padStart(2, '0');
+            }
+
+            if (Math.abs(minutosHora(horarioValidado) - minutosEsperados) > 120) {
+                return '';
+            }
+
+            return Number(confianca || 0) >= 15 ? horarioValidado : '';
+        }
+
+        return Number(confianca || 0) >= 45 ? horarioValidado : '';
+    }
+
     function mostrarPreviewPdf(registros, leituraOcr) {
         const corpo = document.getElementById('corpoImportacaoPdf');
         const preview = document.getElementById('previewImportacaoPdf');
@@ -762,6 +848,46 @@
             };
 
             if (cargaSemanalFuncionarioSelecionado() === 36) {
+                let marcacoes = [
+                    registro.entrada_1,
+                    registro.saida_1,
+                    registro.entrada_2,
+                    registro.saida_2
+                ].filter(Boolean);
+                const esperadoEntrada = horarioPrevistoPdf(registro.data, 'entrada_1');
+                const esperadoSaida = horarioPrevistoPdf(registro.data, 'saida_1');
+
+                if (
+                    marcacoes.length >= 2
+                    && minutosHora(esperadoEntrada) !== null
+                    && minutosHora(esperadoSaida) !== null
+                    && minutosHora(esperadoSaida) > minutosHora(esperadoEntrada)
+                ) {
+                    marcacoes = marcacoes.slice().sort(function (a, b) {
+                        return minutosHora(a) - minutosHora(b);
+                    });
+                }
+
+                let entrada = marcacoes[0] || '';
+                let saida = marcacoes.length >= 2 ? marcacoes[marcacoes.length - 1] : '';
+
+                if (marcacoes.length === 1) {
+                    const minutosMarcacao = minutosHora(marcacoes[0]);
+                    const diferencaEntrada = minutosMarcacao !== null && minutosHora(esperadoEntrada) !== null
+                        ? Math.abs(minutosMarcacao - minutosHora(esperadoEntrada))
+                        : Number.POSITIVE_INFINITY;
+                    const diferencaSaida = minutosMarcacao !== null && minutosHora(esperadoSaida) !== null
+                        ? Math.abs(minutosMarcacao - minutosHora(esperadoSaida))
+                        : Number.POSITIVE_INFINITY;
+
+                    if (diferencaSaida < diferencaEntrada || (diferencaSaida === diferencaEntrada && minutosMarcacao >= 12 * 60)) {
+                        entrada = '';
+                        saida = marcacoes[0];
+                    }
+                }
+
+                registroNormalizado.entrada_1 = entrada;
+                registroNormalizado.saida_1 = saida;
                 registroNormalizado.entrada_2 = '';
                 registroNormalizado.saida_2 = '';
             }
@@ -794,7 +920,9 @@
                 const coluna = document.createElement('td');
                 const grupo = document.createElement('div');
                 const input = document.createElement('input');
-                const imagemRecorte = registroOriginal._imagens?.[campo] || '';
+                const imagemRecorte = cargaSemanalFuncionarioSelecionado() === 36 && campo === 'saida_1'
+                    ? (registroOriginal._imagens?.saida_2 || registroOriginal._imagens?.saida_1 || '')
+                    : (registroOriginal._imagens?.[campo] || '');
                 const diaEspecial = /^(?:feriado|folga|atestado)\b/i.test(registro.observacao);
                 const horarioEsperado = !diaEspecial && horarioPrevistoPdf(registro.data, campo) !== '';
 
@@ -875,6 +1003,9 @@
         const largura = Math.max(1, Math.floor(area.x1 - area.x0));
         const altura = Math.max(1, Math.floor(area.y1 - area.y0));
         const imagem = contexto.getImageData(x0, y0, largura, altura);
+        const mascara = new Uint8Array(largura * altura);
+        const pixelsPorLinha = new Uint16Array(altura);
+        const pixelsPorColuna = new Uint16Array(largura);
         const ativos = [];
         let minimoX = largura;
         let minimoY = altura;
@@ -890,21 +1021,95 @@
                 const luminancia = (vermelho * .299) + (verde * .587) + (azul * .114);
                 const ativo = somenteAzul
                     ? azul - vermelho > 25 && azul > verde * 1.04 && azul > vermelho * 1.12
-                    : luminancia < 115;
+                    : luminancia < 175;
 
                 if (!ativo) continue;
-                ativos.push([x, y]);
-                minimoX = Math.min(minimoX, x);
-                minimoY = Math.min(minimoY, y);
-                maximoX = Math.max(maximoX, x);
-                maximoY = Math.max(maximoY, y);
+                mascara[(y * largura) + x] = 1;
+                pixelsPorLinha[y] += 1;
+                pixelsPorColuna[x] += 1;
             }
         }
 
-        const minimoPixels = somenteAzul ? 18 : 45;
+        for (let y = 0; y < altura; y += 1) {
+            for (let x = 0; x < largura; x += 1) {
+                if (!mascara[(y * largura) + x]) continue;
+
+                // Nas digitalizações em preto e branco, retira as bordas da grade
+                // antes de procurar a escrita dentro da célula.
+                if (
+                    !somenteAzul
+                    && (pixelsPorLinha[y] > largura * .55 || pixelsPorColuna[x] > altura * .72)
+                ) {
+                    mascara[(y * largura) + x] = 0;
+                    continue;
+                }
+
+                if (somenteAzul) ativos.push([x, y]);
+            }
+        }
+
+        if (!somenteAzul) {
+            for (let y = 0; y < altura; y += 1) {
+                for (let x = 0; x < largura; x += 1) {
+                    const origem = (y * largura) + x;
+                    if (!mascara[origem]) continue;
+
+                    const fila = [[x, y]];
+                    const componente = [];
+                    let cursor = 0;
+                    let componenteMinimoX = x;
+                    let componenteMaximoX = x;
+                    let componenteMinimoY = y;
+                    let componenteMaximoY = y;
+                    mascara[origem] = 0;
+
+                    while (cursor < fila.length) {
+                        const ponto = fila[cursor];
+                        cursor += 1;
+                        componente.push(ponto);
+                        componenteMinimoX = Math.min(componenteMinimoX, ponto[0]);
+                        componenteMaximoX = Math.max(componenteMaximoX, ponto[0]);
+                        componenteMinimoY = Math.min(componenteMinimoY, ponto[1]);
+                        componenteMaximoY = Math.max(componenteMaximoY, ponto[1]);
+
+                        for (let deslocamentoY = -1; deslocamentoY <= 1; deslocamentoY += 1) {
+                            for (let deslocamentoX = -1; deslocamentoX <= 1; deslocamentoX += 1) {
+                                if (deslocamentoX === 0 && deslocamentoY === 0) continue;
+                                const vizinhoX = ponto[0] + deslocamentoX;
+                                const vizinhoY = ponto[1] + deslocamentoY;
+                                if (vizinhoX < 0 || vizinhoY < 0 || vizinhoX >= largura || vizinhoY >= altura) continue;
+                                const vizinho = (vizinhoY * largura) + vizinhoX;
+                                if (!mascara[vizinho]) continue;
+                                mascara[vizinho] = 0;
+                                fila.push([vizinhoX, vizinhoY]);
+                            }
+                        }
+                    }
+
+                    const larguraComponente = componenteMaximoX - componenteMinimoX + 1;
+                    const alturaComponente = componenteMaximoY - componenteMinimoY + 1;
+                    if (
+                        componente.length >= 5
+                        && alturaComponente >= 4
+                        && !(larguraComponente > 20 && alturaComponente <= 5)
+                    ) {
+                        ativos.push.apply(ativos, componente);
+                    }
+                }
+            }
+        }
+
+        const minimoPixels = somenteAzul ? 18 : 25;
         if (ativos.length < minimoPixels) {
             return null;
         }
+
+        ativos.forEach(function (ponto) {
+            minimoX = Math.min(minimoX, ponto[0]);
+            minimoY = Math.min(minimoY, ponto[1]);
+            maximoX = Math.max(maximoX, ponto[0]);
+            maximoY = Math.max(maximoY, ponto[1]);
+        });
 
         const margem = 4;
         minimoX = Math.max(0, minimoX - margem);
@@ -1002,27 +1207,47 @@
         });
 
         try {
-            await worker.setParameters({
-                tessedit_pageseg_mode: '7',
-                tessedit_char_whitelist: '0123456789:hH'
-            });
+            const pendentes = tarefas.slice();
+            const tentativas = [
+                { modo: '7', caracteres: '0123456789:hH' },
+                { modo: '10', caracteres: '0123456789' }
+            ];
 
-            for (let indice = 0; indice < tarefas.length; indice += 1) {
-                const tarefa = tarefas[indice];
-                atualizarStatusImportacao(
-                    'Reconhecendo horários escritos... ' + (indice + 1) + ' de ' + tarefas.length
-                );
-                let horario = '';
+            for (let tentativa = 0; tentativa < tentativas.length && pendentes.length > 0; tentativa += 1) {
+                await worker.setParameters({
+                    tessedit_pageseg_mode: tentativas[tentativa].modo,
+                    tessedit_char_whitelist: tentativas[tentativa].caracteres
+                });
 
-                try {
-                    const resultado = await worker.recognize(tarefa.canvas);
-                    horario = normalizarHorarioOcr(resultado?.data?.text || '');
-                } catch (erro) {
-                    horario = '';
-                }
+                const quantidadeTentativa = pendentes.length;
+                for (let indice = quantidadeTentativa - 1; indice >= 0; indice -= 1) {
+                    const tarefa = pendentes[indice];
+                    atualizarStatusImportacao(
+                        'Reconhecendo horários escritos... tentativa ' + (tentativa + 1)
+                        + ' de ' + tentativas.length + ', campo ' + (quantidadeTentativa - indice)
+                        + ' de ' + quantidadeTentativa
+                    );
+                    let horario = '';
 
-                if (horario && porDia.has(tarefa.dia)) {
-                    porDia.get(tarefa.dia)[tarefa.campo] = horario;
+                    try {
+                        const resultado = await worker.recognize(tarefa.canvas);
+                        const registroDia = porDia.get(tarefa.dia);
+                        const esperado = registroDia
+                            ? horarioPrevistoPdf(registroDia.data, tarefa.campo)
+                            : '';
+                        horario = validarHorarioOcr(
+                            normalizarHorarioOcr(resultado?.data?.text || ''),
+                            esperado,
+                            resultado?.data?.confidence
+                        );
+                    } catch (erro) {
+                        horario = '';
+                    }
+
+                    if (horario && porDia.has(tarefa.dia)) {
+                        porDia.get(tarefa.dia)[tarefa.campo] = horario;
+                        pendentes.splice(indice, 1);
+                    }
                 }
             }
         } finally {
@@ -1035,8 +1260,9 @@
         const canvas = await canvasPaginaPdf(pdf, 1, 2.4);
 
         const limitesX = [.168, .258, .351, .445, .535];
-        const topoLinhas = canvas.height * .204;
-        const baseLinhas = canvas.height * .840;
+        // O cabeçalho ocupa duas linhas; os registros começam depois dele.
+        const topoLinhas = canvas.height * .220;
+        const baseLinhas = canvas.height * .854;
         const alturaLinha = (baseLinhas - topoLinhas) / 31;
         const partesMes = mesSelecionado.split('-').map(Number);
         const quantidadeDias = new Date(partesMes[0], partesMes[1], 0).getDate();
@@ -1051,7 +1277,8 @@
                     y0: topoLinhas + ((dia - 1) * alturaLinha) + 4,
                     y1: topoLinhas + (dia * alturaLinha) - 4
                 };
-                const recorte = recortarCelulaOcr(canvas, area, true);
+                const recorte = recortarCelulaOcr(canvas, area, true)
+                    || recortarCelulaOcr(canvas, area, false);
                 if (recorte) tarefas.push({ dia: dia, campo: campos[coluna], canvas: recorte });
             }
         }
@@ -1083,7 +1310,7 @@
         });
     }
 
-    async function lerPdf() {
+    async function lerArquivoPonto() {
         limparImportacaoPdf();
         const arquivo = document.getElementById('arquivoPontoPdf');
         const status = document.getElementById('statusImportacaoPdf');
@@ -1091,19 +1318,31 @@
 
         if (!arquivo?.files?.[0]) {
             arquivo?.classList.add('is-invalid');
-            mostrarErroPdf('Selecione o PDF antes de iniciar a leitura.');
+            mostrarErroPdf('Selecione um arquivo PDF ou Word antes de iniciar a leitura.');
+            return;
+        }
+
+        const arquivoSelecionado = arquivo.files[0];
+        const nomeArquivo = arquivoSelecionado.name.toLowerCase();
+        const arquivoPdf = arquivoSelecionado.type === 'application/pdf' || nomeArquivo.endsWith('.pdf');
+        const arquivoWord = arquivoSelecionado.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            || nomeArquivo.endsWith('.docx');
+
+        if (!arquivoPdf && !arquivoWord) {
+            arquivo.classList.add('is-invalid');
+            mostrarErroPdf('Formato não permitido. Use PDF ou Word no formato .docx.');
             return;
         }
 
         arquivo.classList.remove('is-invalid');
-        if (arquivo.files[0].size > 15 * 1024 * 1024) {
-            mostrarErroPdf('O PDF deve ter no máximo 15 MB.');
+        if (arquivoSelecionado.size > 15 * 1024 * 1024) {
+            mostrarErroPdf('O arquivo deve ter no máximo 15 MB.');
             return;
         }
 
-        mes = definirMesImportacao(mesDoTextoPdf(arquivo.files[0].name) || mes);
+        mes = definirMesImportacao(mesDoTextoPdf(arquivoSelecionado.name) || mes);
 
-        if (!window.pdfjsLib) {
+        if (arquivoPdf && !window.pdfjsLib) {
             mostrarErroPdf('O leitor de PDF não carregou. Verifique a internet e tente novamente.');
             return;
         }
@@ -1111,8 +1350,27 @@
         status?.classList.remove('d-none');
 
         try {
+            if (arquivoWord) {
+                const linhasWord = await linhasDoWord(arquivoSelecionado);
+                if (linhasWord.length === 0) {
+                    throw new Error('O Word não contém texto ou tabela. Se ele tiver apenas uma imagem, faça o OCR antes de importar.');
+                }
+
+                const mesWord = mesDoTextoPdf(linhasWord.join(' '));
+                if (mesWord) mes = definirMesImportacao(mesWord);
+                let registrosWord = registrosDasLinhas(linhasWord, mes);
+
+                if (registrosWord.length === 0) {
+                    throw new Error('Não encontrei linhas com data e horários no Word. Use uma tabela com Data, Entrada, Almoço, Retorno e Saída.');
+                }
+
+                registrosWord = completarRegistrosDoMes(registrosWord, mes);
+                mostrarPreviewPdf(registrosWord, false);
+                return;
+            }
+
             window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-            const bytes = new Uint8Array(await arquivo.files[0].arrayBuffer());
+            const bytes = new Uint8Array(await arquivoSelecionado.arrayBuffer());
             const pdf = await window.pdfjsLib.getDocument({ data: bytes }).promise;
             const linhas = [];
             let totalItens = 0;
@@ -1151,9 +1409,10 @@
                 throw new Error('A imagem foi lida, mas nenhum horário pôde ser reconhecido. Tente uma digitalização mais nítida.');
             }
 
+            registros = completarRegistrosDoMes(registros, mes);
             mostrarPreviewPdf(registros, leituraOcr);
         } catch (erro) {
-            mostrarErroPdf(erro?.message || 'Não foi possível ler este PDF.');
+            mostrarErroPdf(erro?.message || 'Não foi possível ler este arquivo.');
         } finally {
             status?.classList.add('d-none');
         }
@@ -1268,11 +1527,11 @@
         });
 
         document.getElementById('arquivoPontoPdf')?.addEventListener('change', limparImportacaoPdf);
-        document.getElementById('btnLerPdf')?.addEventListener('click', lerPdf);
+        document.getElementById('btnLerPdf')?.addEventListener('click', lerArquivoPonto);
         document.getElementById('formImportarPdf')?.addEventListener('submit', function (evento) {
             if (!document.getElementById('registrosPdf')?.value) {
                 evento.preventDefault();
-                mostrarErroPdf('Leia e confira o PDF antes de confirmar a importação.');
+                mostrarErroPdf('Leia e confira o arquivo antes de confirmar a importação.');
             }
         });
     });

@@ -412,7 +412,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             && (int)($funcionario['carga_semanal'] ?? 44) === 36;
 
         if (!is_array($registrosImportados) || $registrosImportados === [] || count($registrosImportados) > 31) {
-            folhaPontoRedirecionar($urlRetorno, 'Nenhum registro válido foi encontrado no PDF.', 'danger');
+            folhaPontoRedirecionar($urlRetorno, 'Nenhum registro válido foi encontrado no arquivo.', 'danger');
         }
 
         try {
@@ -504,13 +504,13 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 'importar',
                 'registros_ponto',
                 $funcionarioId,
-                'Importou registros de ponto em PDF para ' . $funcionario['nome'],
+                'Importou registros de ponto por arquivo para ' . $funcionario['nome'],
                 null,
                 ['mes' => $mes, 'dias_importados' => count($datasProcessadas)]
             );
             folhaPontoRedirecionar(
                 $urlRetorno,
-                count($datasProcessadas) . ' dia' . (count($datasProcessadas) === 1 ? '' : 's') . ' importado' . (count($datasProcessadas) === 1 ? '' : 's') . ' do PDF.'
+                count($datasProcessadas) . ' dia' . (count($datasProcessadas) === 1 ? '' : 's') . ' importado' . (count($datasProcessadas) === 1 ? '' : 's') . ' do arquivo.'
             );
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -823,7 +823,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                 <i class="bi bi-pencil"></i> Jornada
                             </button>
                             <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalImportarPdf">
-                                <i class="bi bi-file-earmark-pdf"></i> Importar PDF
+                                <i class="bi bi-file-earmark-arrow-up"></i> Importar PDF/Word
                             </button>
                             <button type="button" class="btn btn-outline-secondary" id="btnImprimirPonto">
                                 <i class="bi bi-printer"></i> Imprimir
@@ -1254,11 +1254,11 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                             </div>
                             <div class="modal-body">
                                 <div class="alert alert-info">
-                                    Em folhas preenchidas à caneta, o sistema localiza os horários e sugere a jornada cadastrada do funcionário. Compare os campos com os recortes antes de confirmar.
+                                    Aceita PDF de ponto eletrônico e Word com texto ou tabela. Em PDFs digitalizados ou fotografados, o sistema mostra o recorte de cada marcação e só preenche horários realmente reconhecidos.
                                 </div>
-                                <label for="arquivoPontoPdf" class="form-label">Arquivo PDF</label>
-                                <input type="file" class="form-control" id="arquivoPontoPdf" accept="application/pdf,.pdf">
-                                <div class="invalid-feedback">Selecione um arquivo PDF.</div>
+                                <label for="arquivoPontoPdf" class="form-label">Arquivo PDF ou Word</label>
+                                <input type="file" class="form-control" id="arquivoPontoPdf" accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx">
+                                <div class="invalid-feedback">Selecione um arquivo PDF ou Word (.docx).</div>
                                 <div class="alert alert-primary d-none mt-3" id="avisoMesImportacaoPdf"></div>
                                 <div class="alert alert-danger d-none mt-3" id="erroImportacaoPdf"></div>
                                 <div class="ponto-importacao-status d-none mt-3" id="statusImportacaoPdf">
@@ -1271,7 +1271,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                         <span class="badge bg-primary" id="quantidadeImportacaoPdf"></span>
                                     </div>
                                     <div class="alert alert-warning py-2 d-none" id="avisoRevisaoOcr">
-                                        Os campos amarelos foram reconhecidos a partir da escrita. Confira os recortes; os campos vermelhos podem ser preenchidos manualmente com 8, 12 ou 1320.
+                                        Este PDF não possui horários em texto. Os campos amarelos foram reconhecidos a partir dos recortes; os campos vermelhos permaneceram vazios e podem ser preenchidos manualmente com 8, 12 ou 1320.
                                     </div>
                                     <div class="table-responsive">
                                         <table class="table table-sm align-middle mb-0 ponto-preview-tabela">
@@ -1312,6 +1312,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.11.0/mammoth.browser.min.js"></script>
     <script src="<?= assetUrl('assets/folha_ponto.js') ?>"></script>
 </body>
 
