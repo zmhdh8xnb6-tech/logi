@@ -569,7 +569,7 @@ if ($funcionarioSelecionado) {
         ];
         $observacaoRegistro = trim((string)($registro['observacao'] ?? ''));
         $feriadoInformado = preg_match('/^feriado\b/i', $observacaoRegistro) === 1;
-        $feriadoNacional = folhaPontoFeriadoNacional($dataIso);
+        $feriadoNacional = FolhaPontoCalendario::feriadoNacional($dataIso);
         $feriado = $feriadoInformado || $feriadoNacional !== null;
         $feriadoNome = $feriadoNacional ?? '';
 

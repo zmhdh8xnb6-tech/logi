@@ -93,6 +93,40 @@ function folhaPontoNomesDias(): array
     ];
 }
 
+final class FolhaPontoCalendario
+{
+    public static function feriadoNacional(string $data): ?string
+    {
+        $dataValida = DateTime::createFromFormat('!Y-m-d', $data);
+
+        if (!$dataValida || $dataValida->format('Y-m-d') !== $data) {
+            return null;
+        }
+
+        $ano = (int)$dataValida->format('Y');
+        $mesDia = $dataValida->format('m-d');
+        $feriados = [
+            '01-01' => 'Confraternização Universal',
+            '04-21' => 'Tiradentes',
+            '05-01' => 'Dia do Trabalho',
+            '09-07' => 'Independência do Brasil',
+            '11-02' => 'Finados',
+            '11-15' => 'Proclamação da República',
+            '12-25' => 'Natal',
+        ];
+
+        if ($ano >= 1980) {
+            $feriados['10-12'] = 'Nossa Senhora Aparecida';
+        }
+
+        if ($ano >= 2024) {
+            $feriados['11-20'] = 'Dia Nacional de Zumbi e da Consciência Negra';
+        }
+
+        return $feriados[$mesDia] ?? null;
+    }
+}
+
 function folhaPontoHorarioPadrao(): array
 {
     $horarios = [];
