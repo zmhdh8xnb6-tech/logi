@@ -1,37 +1,6 @@
 <?php
 require 'config.php';
-require 'includes/folha_ponto_funcoes.php';
-
-function folhaPontoFeriadoNacional(string $data): ?string
-{
-    $dataValida = DateTime::createFromFormat('!Y-m-d', $data);
-
-    if (!$dataValida || $dataValida->format('Y-m-d') !== $data) {
-        return null;
-    }
-
-    $ano = (int)$dataValida->format('Y');
-    $mesDia = $dataValida->format('m-d');
-    $feriados = [
-        '01-01' => 'Confraternização Universal',
-        '04-21' => 'Tiradentes',
-        '05-01' => 'Dia do Trabalho',
-        '09-07' => 'Independência do Brasil',
-        '11-02' => 'Finados',
-        '11-15' => 'Proclamação da República',
-        '12-25' => 'Natal',
-    ];
-
-    if ($ano >= 1980) {
-        $feriados['10-12'] = 'Nossa Senhora Aparecida';
-    }
-
-    if ($ano >= 2024) {
-        $feriados['11-20'] = 'Dia Nacional de Zumbi e da Consciência Negra';
-    }
-
-    return $feriados[$mesDia] ?? null;
-}
+require_once __DIR__ . '/includes/folha_ponto_funcoes.php';
 
 exigirPermissao('folha_ponto');
 
@@ -285,7 +254,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     saida_1 = VALUES(saida_1),
                     entrada_2 = VALUES(entrada_2),
                     saida_2 = VALUES(saida_2),
-                    observacao = VALUES(observacao),
+                    observacao = COALESCE(VALUES(observacao), observacao),
                     origem = 'manual',
                     usuario_id = VALUES(usuario_id),
                     atualizado_em = CURRENT_TIMESTAMP
@@ -317,17 +286,6 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     $valores[$campo] = $valor !== '' ? $valor : null;
                 }
 
-                $atestado = !empty($dados['atestado']);
-
-                if ($atestado) {
-                    $valores = [
-                        'entrada_1' => null,
-                        'saida_1' => null,
-                        'entrada_2' => null,
-                        'saida_2' => null,
-                    ];
-                }
-
                 if (
                     $valores['entrada_1'] !== null
                     && $valores['saida_1'] !== null
@@ -344,10 +302,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new RuntimeException('Revise a saída final do dia ' . date('d/m/Y', strtotime($data)) . '.');
                 }
 
-                $observacaoComplementar = trim((string)($dados['observacao'] ?? ''));
-                $observacao = $atestado
-                    ? 'Atestado' . ($observacaoComplementar !== '' ? ': ' . $observacaoComplementar : '')
-                    : $observacaoComplementar;
+                $observacao = trim((string)($dados['observacao'] ?? ''));
                 $observacao = function_exists('mb_substr')
                     ? mb_substr($observacao, 0, 255)
                     : substr($observacao, 0, 255);
@@ -455,19 +410,8 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? mb_substr($observacao, 0, 255)
                     : substr($observacao, 0, 255);
                 $feriado = preg_match('/^feriado\b/i', $observacao) === 1;
-                $folga = preg_match('/^folga\b/i', $observacao) === 1;
-                $atestado = preg_match('/^atestado\b/i', $observacao) === 1;
 
-                if ($folga || $atestado) {
-                    $valores = [
-                        'entrada_1' => null,
-                        'saida_1' => null,
-                        'entrada_2' => null,
-                        'saida_2' => null,
-                    ];
-                }
-
-                if (array_filter($valores, static fn($valor) => $valor !== null) === [] && !$feriado && !$folga && !$atestado) {
+                if (array_filter($valores, static fn($valor) => $valor !== null) === [] && !$feriado) {
                     continue;
                 }
 
@@ -625,11 +569,6 @@ if ($funcionarioSelecionado) {
         ];
         $observacaoRegistro = trim((string)($registro['observacao'] ?? ''));
         $feriadoInformado = preg_match('/^feriado\b/i', $observacaoRegistro) === 1;
-        $folgaInformada = preg_match('/^folga\b/i', $observacaoRegistro) === 1;
-        $atestadoInformado = preg_match('/^atestado\b/i', $observacaoRegistro) === 1;
-        $observacaoExibida = $atestadoInformado
-            ? trim((string)preg_replace('/^atestado\s*:?\s*/i', '', $observacaoRegistro))
-            : $observacaoRegistro;
         $feriadoNacional = folhaPontoFeriadoNacional($dataIso);
         $feriado = $feriadoInformado || $feriadoNacional !== null;
         $feriadoNome = $feriadoNacional ?? '';
@@ -643,15 +582,8 @@ if ($funcionarioSelecionado) {
         }
 
         $previstoJornada = !empty($horario['trabalha']) ? folhaPontoMinutosMarcacoes($horario) : 0;
-        $previsto = $feriado || $folgaInformada || $atestadoInformado ? 0 : $previstoJornada;
-
-        if ($atestadoInformado) {
-            foreach (['entrada_1', 'saida_1', 'entrada_2', 'saida_2'] as $campo) {
-                $registro[$campo] = '';
-            }
-        }
-
-        $trabalhado = $atestadoInformado ? 0 : folhaPontoMinutosMarcacoes($registro);
+        $previsto = $feriado ? 0 : $previstoJornada;
+        $trabalhado = folhaPontoMinutosMarcacoes($registro);
         $marcacoes = array_filter([
             $registro['entrada_1'] ?? '',
             $registro['saida_1'] ?? '',
@@ -668,10 +600,6 @@ if ($funcionarioSelecionado) {
 
         if ($feriado) {
             $status = ['Feriado', 'bg-primary'];
-        } elseif ($atestadoInformado) {
-            $status = ['Atestado', 'bg-info text-dark'];
-        } elseif ($folgaInformada) {
-            $status = ['Folga', 'bg-secondary'];
         } elseif (!$possuiMarcacao && $previsto <= 0) {
             $status = ['Folga', 'bg-secondary'];
         } elseif (!$possuiMarcacao && $dataIso > $hoje) {
@@ -707,8 +635,6 @@ if ($funcionarioSelecionado) {
             'feriado' => $feriado,
             'feriado_nacional' => $feriadoNacional !== null,
             'feriado_nome' => $feriadoNome,
-            'atestado' => $atestadoInformado,
-            'observacao_exibida' => $observacaoExibida,
             'fim_semana' => $diaSemana >= 6,
         ];
         $data->modify('+1 day');
@@ -1006,40 +932,34 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                     <tbody>
                                         <?php foreach ($diasFolha as $dia): ?>
                                             <?php
-                                            $jornadaPrevistaTexto = !empty($dia['horario']['trabalha'])
-                                                ? trim(implode(' / ', array_filter([
-                                                    ($dia['horario']['entrada_1'] ?? '') && ($dia['horario']['saida_1'] ?? '')
-                                                        ? substr((string)$dia['horario']['entrada_1'], 0, 5) . '-' . substr((string)$dia['horario']['saida_1'], 0, 5)
-                                                        : '',
-                                                    ($dia['horario']['entrada_2'] ?? '') && ($dia['horario']['saida_2'] ?? '')
-                                                        ? substr((string)$dia['horario']['entrada_2'], 0, 5) . '-' . substr((string)$dia['horario']['saida_2'], 0, 5)
-                                                        : '',
-                                                ])))
-                                                : 'Folga';
                                             $previstoTexto = !empty($dia['feriado'])
                                                 ? 'Feriado' . (!empty($dia['feriado_nome']) ? ': ' . $dia['feriado_nome'] : '')
-                                                : (!empty($dia['atestado']) ? 'Atestado' : $jornadaPrevistaTexto);
-                                            $classesDia = ['ponto-registro-linha'];
-
-                                            if ($dia['previsto'] <= 0) {
-                                                $classesDia[] = 'ponto-dia-folga';
-                                            }
-                                            if (!empty($dia['fim_semana'])) {
-                                                $classesDia[] = 'ponto-dia-fim-semana';
-                                            }
-                                            if (!empty($dia['atestado'])) {
-                                                $classesDia[] = 'ponto-dia-atestado';
-                                            }
-                                            if (!empty($dia['feriado'])) {
-                                                $classesDia[] = 'ponto-dia-feriado';
-                                            }
+                                                : (!empty($dia['horario']['trabalha'])
+                                                    ? trim(implode(' / ', array_filter([
+                                                        ($dia['horario']['entrada_1'] ?? '') && ($dia['horario']['saida_1'] ?? '')
+                                                            ? substr((string)$dia['horario']['entrada_1'], 0, 5) . '-' . substr((string)$dia['horario']['saida_1'], 0, 5)
+                                                            : '',
+                                                        ($dia['horario']['entrada_2'] ?? '') && ($dia['horario']['saida_2'] ?? '')
+                                                            ? substr((string)$dia['horario']['entrada_2'], 0, 5) . '-' . substr((string)$dia['horario']['saida_2'], 0, 5)
+                                                            : '',
+                                                    ])))
+                                                    : 'Folga');
                                             ?>
                                             <tr
-                                                class="<?= implode(' ', $classesDia) ?>"
+                                                class="ponto-registro-linha<?= $dia['previsto'] <= 0 ? ' ponto-dia-folga' : '' ?><?= !empty($dia['fim_semana']) ? ' ponto-dia-fim-semana' : '' ?><?= !empty($dia['feriado']) ? ' ponto-dia-feriado' : '' ?>"
                                                 data-data="<?= htmlspecialchars($dia['data']) ?>"
                                                 data-feriado-nacional="<?= !empty($dia['feriado_nacional']) ? '1' : '0' ?>"
                                                 data-feriado-nome="<?= htmlspecialchars($dia['feriado_nome'] ?? '') ?>"
-                                                data-jornada-prevista="<?= htmlspecialchars($jornadaPrevistaTexto) ?>">
+                                                data-jornada-prevista="<?= htmlspecialchars(!empty($dia['horario']['trabalha'])
+                                                                            ? trim(implode(' / ', array_filter([
+                                                                                ($dia['horario']['entrada_1'] ?? '') && ($dia['horario']['saida_1'] ?? '')
+                                                                                    ? substr((string)$dia['horario']['entrada_1'], 0, 5) . '-' . substr((string)$dia['horario']['saida_1'], 0, 5)
+                                                                                    : '',
+                                                                                ($dia['horario']['entrada_2'] ?? '') && ($dia['horario']['saida_2'] ?? '')
+                                                                                    ? substr((string)$dia['horario']['entrada_2'], 0, 5) . '-' . substr((string)$dia['horario']['saida_2'], 0, 5)
+                                                                                    : '',
+                                                                            ])))
+                                                                            : 'Folga') ?>">
                                                 <td class="text-nowrap"><strong><?= $dia['data_br'] ?></strong></td>
                                                 <td class="text-nowrap"><?= htmlspecialchars($dia['dia_semana']) ?></td>
                                                 <td class="text-nowrap ponto-previsto"><?= htmlspecialchars($previstoTexto) ?></td>
@@ -1050,7 +970,6 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                             class="form-control form-control-sm ponto-hora-registro"
                                                             name="registros[<?= $dia['data'] ?>][<?= $campo ?>]"
                                                             value="<?= htmlspecialchars($dia['registro'][$campo] ?? '') ?>"
-                                                            <?= !empty($dia['atestado']) ? 'disabled' : '' ?>
                                                             aria-label="<?= htmlspecialchars($campo . ' de ' . $dia['data_br']) ?>">
                                                     </td>
                                                 <?php endforeach; ?>
@@ -1062,24 +981,13 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                 </td>
                                                 <td><span class="badge ponto-status-dia <?= $dia['status'][1] ?>"><?= $dia['status'][0] ?></span></td>
                                                 <td>
-                                                    <div class="ponto-observacao-grupo">
-                                                        <label class="form-check form-switch ponto-atestado-controle no-print">
-                                                            <input
-                                                                type="checkbox"
-                                                                class="form-check-input ponto-atestado-check"
-                                                                name="registros[<?= $dia['data'] ?>][atestado]"
-                                                                value="1"
-                                                                <?= !empty($dia['atestado']) ? 'checked' : '' ?>>
-                                                            <span>Atestado</span>
-                                                        </label>
-                                                        <input
-                                                            type="text"
-                                                            class="form-control form-control-sm ponto-observacao"
-                                                            name="registros[<?= $dia['data'] ?>][observacao]"
-                                                            value="<?= htmlspecialchars($dia['observacao_exibida'] ?? '') ?>"
-                                                            maxlength="245"
-                                                            placeholder="Observação opcional">
-                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        class="form-control form-control-sm ponto-observacao"
+                                                        name="registros[<?= $dia['data'] ?>][observacao]"
+                                                        value="<?= htmlspecialchars($dia['registro']['observacao'] ?? '') ?>"
+                                                        maxlength="255"
+                                                        placeholder="Opcional">
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -1225,7 +1133,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
 
         <?php if ($funcionarioSelecionado): ?>
             <div class="modal fade" id="modalImportarPdf" tabindex="-1" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable ponto-modal-importacao">
+                <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
                     <div class="modal-content">
                         <form method="post" id="formImportarPdf">
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(folhaPontoToken()) ?>">
@@ -1259,7 +1167,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                         <span class="badge bg-primary" id="quantidadeImportacaoPdf"></span>
                                     </div>
                                     <div class="alert alert-warning py-2 d-none" id="avisoRevisaoOcr">
-                                        Confira os horários com os recortes. Campos em vermelho não tiveram leitura confiável e precisam ser corrigidos antes da importação. Você também pode digitar 8, 12 ou 1320.
+                                        Os campos amarelos foram sugeridos pela jornada cadastrada. Confira cada recorte e corrija somente os horários diferentes. Você também pode digitar 8, 12 ou 1320.
                                     </div>
                                     <div class="table-responsive">
                                         <table class="table table-sm align-middle mb-0 ponto-preview-tabela">

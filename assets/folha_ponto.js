@@ -12,7 +12,6 @@
     };
     let registrosPdfAtuais = [];
     let camposDetectadosPdf = new Set();
-    let linhasInvalidasPdf = new Set();
 
     function minutosHora(valor) {
         if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(valor || '')) {
@@ -197,21 +196,17 @@
             return null;
         }
 
-        const camposHorario = Array.from(linha.querySelectorAll('.ponto-hora-registro'));
-        const horarios = camposHorario.map(function (item) {
+        const horarios = Array.from(linha.querySelectorAll('.ponto-hora-registro')).map(function (item) {
             return item.value;
         });
+        const trabalhado = minutosIntervalo(horarios[0], horarios[1])
+            + minutosIntervalo(horarios[2], horarios[3]);
         const total = linha.querySelector('.ponto-total-dia');
         const saldo = linha.querySelector('.ponto-saldo-dia');
         const status = linha.querySelector('.ponto-status-dia');
         const previstoTexto = linha.querySelector('.ponto-previsto');
         const observacao = linha.querySelector('.ponto-observacao')?.value.trim() || '';
-        const atestado = linha.querySelector('.ponto-atestado-check')?.checked === true;
-        const trabalhado = atestado
-            ? 0
-            : minutosIntervalo(horarios[0], horarios[1]) + minutosIntervalo(horarios[2], horarios[3]);
         const feriadoInformado = /^feriado\b/i.test(observacao);
-        const folgaInformada = /^folga\b/i.test(observacao);
         const feriadoNacional = linha.dataset.feriadoNacional === '1';
         const feriado = feriadoNacional || feriadoInformado;
         const descricaoInformada = feriadoInformado
@@ -219,7 +214,7 @@
             : '';
         const feriadoNome = descricaoInformada || linha.dataset.feriadoNome || '';
         const previstoJornada = Number(total?.dataset.previstoJornada || total?.dataset.previsto || 0);
-        const previsto = feriado || folgaInformada || atestado ? 0 : previstoJornada;
+        const previsto = feriado ? 0 : previstoJornada;
         const possuiMarcacao = horarios.some(Boolean);
         const incompleto = possuiMarcacao && (
             !horarios[0]
@@ -243,24 +238,17 @@
         }
 
         linha.classList.toggle('ponto-dia-folga', previsto <= 0);
-        linha.classList.toggle('ponto-dia-atestado', atestado);
         linha.classList.toggle('ponto-dia-feriado', feriado);
 
         if (previstoTexto) {
             previstoTexto.textContent = feriado
                 ? 'Feriado' + (feriadoNome ? ': ' + feriadoNome : '')
-                : (atestado ? 'Atestado' : (linha.dataset.jornadaPrevista || 'Folga'));
+                : (linha.dataset.jornadaPrevista || 'Folga');
         }
 
         if (feriado) {
             statusTexto = 'Feriado';
             statusClasse = 'bg-primary';
-        } else if (atestado) {
-            statusTexto = 'Atestado';
-            statusClasse = 'bg-info text-dark';
-        } else if (folgaInformada) {
-            statusTexto = 'Folga';
-            statusClasse = 'bg-secondary';
         } else if (!possuiMarcacao && previsto <= 0) {
             statusTexto = 'Folga';
             statusClasse = 'bg-secondary';
@@ -348,11 +336,9 @@
             outubro: '10', out: '10', novembro: '11', nov: '11', dezembro: '12', dez: '12'
         };
         const periodo = normalizado.match(/(?:periodo|competencia|de)\s*:?\s*[0-3]?\d\s*[\/.\-]\s*([01]?\d)\s*[\/.\-]\s*(20\d{2})\s*(?:ate|a|-)\s*[0-3]?\d\s*[\/.\-]\s*[01]?\d\s*[\/.\-]\s*20\d{2}/);
-        const periodoDireto = normalizado.match(/(?:^|\D)[0-3]?\d\s*[\/.\-]\s*([01]?\d)\s*[\/.\-]\s*(20\d{2})\s*(?:ate|a|-)\s*[0-3]?\d\s*[\/.\-]\s*[01]?\d\s*[\/.\-]\s*20\d{2}(?!\d)/);
 
-        if (periodo || periodoDireto) {
-            const encontrado = periodo || periodoDireto;
-            return encontrado[2] + '-' + String(Number(encontrado[1])).padStart(2, '0');
+        if (periodo) {
+            return periodo[2] + '-' + String(Number(periodo[1])).padStart(2, '0');
         }
 
         const frequencias = new Map();
@@ -443,13 +429,7 @@
     }
 
     function observacaoEspecialDaLinha(texto) {
-        const normalizado = textoNormalizado(texto);
-        if (/\batestado\b/i.test(normalizado)) {
-            const descricaoAtestado = String(texto || '').match(/atestado\s*:\s*(.+)$/i);
-            return descricaoAtestado?.[1]?.trim() ? 'Atestado: ' + descricaoAtestado[1].trim() : 'Atestado';
-        }
-        if (/\bfolga\b/i.test(normalizado)) return 'Folga';
-        if (!/\bferiado\b/i.test(normalizado)) return '';
+        if (!/\bferiado\b/i.test(textoNormalizado(texto))) return '';
 
         const descricao = String(texto || '').match(/feriado\s*:\s*(.+)$/i);
         return descricao?.[1]?.trim() ? 'Feriado: ' + descricao[1].trim() : 'Feriado';
@@ -531,13 +511,10 @@
 
         linhas.forEach(function (linha, indice) {
             const data = dataDaLinha(linha, mesSelecionado);
-            const folga = /\bfolga\b/i.test(textoNormalizado(linha));
-            const atestado = /\batestado\b/i.test(textoNormalizado(linha));
-            const semMarcacao = folga || atestado;
             let textoRegistro = linha;
-            let horarios = semMarcacao ? [] : horariosRealizadosDaLinha(textoRegistro, possuiColunaPrevisto);
+            let horarios = horariosRealizadosDaLinha(textoRegistro, possuiColunaPrevisto);
 
-            if (data && !semMarcacao && horarios.length < 4) {
+            if (data && horarios.length < 4) {
                 for (let proximoIndice = indice + 1; proximoIndice < Math.min(linhas.length, indice + 3); proximoIndice += 1) {
                     const proximaLinha = linhas[proximoIndice];
                     if (dataDaLinha(proximaLinha, mesSelecionado)) break;
@@ -601,7 +578,6 @@
         const campoMes = document.querySelector('#formImportarPdf input[name="mes"]');
         registrosPdfAtuais = [];
         camposDetectadosPdf = new Set();
-        linhasInvalidasPdf = new Set();
         if (oculto) oculto.value = '';
         if (confirmar) confirmar.disabled = true;
         if (corpo) corpo.replaceChildren();
@@ -620,6 +596,29 @@
         return nomes[new Date(partes[0], partes[1] - 1, partes[2], 12).getDay()];
     }
 
+    function horariosFuncionarioSelecionado() {
+        const botao = document.getElementById('btnEditarFuncionario');
+
+        try {
+            const horarios = JSON.parse(botao?.dataset.horarios || '[]');
+            return Array.isArray(horarios) ? horarios : [];
+        } catch (erro) {
+            return [];
+        }
+    }
+
+    function horarioPrevistoPdf(dataIso, campo) {
+        const partes = dataIso.split('-').map(Number);
+        const diaJs = new Date(partes[0], partes[1] - 1, partes[2], 12).getDay();
+        const diaSemana = diaJs === 0 ? 7 : diaJs;
+        const horarioDia = horariosFuncionarioSelecionado().find(function (horario) {
+            return Number(horario.dia_semana) === diaSemana;
+        });
+
+        if (!horarioDia || Number(horarioDia.trabalha) !== 1) return '';
+        return String(horarioDia[campo] || '').slice(0, 5);
+    }
+
     function sincronizarRegistrosPdf() {
         const oculto = document.getElementById('registrosPdf');
         const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
@@ -633,9 +632,8 @@
                 return registro[campo] === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(registro[campo]);
             });
         });
-        const estruturaValida = linhasInvalidasPdf.size === 0;
-        if (oculto) oculto.value = horariosValidos && estruturaValida && algumRegistro ? JSON.stringify(registrosPdfAtuais) : '';
-        if (confirmar) confirmar.disabled = registrosPdfAtuais.length === 0 || !horariosValidos || !estruturaValida || !algumRegistro;
+        if (oculto) oculto.value = horariosValidos && algumRegistro ? JSON.stringify(registrosPdfAtuais) : '';
+        if (confirmar) confirmar.disabled = registrosPdfAtuais.length === 0 || !horariosValidos || !algumRegistro;
     }
 
     function normalizarHorarioDigitado(valor) {
@@ -665,93 +663,6 @@
         return String(hora).padStart(2, '0') + ':' + String(minuto).padStart(2, '0');
     }
 
-    function preencherSituacaoPreview(coluna, observacao, revisar) {
-        coluna.replaceChildren();
-        const etiqueta = document.createElement('span');
-
-        if (revisar) {
-            etiqueta.className = 'badge bg-danger';
-            etiqueta.textContent = 'Revisar horários';
-            coluna.appendChild(etiqueta);
-            return;
-        }
-
-        if (/^feriado\b/i.test(observacao)) {
-            etiqueta.className = 'badge bg-primary';
-            etiqueta.textContent = observacao;
-        } else if (/^atestado\b/i.test(observacao)) {
-            etiqueta.className = 'badge bg-info text-dark';
-            etiqueta.textContent = observacao;
-        } else if (/^folga\b/i.test(observacao)) {
-            etiqueta.className = 'badge bg-secondary';
-            etiqueta.textContent = 'Folga';
-        } else {
-            coluna.textContent = '-';
-            return;
-        }
-
-        coluna.appendChild(etiqueta);
-    }
-
-    function validarRegistroPreview(indice, registro, linha, colunaSituacao, inputs) {
-        const camposInvalidos = new Set();
-        const campos = ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'];
-        const especial = /^(?:feriado|folga|atestado)\b/i.test(registro.observacao);
-
-        if (!especial) {
-            campos.forEach(function (campo) {
-                if (inputs[campo]?.dataset.revisarOcr === '1') {
-                    camposInvalidos.add(campo);
-                }
-                if (registro[campo] !== '' && minutosHora(registro[campo]) === null) {
-                    camposInvalidos.add(campo);
-                }
-            });
-
-            const primeiroParIncompleto = Boolean(registro.entrada_1) !== Boolean(registro.saida_1);
-            const segundoParIncompleto = Boolean(registro.entrada_2) !== Boolean(registro.saida_2);
-
-            if (primeiroParIncompleto) {
-                camposInvalidos.add('entrada_1');
-                camposInvalidos.add('saida_1');
-            }
-            if (segundoParIncompleto) {
-                camposInvalidos.add('entrada_2');
-                camposInvalidos.add('saida_2');
-            }
-            if ((registro.entrada_2 || registro.saida_2) && (!registro.entrada_1 || !registro.saida_1)) {
-                campos.forEach(function (campo) { camposInvalidos.add(campo); });
-            }
-            if (registro.entrada_1 && registro.saida_1 && minutosIntervalo(registro.entrada_1, registro.saida_1) <= 0) {
-                camposInvalidos.add('entrada_1');
-                camposInvalidos.add('saida_1');
-            }
-            if (registro.entrada_2 && registro.saida_2 && minutosIntervalo(registro.entrada_2, registro.saida_2) <= 0) {
-                camposInvalidos.add('entrada_2');
-                camposInvalidos.add('saida_2');
-            }
-            if (
-                registro.saida_1
-                && registro.entrada_2
-                && minutosHora(registro.entrada_2) < minutosHora(registro.saida_1)
-            ) {
-                camposInvalidos.add('saida_1');
-                camposInvalidos.add('entrada_2');
-            }
-        }
-
-        campos.forEach(function (campo) {
-            inputs[campo]?.classList.toggle('ponto-preview-hora-invalida', camposInvalidos.has(campo));
-        });
-
-        const invalido = camposInvalidos.size > 0;
-        linha.classList.toggle('ponto-preview-linha-invalida', invalido);
-        if (invalido) linhasInvalidasPdf.add(indice);
-        else linhasInvalidasPdf.delete(indice);
-        preencherSituacaoPreview(colunaSituacao, registro.observacao, invalido);
-        return !invalido;
-    }
-
     function mostrarPreviewPdf(registros, leituraOcr) {
         const corpo = document.getElementById('corpoImportacaoPdf');
         const preview = document.getElementById('previewImportacaoPdf');
@@ -761,7 +672,6 @@
         if (!corpo || !preview) return;
         corpo.replaceChildren();
         camposDetectadosPdf = new Set();
-        linhasInvalidasPdf = new Set();
         registrosPdfAtuais = registros.map(function (registro) {
             return {
                 data: registro.data,
@@ -784,8 +694,14 @@
             linha.appendChild(colunaDia);
 
             const colunaSituacao = document.createElement('td');
-            const inputs = {};
-            preencherSituacaoPreview(colunaSituacao, registro.observacao, false);
+            if (/^feriado\b/i.test(registro.observacao)) {
+                const etiqueta = document.createElement('span');
+                etiqueta.className = 'badge bg-primary';
+                etiqueta.textContent = registro.observacao;
+                colunaSituacao.appendChild(etiqueta);
+            } else {
+                colunaSituacao.textContent = '-';
+            }
             linha.appendChild(colunaSituacao);
 
             ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].forEach(function (campo) {
@@ -804,6 +720,9 @@
                     grupo.appendChild(imagem);
                     camposDetectadosPdf.add(indice + ':' + campo);
 
+                    if (!registro[campo]) {
+                        registro[campo] = horarioPrevistoPdf(registro.data, campo);
+                    }
                 }
 
                 input.type = 'text';
@@ -813,24 +732,18 @@
                 input.placeholder = '--:--';
                 input.className = 'form-control form-control-sm ponto-preview-hora';
                 input.value = registro[campo];
-                input.disabled = /^(?:folga|atestado)\b/i.test(registro.observacao);
-                input.dataset.revisarOcr = registroOriginal._revisar?.[campo] ? '1' : '0';
                 input.classList.toggle('ponto-preview-hora-sugerida', Boolean(imagemRecorte && registro[campo]));
                 input.setAttribute('aria-label', campo + ' de ' + formatarDataBr(registro.data));
-                inputs[campo] = input;
                 input.addEventListener('input', function () {
                     input.classList.remove('ponto-preview-hora-sugerida');
-                    input.dataset.revisarOcr = '0';
                     registrosPdfAtuais[indice][campo] = input.value;
-                    validarRegistroPreview(indice, registrosPdfAtuais[indice], linha, colunaSituacao, inputs);
                     sincronizarRegistrosPdf();
                 });
                 input.addEventListener('blur', function () {
                     const horario = normalizarHorarioDigitado(input.value);
                     input.value = horario;
-                    input.dataset.revisarOcr = '0';
+                    input.classList.toggle('is-invalid', input.value === '' && input.dataset.preenchido === '1');
                     registrosPdfAtuais[indice][campo] = horario;
-                    validarRegistroPreview(indice, registrosPdfAtuais[indice], linha, colunaSituacao, inputs);
                     sincronizarRegistrosPdf();
                 });
                 input.addEventListener('keydown', function (evento) {
@@ -847,7 +760,6 @@
                 linha.appendChild(coluna);
             });
             corpo.appendChild(linha);
-            validarRegistroPreview(indice, registro, linha, colunaSituacao, inputs);
         });
 
         sincronizarRegistrosPdf();
@@ -861,16 +773,14 @@
         if (texto) texto.textContent = mensagem;
     }
 
-    function recortarCelulaOcr(canvasPagina, area) {
+    function recortarCelulaOcr(canvasPagina, area, somenteAzul) {
         const contexto = canvasPagina.getContext('2d', { willReadFrequently: true });
         const x0 = Math.max(0, Math.floor(area.x0));
         const y0 = Math.max(0, Math.floor(area.y0));
         const largura = Math.max(1, Math.floor(area.x1 - area.x0));
         const altura = Math.max(1, Math.floor(area.y1 - area.y0));
         const imagem = contexto.getImageData(x0, y0, largura, altura);
-        let ativos = [];
-        const pixelsPorLinha = new Uint16Array(altura);
-        const pixelsPorColuna = new Uint16Array(largura);
+        const ativos = [];
         let minimoX = largura;
         let minimoY = altura;
         let maximoX = 0;
@@ -883,34 +793,20 @@
                 const verde = imagem.data[indice + 1];
                 const azul = imagem.data[indice + 2];
                 const luminancia = (vermelho * .299) + (verde * .587) + (azul * .114);
-                const maiorCanal = Math.max(vermelho, verde, azul);
-                const menorCanal = Math.min(vermelho, verde, azul);
-                const saturacao = maiorCanal - menorCanal;
-                const tintaEscura = luminancia < 135;
-                const tintaColorida = saturacao > 35 && menorCanal < 210 && luminancia < 220;
-                const ativo = tintaEscura || tintaColorida;
+                const ativo = somenteAzul
+                    ? azul - vermelho > 25 && azul > verde * 1.04 && azul > vermelho * 1.12
+                    : luminancia < 115;
 
                 if (!ativo) continue;
                 ativos.push([x, y]);
-                pixelsPorLinha[y] += 1;
-                pixelsPorColuna[x] += 1;
+                minimoX = Math.min(minimoX, x);
+                minimoY = Math.min(minimoY, y);
+                maximoX = Math.max(maximoX, x);
+                maximoY = Math.max(maximoY, y);
             }
         }
 
-        ativos = ativos.filter(function (ponto) {
-            const linhaDaGrade = pixelsPorLinha[ponto[1]] > largura * .82;
-            const colunaDaGrade = pixelsPorColuna[ponto[0]] > altura * .92;
-            return !linhaDaGrade && !colunaDaGrade;
-        });
-
-        ativos.forEach(function (ponto) {
-            minimoX = Math.min(minimoX, ponto[0]);
-            minimoY = Math.min(minimoY, ponto[1]);
-            maximoX = Math.max(maximoX, ponto[0]);
-            maximoY = Math.max(maximoY, ponto[1]);
-        });
-
-        const minimoPixels = 30;
+        const minimoPixels = somenteAzul ? 18 : 45;
         if (ativos.length < minimoPixels) {
             return null;
         }
@@ -922,11 +818,6 @@
         maximoY = Math.min(altura - 1, maximoY + margem);
         const recorteLargura = maximoX - minimoX + 1;
         const recorteAltura = maximoY - minimoY + 1;
-
-        if (recorteAltura < Math.max(4, altura * .08) && recorteLargura > largura * .55) {
-            return null;
-        }
-
         const recorte = document.createElement('canvas');
         recorte.width = recorteLargura;
         recorte.height = recorteAltura;
@@ -966,151 +857,8 @@
         return canvas;
     }
 
-    function normalizarOrientacaoFolha(canvas) {
-        if (canvas.width <= canvas.height) return canvas;
-
-        const girado = document.createElement('canvas');
-        girado.width = canvas.height;
-        girado.height = canvas.width;
-        girado.dataset.rotacionado = '1';
-        const contexto = girado.getContext('2d');
-        contexto.fillStyle = '#fff';
-        contexto.fillRect(0, 0, girado.width, girado.height);
-        contexto.translate(girado.width, 0);
-        contexto.rotate(Math.PI / 2);
-        contexto.drawImage(canvas, 0, 0);
-        return girado;
-    }
-
-    function palavrasDoTsv(tsv) {
-        return String(tsv || '').split(/[\r\n]+/).slice(1).map(function (linha) {
-            const colunas = linha.split('\t');
-            if (colunas.length < 12 || Number(colunas[0]) !== 5) return null;
-            const texto = colunas.slice(11).join('\t').trim();
-            if (!texto) return null;
-            return {
-                texto: texto,
-                normalizado: textoNormalizado(texto).replace(/[^a-z0-9]/g, ''),
-                x0: Number(colunas[6]),
-                y0: Number(colunas[7]),
-                x1: Number(colunas[6]) + Number(colunas[8]),
-                y1: Number(colunas[7]) + Number(colunas[9]),
-                confianca: Number(colunas[10])
-            };
-        }).filter(Boolean);
-    }
-
-    function centroPalavra(palavra) {
-        return {
-            x: (palavra.x0 + palavra.x1) / 2,
-            y: (palavra.y0 + palavra.y1) / 2
-        };
-    }
-
-    function ajustarReta(pontos) {
-        if (pontos.length < 2) return null;
-        const mediaX = pontos.reduce(function (total, ponto) { return total + ponto.x; }, 0) / pontos.length;
-        const mediaY = pontos.reduce(function (total, ponto) { return total + ponto.y; }, 0) / pontos.length;
-        let numerador = 0;
-        let denominador = 0;
-
-        pontos.forEach(function (ponto) {
-            numerador += (ponto.x - mediaX) * (ponto.y - mediaY);
-            denominador += Math.pow(ponto.x - mediaX, 2);
-        });
-
-        if (denominador === 0) return null;
-        const inclinacao = numerador / denominador;
-        return { inclinacao: inclinacao, intercepto: mediaY - (inclinacao * mediaX) };
-    }
-
-    function geometriaTabelaOcr(canvas, palavras, quantidadeDias) {
-        if (!palavras?.length) return null;
-        const rotulos = [
-            ['entrada'],
-            ['repouso', 'almoco'],
-            ['retorno'],
-            ['saida']
-        ];
-        const cabecalhos = rotulos.map(function (opcoes) {
-            return palavras.filter(function (palavra) {
-                const centro = centroPalavra(palavra);
-                return opcoes.includes(palavra.normalizado)
-                    && centro.y > canvas.height * .10
-                    && centro.y < canvas.height * .48;
-            }).sort(function (a, b) {
-                return centroPalavra(a).y - centroPalavra(b).y;
-            }).pop() || null;
-        });
-
-        if (cabecalhos.some(function (palavra) { return !palavra; })) return null;
-        const centros = cabecalhos.map(centroPalavra);
-        if (!centros.every(function (centro, indice) {
-            return indice === 0 || centro.x > centros[indice - 1].x;
-        })) return null;
-
-        const limitesX = [
-            centros[0].x - ((centros[1].x - centros[0].x) / 2),
-            (centros[0].x + centros[1].x) / 2,
-            (centros[1].x + centros[2].x) / 2,
-            (centros[2].x + centros[3].x) / 2,
-            centros[3].x + ((centros[3].x - centros[2].x) / 2)
-        ];
-        const topoCabecalho = Math.max.apply(null, cabecalhos.map(function (palavra) { return palavra.y1; }));
-        const numerosDia = palavras.map(function (palavra) {
-            const textoDia = palavra.texto.replace(/[oO]/g, '0').replace(/\D/g, '');
-            const dia = /^\d{1,2}$/.test(textoDia) ? Number(textoDia) : 0;
-            const centro = centroPalavra(palavra);
-            if (
-                dia < 1
-                || dia > quantidadeDias
-                || centro.x >= limitesX[0]
-                || centro.y <= topoCabecalho
-                || centro.y >= canvas.height * .90
-            ) return null;
-            return { dia: dia, x: centro.x, y: centro.y };
-        }).filter(Boolean);
-        const porDia = new Map();
-
-        numerosDia.forEach(function (ponto) {
-            if (!porDia.has(ponto.dia)) porDia.set(ponto.dia, ponto);
-        });
-
-        let pontosDias = Array.from(porDia.values()).map(function (ponto) {
-            return { x: ponto.dia - 1, y: ponto.y, xOriginal: ponto.x };
-        });
-        let retaDias = ajustarReta(pontosDias);
-
-        if (!retaDias || retaDias.inclinacao < canvas.height * .010 || retaDias.inclinacao > canvas.height * .030) {
-            return null;
-        }
-
-        pontosDias = pontosDias.filter(function (ponto) {
-            const previsto = retaDias.intercepto + (retaDias.inclinacao * ponto.x);
-            return Math.abs(ponto.y - previsto) <= retaDias.inclinacao * .55;
-        });
-        if (pontosDias.length < Math.min(8, quantidadeDias)) return null;
-        retaDias = ajustarReta(pontosDias);
-        if (!retaDias) return null;
-
-        const retaCabecalho = ajustarReta(centros.map(function (centro) {
-            return { x: centro.x, y: centro.y };
-        }));
-        const inclinacaoHorizontal = retaCabecalho && Math.abs(retaCabecalho.inclinacao) <= .25
-            ? retaCabecalho.inclinacao
-            : 0;
-
-        return {
-            limitesX: limitesX,
-            centroPrimeiroDia: retaDias.intercepto,
-            alturaLinha: retaDias.inclinacao,
-            xDias: pontosDias.reduce(function (total, ponto) { return total + ponto.xOriginal; }, 0) / pontosDias.length,
-            inclinacaoHorizontal: inclinacaoHorizontal
-        };
-    }
-
     async function linhasDoPdfPorOcr(pdf) {
-        if (!window.Tesseract?.createWorker) return { linhas: [], paginas: [] };
+        if (!window.Tesseract?.createWorker) return [];
 
         atualizarStatusImportacao('O relatório é uma imagem. Iniciando a leitura do texto impresso...');
         const worker = await window.Tesseract.createWorker('por', 1, {
@@ -1120,70 +868,22 @@
             }
         });
         const linhas = [];
-        const paginas = [];
 
         try {
             await worker.setParameters({ preserve_interword_spaces: '1' });
 
             for (let paginaNumero = 1; paginaNumero <= pdf.numPages; paginaNumero += 1) {
-                const canvasOriginal = await canvasPaginaPdf(pdf, paginaNumero, 3.5);
-                const canvas = normalizarOrientacaoFolha(canvasOriginal);
-                const resultado = await worker.recognize(canvas, {}, { text: true, tsv: true });
+                const canvas = await canvasPaginaPdf(pdf, paginaNumero, 3.5);
+                const resultado = await worker.recognize(canvas);
                 linhas.push.apply(linhas, String(resultado?.data?.text || '').split(/[\r\n]+/).map(function (linha) {
                     return linha.replace(/\s+/g, ' ').trim();
                 }).filter(Boolean));
-                paginas.push({ canvas: canvas, palavras: palavrasDoTsv(resultado?.data?.tsv) });
             }
         } finally {
             await worker.terminate();
         }
 
-        return { linhas: linhas, paginas: paginas };
-    }
-
-    function horarioDoTextoManuscrito(texto) {
-        const preparado = String(texto || '')
-            .replace(/[oO]/g, '0')
-            .replace(/[bB]/g, '8')
-            .replace(/[iIlL|]/g, '1')
-            .replace(/[sS]/g, '5')
-            .replace(/\s+/g, '');
-        const comSeparador = preparado.match(/([0-2]?\d)\s*[:hH.,]\s*([0-5]?\d)?/);
-
-        if (comSeparador) {
-            return normalizarHorarioDigitado(comSeparador[1] + ':' + (comSeparador[2] || '00'));
-        }
-
-        const digitos = preparado.replace(/\D/g, '');
-        return digitos.length >= 1 && digitos.length <= 4 ? normalizarHorarioDigitado(digitos) : '';
-    }
-
-    async function reconhecerHorariosManuscritos(tarefas) {
-        if (!window.Tesseract?.createWorker || tarefas.length === 0) return tarefas;
-
-        const worker = await window.Tesseract.createWorker('por', 1);
-
-        try {
-            await worker.setParameters({
-                tessedit_char_whitelist: '0123456789:hH.,',
-                tessedit_pageseg_mode: '7',
-                preserve_interword_spaces: '1'
-            });
-
-            for (let indice = 0; indice < tarefas.length; indice += 1) {
-                atualizarStatusImportacao(
-                    'Lendo marcações manuscritas... '
-                    + (indice + 1) + ' de ' + tarefas.length
-                );
-                const resultado = await worker.recognize(tarefas[indice].canvas);
-                tarefas[indice].horario = horarioDoTextoManuscrito(resultado?.data?.text || '');
-                tarefas[indice].confianca = Number(resultado?.data?.confidence || 0);
-            }
-        } finally {
-            await worker.terminate();
-        }
-
-        return tarefas;
+        return linhas;
     }
 
     function registrosOcrConfiaveis(registros) {
@@ -1194,95 +894,39 @@
         return diasComPares.length >= 2;
     }
 
-    async function registrosDoPdfDigitalizado(pdf, mesSelecionado, textoOcr, paginasOcr) {
+    async function registrosDoPdfDigitalizado(pdf, mesSelecionado) {
         atualizarStatusImportacao('Separando os horários escritos em cada dia...');
-        const paginaOcr = paginasOcr?.[0] || null;
-        const canvasOriginal = paginaOcr?.canvas || await canvasPaginaPdf(pdf, 1, 2.4);
-        const canvas = paginaOcr?.canvas || normalizarOrientacaoFolha(canvasOriginal);
-        const palavras = paginaOcr?.palavras || [];
-        const textoModelo = textoNormalizado(textoOcr);
-        const modeloListaFrequencia = /lista de frequencia/.test(textoModelo)
-            || (/dia\s*(?:do\s*)?mes/.test(textoModelo) && /repouso/.test(textoModelo));
+        const canvas = await canvasPaginaPdf(pdf, 1, 2.4);
+
+        const limitesX = [.168, .258, .351, .445, .535];
+        const topoLinhas = canvas.height * .204;
+        const baseLinhas = canvas.height * .840;
+        const alturaLinha = (baseLinhas - topoLinhas) / 31;
         const partesMes = mesSelecionado.split('-').map(Number);
         const quantidadeDias = new Date(partesMes[0], partesMes[1], 0).getDate();
-        const geometriaOcr = geometriaTabelaOcr(canvas, palavras, quantidadeDias);
-        const perfilFotoRotacionada = canvas.dataset.rotacionado === '1';
-        const limitesXProporcao = perfilFotoRotacionada
-            ? [.192, .260, .329, .399, .471]
-            : [.168, .258, .351, .445, .535];
-        const limitesX = geometriaOcr?.limitesX || limitesXProporcao.map(function (valor) {
-            return canvas.width * valor;
-        });
-        const topoLinhas = canvas.height * (perfilFotoRotacionada ? .225 : (modeloListaFrequencia ? .224 : .204));
-        const baseLinhas = canvas.height * (perfilFotoRotacionada ? .763 : (modeloListaFrequencia ? .852 : .840));
-        const alturaLinha = geometriaOcr?.alturaLinha || ((baseLinhas - topoLinhas) / 31);
-        const inclinacaoHorizontal = geometriaOcr?.inclinacaoHorizontal || (perfilFotoRotacionada ? -.11 : 0);
-        const xReferenciaLinhas = geometriaOcr?.xDias || (perfilFotoRotacionada ? canvas.width * .226 : 0);
         const campos = ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'];
-        const situacoes = new Map();
         let tarefas = [];
-
-        palavras.forEach(function (palavra) {
-            let observacao = '';
-            if (palavra.normalizado.includes('atestado')) observacao = 'Atestado';
-            else if (palavra.normalizado.includes('feriado')) observacao = 'Feriado';
-            else if (palavra.normalizado.includes('folga')) observacao = 'Folga';
-            if (!observacao) return;
-
-            const centro = centroPalavra(palavra);
-            const centroPrimeiro = geometriaOcr?.centroPrimeiroDia || (topoLinhas + (alturaLinha / 2));
-            const yCorrigido = centro.y - (inclinacaoHorizontal * (centro.x - xReferenciaLinhas));
-            const dia = Math.round((yCorrigido - centroPrimeiro) / alturaLinha) + 1;
-            if (dia >= 1 && dia <= quantidadeDias) situacoes.set(dia, observacao);
-        });
 
         for (let dia = 1; dia <= quantidadeDias; dia += 1) {
             for (let coluna = 0; coluna < campos.length; coluna += 1) {
-                const larguraCelula = limitesX[coluna + 1] - limitesX[coluna];
-                const margemX = Math.max(8, larguraCelula * .055);
-                const margemY = Math.max(4, alturaLinha * .10);
-                const centroX = (limitesX[coluna] + limitesX[coluna + 1]) / 2;
-                const centroY = geometriaOcr
-                    ? geometriaOcr.centroPrimeiroDia
-                    + ((dia - 1) * alturaLinha)
-                    + (inclinacaoHorizontal * (centroX - xReferenciaLinhas))
-                    : topoLinhas
-                    + ((dia - .5) * alturaLinha)
-                    + (inclinacaoHorizontal * (centroX - xReferenciaLinhas));
                 const area = {
-                    x0: limitesX[coluna] + margemX,
-                    x1: limitesX[coluna + 1] - margemX,
-                    y0: centroY - (alturaLinha / 2) + margemY,
-                    y1: centroY + (alturaLinha / 2) - margemY
+                    x0: (canvas.width * limitesX[coluna]) + 6,
+                    x1: (canvas.width * limitesX[coluna + 1]) - 6,
+                    y0: topoLinhas + ((dia - 1) * alturaLinha) + 4,
+                    y1: topoLinhas + (dia * alturaLinha) - 4
                 };
-                const recorte = recortarCelulaOcr(canvas, area);
+                const recorte = recortarCelulaOcr(canvas, area, true);
                 if (recorte) tarefas.push({ dia: dia, campo: campos[coluna], canvas: recorte });
             }
         }
 
-        if (tarefas.length === 0 && situacoes.size === 0) {
+        if (tarefas.length === 0) {
             throw new Error('Não encontrei marcações manuscritas neste modelo e o texto impresso também não formou registros válidos.');
         }
 
-        if (tarefas.length > 0) tarefas = await reconhecerHorariosManuscritos(tarefas);
-
         const porDia = new Map();
 
-        situacoes.forEach(function (observacao, dia) {
-            porDia.set(dia, {
-                data: mesSelecionado + '-' + String(dia).padStart(2, '0'),
-                entrada_1: '',
-                saida_1: '',
-                entrada_2: '',
-                saida_2: '',
-                observacao: observacao,
-                _imagens: {},
-                _revisar: {}
-            });
-        });
-
         tarefas.forEach(function (tarefa) {
-            if (situacoes.has(tarefa.dia)) return;
             if (!porDia.has(tarefa.dia)) {
                 porDia.set(tarefa.dia, {
                     data: mesSelecionado + '-' + String(tarefa.dia).padStart(2, '0'),
@@ -1290,15 +934,10 @@
                     saida_1: '',
                     entrada_2: '',
                     saida_2: '',
-                    _imagens: {},
-                    _revisar: {}
+                    _imagens: {}
                 });
             }
-            const registro = porDia.get(tarefa.dia);
-            registro._imagens[tarefa.campo] = tarefa.canvas.toDataURL('image/png');
-            const horarioConfiavel = tarefa.horario && tarefa.confianca >= 45;
-            registro[tarefa.campo] = horarioConfiavel ? tarefa.horario : '';
-            registro._revisar[tarefa.campo] = !horarioConfiavel;
+            porDia.get(tarefa.dia)._imagens[tarefa.campo] = tarefa.canvas.toDataURL('image/png');
         });
 
         return Array.from(porDia.values()).sort(function (a, b) {
@@ -1352,16 +991,11 @@
 
             let registros = totalItens > 0 ? registrosDasLinhas(linhas, mes) : [];
             let leituraOcr = false;
-            let textoOcr = '';
-            let paginasOcr = [];
 
             if (registros.length === 0) {
                 try {
-                    const dadosOcr = await linhasDoPdfPorOcr(pdf);
-                    const linhasOcr = dadosOcr.linhas;
-                    paginasOcr = dadosOcr.paginas;
-                    textoOcr = linhasOcr.join(' ');
-                    const mesOcr = mesDoTextoPdf(textoOcr);
+                    const linhasOcr = await linhasDoPdfPorOcr(pdf);
+                    const mesOcr = mesDoTextoPdf(linhasOcr.join(' '));
                     if (mesOcr) mes = definirMesImportacao(mesOcr);
                     const registrosOcr = registrosDasLinhas(linhasOcr, mes);
                     if (registrosOcrConfiaveis(registrosOcr)) registros = registrosOcr;
@@ -1372,7 +1006,7 @@
 
             if (registros.length === 0) {
                 leituraOcr = true;
-                registros = await registrosDoPdfDigitalizado(pdf, mes, textoOcr, paginasOcr);
+                registros = await registrosDoPdfDigitalizado(pdf, mes);
             }
 
             if (registros.length === 0) {
@@ -1479,18 +1113,6 @@
         document.querySelectorAll('.ponto-observacao').forEach(function (campo) {
             campo.addEventListener('input', atualizarResumoRegistros);
             campo.addEventListener('change', atualizarResumoRegistros);
-        });
-        document.querySelectorAll('.ponto-atestado-check').forEach(function (campo) {
-            campo.addEventListener('change', function () {
-                const linha = campo.closest('.ponto-registro-linha');
-
-                linha?.querySelectorAll('.ponto-hora-registro').forEach(function (horario) {
-                    if (campo.checked) horario.value = '';
-                    horario.disabled = campo.checked;
-                });
-
-                atualizarResumoRegistros();
-            });
         });
         atualizarResumoRegistros();
 

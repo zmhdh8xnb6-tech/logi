@@ -48,19 +48,10 @@
 }
 
 .ponto-navegacao-mes .btn {
-    display: inline-flex;
     flex: 0 0 40px;
     width: 40px;
     height: 40px;
-    align-items: center;
-    justify-content: center;
     padding: 0;
-    line-height: 1;
-}
-
-.ponto-navegacao-mes .btn i {
-    display: block;
-    line-height: 1;
 }
 
 .ponto-navegacao-mes form {
@@ -285,17 +276,6 @@
     background-color: #fffdf3;
 }
 
-.ponto-tabela tbody tr.ponto-dia-atestado>td,
-.ponto-tabela tbody tr.ponto-dia-atestado:hover>td {
-    --bs-table-bg: #edf8fb;
-    background-color: #edf8fb;
-}
-
-.ponto-tabela tbody tr.ponto-dia-atestado .form-control {
-    border-color: #b9dce5;
-    background-color: #f7fcfd;
-}
-
 .ponto-tabela tbody tr.ponto-dia-feriado>td,
 .ponto-tabela tbody tr.ponto-dia-feriado:hover>td {
     --bs-table-bg: #fff0f1;
@@ -316,30 +296,6 @@
 .ponto-observacao {
     width: 190px;
     min-width: 190px;
-}
-
-.ponto-observacao-grupo {
-    display: grid;
-    min-width: 190px;
-    gap: 5px;
-}
-
-.ponto-atestado-controle {
-    display: inline-flex;
-    width: max-content;
-    min-height: 20px;
-    align-items: center;
-    gap: 6px;
-    margin: 0;
-    padding-left: 0;
-    color: #475569;
-    font-size: .75rem;
-    font-weight: 700;
-}
-
-.ponto-atestado-controle .form-check-input {
-    float: none;
-    margin: 0;
 }
 
 .ponto-previsto {
@@ -375,42 +331,8 @@
     color: #475569;
 }
 
-.ponto-modal-importacao {
-    width: min(96vw, 1720px);
-    max-width: 1720px;
-    height: 94vh;
-    margin: 3vh auto;
-}
-
-.ponto-modal-importacao .modal-content {
-    height: 94vh;
-    max-height: 94vh;
-    overflow: hidden;
-}
-
-.ponto-modal-importacao #formImportarPdf {
-    display: flex;
-    min-height: 0;
-    flex: 1 1 auto;
-    flex-direction: column;
-}
-
-.ponto-modal-importacao .modal-header,
-.ponto-modal-importacao .modal-footer {
-    flex: 0 0 auto;
-}
-
-.ponto-modal-importacao .modal-body {
-    min-height: 0;
-    flex: 1 1 auto;
-    overflow-x: hidden;
-    overflow-y: auto;
-}
-
 .ponto-preview-tabela {
-    width: 100%;
-    min-width: 0;
-    table-layout: fixed;
+    min-width: 720px;
 }
 
 .ponto-preview-tabela th {
@@ -424,25 +346,8 @@
     white-space: nowrap;
 }
 
-.ponto-preview-tabela th:nth-child(1) {
-    width: 11%;
-}
-
-.ponto-preview-tabela th:nth-child(2) {
-    width: 10%;
-}
-
-.ponto-preview-tabela th:nth-child(3) {
-    width: 15%;
-}
-
-.ponto-preview-tabela th:nth-child(n+4):nth-child(-n+7) {
-    width: 16%;
-}
-
 .ponto-preview-hora {
-    width: 100%;
-    min-width: 0;
+    min-width: 106px;
     text-align: center;
 }
 
@@ -451,23 +356,10 @@
     background: #fff8df;
 }
 
-.ponto-preview-hora-invalida,
-.ponto-preview-hora-invalida:focus {
-    border-color: #dc3545;
-    background: #fff0f1;
-    box-shadow: 0 0 0 2px rgb(220 53 69 / 12%);
-}
-
-.ponto-preview-linha-invalida>td:first-child,
-.ponto-preview-linha-invalida>td:nth-child(2),
-.ponto-preview-linha-invalida>td:nth-child(3) {
-    background: #fff7f7;
-}
-
 .ponto-preview-celula {
     display: grid;
     gap: 5px;
-    min-width: 0;
+    min-width: 110px;
 }
 
 .ponto-preview-recorte {
@@ -491,8 +383,7 @@
 }
 
 #previewImportacaoPdf .table-responsive {
-    max-height: none;
-    overflow-x: visible;
+    max-height: 350px;
 }
 
 .ponto-impressao-cabecalho {
@@ -515,27 +406,6 @@
 }
 
 @media (max-width: 768px) {
-    .ponto-modal-importacao {
-        width: calc(100vw - 24px);
-        max-width: calc(100vw - 24px);
-        height: calc(100vh - 24px);
-        margin: 12px auto;
-    }
-
-    .ponto-modal-importacao .modal-content {
-        height: calc(100vh - 24px);
-        max-height: calc(100vh - 24px);
-    }
-
-    .ponto-preview-tabela {
-        min-width: 760px;
-        table-layout: auto;
-    }
-
-    #previewImportacaoPdf .table-responsive {
-        overflow-x: auto;
-    }
-
     .ponto-cabecalho {
         align-items: flex-start;
         flex-direction: column;
