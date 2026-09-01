@@ -1259,7 +1259,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                         <span class="badge bg-primary" id="quantidadeImportacaoPdf"></span>
                                     </div>
                                     <div class="alert alert-warning py-2 d-none" id="avisoRevisaoOcr">
-                                        Os campos amarelos foram sugeridos pela jornada cadastrada. Confira cada recorte e corrija somente os horários diferentes. Você também pode digitar 8, 12 ou 1320.
+                                        Confira os horários com os recortes. Campos em vermelho não tiveram leitura confiável e precisam ser corrigidos antes da importação. Você também pode digitar 8, 12 ou 1320.
                                     </div>
                                     <div class="table-responsive">
                                         <table class="table table-sm align-middle mb-0 ponto-preview-tabela">
