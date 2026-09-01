@@ -622,18 +622,14 @@
     function sincronizarRegistrosPdf() {
         const oculto = document.getElementById('registrosPdf');
         const confirmar = document.getElementById('btnConfirmarImportacaoPdf');
-        const algumRegistro = registrosPdfAtuais.some(function (registro) {
-            return registro.observacao !== '' || ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].some(function (campo) {
-                return registro[campo] !== '';
-            });
-        });
         const horariosValidos = registrosPdfAtuais.every(function (registro) {
             return ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'].every(function (campo) {
                 return registro[campo] === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(registro[campo]);
             });
         });
-        if (oculto) oculto.value = horariosValidos && algumRegistro ? JSON.stringify(registrosPdfAtuais) : '';
-        if (confirmar) confirmar.disabled = registrosPdfAtuais.length === 0 || !horariosValidos || !algumRegistro;
+        const possuiLinhas = registrosPdfAtuais.length > 0;
+        if (oculto) oculto.value = horariosValidos && possuiLinhas ? JSON.stringify(registrosPdfAtuais) : '';
+        if (confirmar) confirmar.disabled = !possuiLinhas || !horariosValidos;
     }
 
     function normalizarHorarioDigitado(valor) {
@@ -709,6 +705,18 @@
                 const grupo = document.createElement('div');
                 const input = document.createElement('input');
                 const imagemRecorte = registroOriginal._imagens?.[campo] || '';
+                const diaEspecial = /^(?:feriado|folga|atestado)\b/i.test(registro.observacao);
+                const horarioEsperado = !diaEspecial && horarioPrevistoPdf(registro.data, campo) !== '';
+
+                const atualizarAvisoNaoReconhecido = function () {
+                    const naoReconhecido = horarioEsperado && input.value.trim() === '';
+                    input.classList.toggle('ponto-preview-hora-nao-lida', naoReconhecido);
+                    input.placeholder = naoReconhecido ? 'Não reconhecido' : '--:--';
+                    input.title = naoReconhecido
+                        ? 'Horário não reconhecido. Você pode preencher manualmente ou importar em branco.'
+                        : '';
+                    input.setAttribute('aria-invalid', naoReconhecido ? 'true' : 'false');
+                };
 
                 grupo.className = 'ponto-preview-celula';
 
@@ -719,17 +727,12 @@
                     imagem.className = 'ponto-preview-recorte';
                     grupo.appendChild(imagem);
                     camposDetectadosPdf.add(indice + ':' + campo);
-
-                    if (!registro[campo]) {
-                        registro[campo] = horarioPrevistoPdf(registro.data, campo);
-                    }
                 }
 
                 input.type = 'text';
                 input.inputMode = 'numeric';
                 input.autocomplete = 'off';
                 input.maxLength = 5;
-                input.placeholder = '--:--';
                 input.className = 'form-control form-control-sm ponto-preview-hora';
                 input.value = registro[campo];
                 input.classList.toggle('ponto-preview-hora-sugerida', Boolean(imagemRecorte && registro[campo]));
@@ -737,13 +740,14 @@
                 input.addEventListener('input', function () {
                     input.classList.remove('ponto-preview-hora-sugerida');
                     registrosPdfAtuais[indice][campo] = input.value;
+                    atualizarAvisoNaoReconhecido();
                     sincronizarRegistrosPdf();
                 });
                 input.addEventListener('blur', function () {
                     const horario = normalizarHorarioDigitado(input.value);
                     input.value = horario;
-                    input.classList.toggle('is-invalid', input.value === '' && input.dataset.preenchido === '1');
                     registrosPdfAtuais[indice][campo] = horario;
+                    atualizarAvisoNaoReconhecido();
                     sincronizarRegistrosPdf();
                 });
                 input.addEventListener('keydown', function (evento) {
@@ -755,6 +759,7 @@
                     proximo?.focus();
                 });
                 input.dataset.preenchido = imagemRecorte ? '1' : '0';
+                atualizarAvisoNaoReconhecido();
                 grupo.appendChild(input);
                 coluna.appendChild(grupo);
                 linha.appendChild(coluna);

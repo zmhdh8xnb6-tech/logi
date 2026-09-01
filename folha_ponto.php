@@ -429,11 +429,16 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $datasProcessadas[$data] = true;
             }
 
+            $pdo->commit();
+
             if ($datasProcessadas === []) {
-                throw new RuntimeException('O PDF não produziu horários válidos para o mês selecionado.');
+                folhaPontoRedirecionar(
+                    $urlRetorno,
+                    'A folha foi importada, mas os horários não reconhecidos permaneceram em branco para preenchimento manual.',
+                    'warning'
+                );
             }
 
-            $pdo->commit();
             registrarAuditoria(
                 $pdo,
                 'Folha de Ponto',
@@ -1133,7 +1138,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
 
         <?php if ($funcionarioSelecionado): ?>
             <div class="modal fade" id="modalImportarPdf" tabindex="-1" aria-hidden="true">
-                <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable ponto-modal-importacao">
                     <div class="modal-content">
                         <form method="post" id="formImportarPdf">
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(folhaPontoToken()) ?>">

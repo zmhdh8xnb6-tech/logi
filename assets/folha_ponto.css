@@ -331,6 +331,29 @@
     color: #475569;
 }
 
+.ponto-modal-importacao {
+    width: calc(100% - 32px);
+    max-width: 1460px;
+    height: calc(100vh - 32px);
+    margin: 16px auto;
+}
+
+.ponto-modal-importacao .modal-content,
+.ponto-modal-importacao form {
+    min-height: 0;
+    height: 100%;
+}
+
+.ponto-modal-importacao form {
+    display: flex;
+    flex-direction: column;
+}
+
+.ponto-modal-importacao .modal-body {
+    min-height: 0;
+    overflow-y: auto;
+}
+
 .ponto-preview-tabela {
     min-width: 720px;
 }
@@ -347,13 +370,27 @@
 }
 
 .ponto-preview-hora {
-    min-width: 106px;
+    min-width: 132px;
     text-align: center;
 }
 
 .ponto-preview-hora-sugerida {
     border-color: #e7b64b;
     background: #fff8df;
+}
+
+.ponto-preview-hora-nao-lida,
+.ponto-preview-hora-nao-lida:focus {
+    border-color: #dc3545;
+    background: #fff1f2;
+    box-shadow: 0 0 0 2px rgba(220, 53, 69, .1);
+}
+
+.ponto-preview-hora-nao-lida::placeholder {
+    color: #b42318;
+    font-size: .76rem;
+    font-weight: 700;
+    opacity: 1;
 }
 
 .ponto-preview-celula {
@@ -383,7 +420,15 @@
 }
 
 #previewImportacaoPdf .table-responsive {
-    max-height: 350px;
+    max-height: min(56vh, 620px);
+    overflow: auto;
+}
+
+#previewImportacaoPdf thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f8fafc;
 }
 
 .ponto-impressao-cabecalho {
