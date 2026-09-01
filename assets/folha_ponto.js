@@ -457,7 +457,7 @@
             }
         } else {
             const somenteDia = textoBusca.match(/^\s*([0-3]?\d)(?=\s|$|\|)/);
-            const diaDepoisDaSemana = textoBusca.match(/\b(?:dom(?:ingo)?|seg(?:unda(?:-feira)?)?|ter(?:ca(?:-feira)?)?|qua(?:rta(?:-feira)?)?|qui(?:nta(?:-feira)?)?|sex(?:ta(?:-feira)?)?|sab(?:ado)?)\.?\s*[,]?\s*([0-3]?\d)(?!\d)/i);
+            const diaDepoisDaSemana = textoBusca.match(/\b(?:dom(?:ingo)?|seg(?:unda(?:-feira)?)?|ter(?:ca(?:-feira)?)?|qua(?:rta(?:-feira)?)?|qui(?:nta(?:-feira)?)?|sex(?:ta(?:-feira)?)?|sab(?:ado)?)\.?\s*[,]?\s*([0-3]?\d)(?!\d)(?!\s*[:h])/i);
             dia = somenteDia ? Number(somenteDia[1]) : (diaDepoisDaSemana ? Number(diaDepoisDaSemana[1]) : null);
         }
 
