@@ -23,6 +23,31 @@ function folhaPontoDataValida(?string $data): ?string
     return $dataValida && $dataValida->format('Y-m-d') === $data ? $data : null;
 }
 
+function folhaPontoGarantirTabelaFolhas(PDO $pdo): bool
+{
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS folha_ponto_folhas (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                empresa_id INT NOT NULL DEFAULT 1,
+                funcionario_id INT UNSIGNED NOT NULL,
+                data_inicio DATE NOT NULL,
+                data_fim DATE NOT NULL,
+                usuario_id INT NULL,
+                criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                UNIQUE KEY uk_folha_ponto_periodo (empresa_id, funcionario_id, data_inicio, data_fim),
+                KEY idx_folha_ponto_folhas_empresa (empresa_id, data_fim),
+                KEY idx_folha_ponto_folhas_funcionario (funcionario_id, data_inicio, data_fim)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+        return true;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
 function folhaPontoToken(): string
 {
     if (empty($_SESSION['folha_ponto_csrf'])) {

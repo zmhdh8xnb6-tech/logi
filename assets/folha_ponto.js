@@ -283,14 +283,17 @@
         const horarios = Array.from(linha.querySelectorAll('.ponto-hora-registro')).map(function (item) {
             return item.value;
         });
-        const trabalhado = minutosIntervalo(horarios[0], horarios[1])
-            + minutosIntervalo(horarios[2], horarios[3]);
+        const atestado = Boolean(linha.querySelector('.ponto-atestado')?.checked);
+        const trabalhado = atestado
+            ? 0
+            : minutosIntervalo(horarios[0], horarios[1]) + minutosIntervalo(horarios[2], horarios[3]);
         const total = linha.querySelector('.ponto-total-dia');
         const saldo = linha.querySelector('.ponto-saldo-dia');
         const status = linha.querySelector('.ponto-status-dia');
         const previstoTexto = linha.querySelector('.ponto-previsto');
         const observacao = linha.querySelector('.ponto-observacao')?.value.trim() || '';
-        const feriadoInformado = /^feriado\b/i.test(observacao);
+        const feriadoInformado = !atestado && /^feriado\b/i.test(observacao);
+        const folgaInformada = !atestado && /^folga\b/i.test(observacao);
         const feriadoNacional = linha.dataset.feriadoNacional === '1';
         const feriado = feriadoNacional || feriadoInformado;
         const descricaoInformada = feriadoInformado
@@ -298,7 +301,7 @@
             : '';
         const feriadoNome = descricaoInformada || linha.dataset.feriadoNome || '';
         const previstoJornada = Number(total?.dataset.previstoJornada || total?.dataset.previsto || 0);
-        const previsto = feriado ? 0 : previstoJornada;
+        const previsto = feriado || atestado || folgaInformada ? 0 : previstoJornada;
         const possuiMarcacao = horarios.some(Boolean);
         const incompleto = possuiMarcacao && (
             !horarios[0]
@@ -323,16 +326,23 @@
 
         linha.classList.toggle('ponto-dia-folga', previsto <= 0);
         linha.classList.toggle('ponto-dia-feriado', feriado);
+        linha.classList.toggle('ponto-dia-atestado', atestado && !feriado);
 
         if (previstoTexto) {
             previstoTexto.textContent = feriado
                 ? 'Feriado' + (feriadoNome ? ': ' + feriadoNome : '')
-                : (linha.dataset.jornadaPrevista || 'Folga');
+                : (atestado ? 'Atestado' : (folgaInformada ? 'Folga' : (linha.dataset.jornadaPrevista || 'Folga')));
         }
 
         if (feriado) {
             statusTexto = 'Feriado';
             statusClasse = 'bg-primary';
+        } else if (atestado) {
+            statusTexto = 'Atestado';
+            statusClasse = 'bg-info text-dark';
+        } else if (folgaInformada) {
+            statusTexto = 'Folga';
+            statusClasse = 'bg-secondary';
         } else if (!possuiMarcacao && previsto <= 0) {
             statusTexto = 'Folga';
             statusClasse = 'bg-secondary';
@@ -406,12 +416,14 @@
         document.querySelectorAll('.ponto-registro-linha').forEach(function (linha) {
             const observacao = linha.querySelector('.ponto-observacao')?.value.trim() || '';
             const diaEspecial = /^(?:feriado|folga|atestado|falta)\b/i.test(observacao);
+            const atestado = Boolean(linha.querySelector('.ponto-atestado')?.checked);
             const foraDoLimite = Boolean(hoje && linha.dataset.data > hoje);
 
             if (
                 linha.dataset.trabalha !== '1'
                 || linha.dataset.feriadoNacional === '1'
                 || diaEspecial
+                || atestado
                 || foraDoLimite
             ) {
                 return;
@@ -423,6 +435,8 @@
 
                 if (campo.value === '' && horarioJornada) {
                     campo.value = horarioJornada;
+                    campo.classList.remove('ponto-hora-nao-reconhecida');
+                    campo.removeAttribute('title');
                     linhaAlterada = true;
                     horariosPreenchidos += 1;
                 }
@@ -447,6 +461,28 @@
             + ' preenchido' + (horariosPreenchidos === 1 ? '' : 's')
             + ' pela jornada em ' + diasAlterados + ' dia' + (diasAlterados === 1 ? '' : 's') + '. Confira e salve a folha.'
             : 'Não há horários vazios que possam ser completados pela jornada até hoje.';
+    }
+
+    function alternarAtestado(campo) {
+        const linha = campo.closest('.ponto-registro-linha');
+
+        if (!linha) {
+            return;
+        }
+
+        linha.querySelectorAll('.ponto-hora-registro').forEach(function (horario) {
+            if (campo.checked) {
+                if (horario.value !== '') {
+                    horario.dataset.valorAntesAtestado = horario.value;
+                }
+                horario.value = '';
+            } else if (horario.value === '' && horario.dataset.valorAntesAtestado) {
+                horario.value = horario.dataset.valorAntesAtestado;
+                delete horario.dataset.valorAntesAtestado;
+            }
+        });
+
+        atualizarResumoRegistros();
     }
 
     function dataIsoValida(ano, mes, dia) {
@@ -579,7 +615,11 @@
     }
 
     function observacaoEspecialDaLinha(texto) {
-        if (!/\bferiado\b/i.test(textoNormalizado(texto))) return '';
+        const textoTratado = textoNormalizado(texto);
+
+        if (/\batestado\b/i.test(textoTratado)) return 'Atestado';
+        if (/\bfolga\b/i.test(textoTratado)) return 'Folga';
+        if (!/\bferiado\b/i.test(textoTratado)) return '';
 
         const descricao = String(texto || '').match(/feriado\s*:\s*(.+)$/i);
         return descricao?.[1]?.trim() ? 'Feriado: ' + descricao[1].trim() : 'Feriado';
@@ -770,9 +810,19 @@
 
     function mostrarErroPdf(mensagem) {
         const erro = document.getElementById('erroImportacaoPdf');
-        if (!erro) return;
-        erro.textContent = mensagem;
-        erro.classList.remove('d-none');
+        const avisoDireto = document.getElementById('avisoImportacaoDireta');
+        const textoDireto = document.getElementById('textoImportacaoDireta');
+        const spinnerDireto = document.getElementById('spinnerImportacaoDireta');
+        if (erro) {
+            erro.textContent = mensagem;
+            erro.classList.remove('d-none');
+        }
+        if (avisoDireto) {
+            avisoDireto.classList.remove('d-none', 'alert-info', 'alert-success');
+            avisoDireto.classList.add('alert-danger');
+        }
+        if (textoDireto) textoDireto.textContent = mensagem;
+        spinnerDireto?.classList.add('d-none');
     }
 
     function limparImportacaoPdf() {
@@ -1008,9 +1058,11 @@
             linha.appendChild(colunaDia);
 
             const colunaSituacao = document.createElement('td');
-            if (/^feriado\b/i.test(registro.observacao)) {
+            if (/^(?:feriado|folga|atestado)\b/i.test(registro.observacao)) {
                 const etiqueta = document.createElement('span');
-                etiqueta.className = 'badge bg-primary';
+                etiqueta.className = /^atestado\b/i.test(registro.observacao)
+                    ? 'badge bg-info text-dark'
+                    : (/^folga\b/i.test(registro.observacao) ? 'badge bg-secondary' : 'badge bg-primary');
                 etiqueta.textContent = registro.observacao;
                 colunaSituacao.appendChild(etiqueta);
             } else {
@@ -1095,7 +1147,16 @@
 
     function atualizarStatusImportacao(mensagem) {
         const texto = document.getElementById('statusImportacaoTexto');
+        const avisoDireto = document.getElementById('avisoImportacaoDireta');
+        const textoDireto = document.getElementById('textoImportacaoDireta');
+        const spinnerDireto = document.getElementById('spinnerImportacaoDireta');
         if (texto) texto.textContent = mensagem;
+        if (avisoDireto) {
+            avisoDireto.classList.remove('d-none', 'alert-danger', 'alert-success');
+            avisoDireto.classList.add('alert-info');
+        }
+        if (textoDireto) textoDireto.textContent = mensagem;
+        spinnerDireto?.classList.remove('d-none');
     }
 
     function recortarCelulaOcr(canvasPagina, area, somenteAzul) {
@@ -1533,9 +1594,19 @@
             document.getElementById('formFiltrosPonto')?.submit();
         });
 
+        document.getElementById('empresaFolhaPonto')?.addEventListener('change', function () {
+            document.getElementById('formEmpresaFolhaPonto')?.submit();
+        });
+
         document.getElementById('btnImprimirPonto')?.addEventListener('click', function () {
             window.print();
         });
+
+        if (new URLSearchParams(window.location.search).get('imprimir') === '1') {
+            window.setTimeout(function () {
+                window.print();
+            }, 300);
+        }
 
         const modalFuncionario = document.getElementById('modalFuncionario');
         modalFuncionario?.addEventListener('show.bs.modal', function (evento) {
@@ -1617,24 +1688,58 @@
         });
 
         document.querySelectorAll('.ponto-hora-registro').forEach(function (campo) {
-            campo.addEventListener('input', atualizarResumoRegistros);
+            campo.addEventListener('input', function () {
+                const pendente = campo.dataset.importacaoPendente === '1' && campo.value === '';
+                campo.classList.toggle('ponto-hora-nao-reconhecida', pendente);
+                campo.title = pendente
+                    ? 'Horário não reconhecido. Preencha manualmente ou use Completar pela jornada.'
+                    : '';
+                atualizarResumoRegistros();
+            });
             campo.addEventListener('change', atualizarResumoRegistros);
         });
         document.querySelectorAll('.ponto-observacao').forEach(function (campo) {
             campo.addEventListener('input', atualizarResumoRegistros);
             campo.addEventListener('change', atualizarResumoRegistros);
         });
+        document.querySelectorAll('.ponto-atestado').forEach(function (campo) {
+            campo.addEventListener('change', function () {
+                alternarAtestado(campo);
+            });
+        });
         document.getElementById('btnCompletarPelaJornada')?.addEventListener('click', completarCamposPelaJornada);
         atualizarResumoRegistros();
 
-        const modalPdf = document.getElementById('modalImportarPdf');
-        modalPdf?.addEventListener('hidden.bs.modal', function () {
-            document.getElementById('formImportarPdf')?.reset();
-            limparImportacaoPdf();
-        });
+        const arquivoPonto = document.getElementById('arquivoPontoPdf');
+        const botaoSelecionarArquivo = document.getElementById('btnSelecionarArquivoPonto');
 
-        document.getElementById('arquivoPontoPdf')?.addEventListener('change', limparImportacaoPdf);
-        document.getElementById('btnLerPdf')?.addEventListener('click', lerArquivoPonto);
+        botaoSelecionarArquivo?.addEventListener('click', function () {
+            arquivoPonto.value = '';
+            arquivoPonto?.click();
+        });
+        arquivoPonto?.addEventListener('change', async function () {
+            if (!arquivoPonto.files?.[0]) return;
+            botaoSelecionarArquivo.disabled = true;
+            atualizarStatusImportacao('Lendo o arquivo selecionado...');
+
+            try {
+                await lerArquivoPonto();
+                const formulario = document.getElementById('formImportarPdf');
+                const registros = document.getElementById('registrosPdf');
+
+                if (registros?.value) {
+                    atualizarStatusImportacao('Leitura concluída. Importando os horários reconhecidos...');
+                    formulario?.requestSubmit();
+                    return;
+                }
+
+                if (document.getElementById('erroImportacaoPdf')?.classList.contains('d-none')) {
+                    mostrarErroPdf('Nenhum horário pôde ser reconhecido neste arquivo. Os campos da folha continuam disponíveis para preenchimento manual.');
+                }
+            } finally {
+                botaoSelecionarArquivo.disabled = false;
+            }
+        });
         document.getElementById('formImportarPdf')?.addEventListener('submit', function (evento) {
             if (!document.getElementById('registrosPdf')?.value) {
                 evento.preventDefault();

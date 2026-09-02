@@ -23,10 +23,34 @@ $cargaSemanalDisponivel = $estruturaDisponivel
 
 $empresaId = (int)(empresaAtivaId($pdo) ?? 1);
 $empresaId = $empresaId > 0 ? $empresaId : 1;
+$empresasFolha = empresasDisponiveis($pdo);
+$empresaNomeFolha = empresaAtivaNome($pdo) ?: 'Empresa atual';
 $usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
+$folhasSalvasDisponivel = $estruturaDisponivel && folhaPontoGarantirTabelaFolhas($pdo);
+$folhaId = (int)($_GET['folha_id'] ?? $_POST['folha_id'] ?? 0);
+$folhaSelecionada = null;
+
+if ($folhasSalvasDisponivel && $folhaId > 0) {
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM folha_ponto_folhas
+        WHERE id = ? AND empresa_id = ?
+    ");
+    $stmt->execute([$folhaId, $empresaId]);
+    $folhaSelecionada = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+if (!$folhaSelecionada) {
+    $folhaId = 0;
+}
+
 $mesLegado = folhaPontoMesValido($_GET['mes'] ?? $_POST['mes'] ?? null);
-$dataInicioInformada = folhaPontoDataValida($_GET['data_inicio'] ?? $_POST['data_inicio'] ?? null);
-$dataFimInformada = folhaPontoDataValida($_GET['data_fim'] ?? $_POST['data_fim'] ?? null);
+$dataInicioInformada = folhaPontoDataValida(
+    $folhaSelecionada['data_inicio'] ?? $_GET['data_inicio'] ?? $_POST['data_inicio'] ?? null
+);
+$dataFimInformada = folhaPontoDataValida(
+    $folhaSelecionada['data_fim'] ?? $_GET['data_fim'] ?? $_POST['data_fim'] ?? null
+);
 $inicioPeriodo = $dataInicioInformada ?? ($mesLegado . '-01');
 $fimPeriodo = $dataFimInformada ?? date('Y-m-t', strtotime($inicioPeriodo));
 
@@ -50,7 +74,8 @@ $inicioPeriodoAnterior = $fimPeriodoAnterior->modify('-' . ($quantidadeDiasPerio
 $inicioPeriodoProximo = $fimPeriodoData->modify('+1 day');
 $fimPeriodoProximo = $inicioPeriodoProximo->modify('+' . ($quantidadeDiasPeriodo - 1) . ' days');
 $mes = substr($inicioPeriodo, 0, 7);
-$funcionarioId = (int)($_GET['funcionario_id'] ?? $_POST['funcionario_id'] ?? 0);
+$funcionarioId = (int)($folhaSelecionada['funcionario_id'] ?? $_GET['funcionario_id'] ?? $_POST['funcionario_id'] ?? 0);
+$modoEdicaoFolha = !$folhaSelecionada || (int)($_GET['editar'] ?? $_POST['editar'] ?? 0) === 1;
 $nomesMeses = [
     1 => 'Janeiro',
     2 => 'Fevereiro',
@@ -88,11 +113,21 @@ $buscarFuncionario = static function (PDO $pdo, int $empresaId, int $id): ?array
 };
 
 if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $urlRetorno = 'folha_ponto.php?' . http_build_query([
+    $parametrosRetorno = [
         'data_inicio' => $inicioPeriodo,
         'data_fim' => $fimPeriodo,
         'funcionario_id' => $funcionarioId,
-    ]);
+    ];
+
+    if ($folhaId > 0) {
+        $parametrosRetorno['folha_id'] = $folhaId;
+
+        if ($modoEdicaoFolha) {
+            $parametrosRetorno['editar'] = 1;
+        }
+    }
+
+    $urlRetorno = 'folha_ponto.php?' . http_build_query($parametrosRetorno);
 
     if (!folhaPontoTokenValido($_POST['csrf_token'] ?? null)) {
         folhaPontoRedirecionar(
@@ -120,6 +155,11 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $stmt = $pdo->prepare("DELETE FROM folha_ponto_horarios WHERE empresa_id = ? AND funcionario_id = ?");
             $stmt->execute([$empresaId, $id]);
+
+            if ($folhasSalvasDisponivel) {
+                $stmt = $pdo->prepare("DELETE FROM folha_ponto_folhas WHERE empresa_id = ? AND funcionario_id = ?");
+                $stmt->execute([$empresaId, $id]);
+            }
 
             $stmt = $pdo->prepare("DELETE FROM folha_ponto_funcionarios WHERE empresa_id = ? AND id = ?");
             $stmt->execute([$empresaId, $id]);
@@ -313,6 +353,10 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             folhaPontoRedirecionar($urlRetorno, 'Selecione um funcionário válido.', 'danger');
         }
 
+        if ($folhaSelecionada && !$modoEdicaoFolha) {
+            folhaPontoRedirecionar($urlRetorno, 'Clique em Editar folha antes de alterar este registro.', 'warning');
+        }
+
         $jornadaFuncionario36 = $cargaSemanalDisponivel
             && (int)($funcionario['carga_semanal'] ?? 44) === 36;
 
@@ -339,6 +383,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 WHERE empresa_id = ? AND funcionario_id = ? AND data_registro = ?
             ");
             $quantidadeAlterada = 0;
+            $folhaSalvaId = $folhaId;
 
             foreach ($registrosEntrada as $data => $dados) {
                 if (!is_array($dados) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
@@ -366,6 +411,14 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     $valores['saida_2'] = null;
                 }
 
+                $atestado = !empty($dados['atestado']);
+
+                if ($atestado) {
+                    foreach ($valores as $campo => $valor) {
+                        $valores[$campo] = null;
+                    }
+                }
+
                 if (
                     $valores['entrada_1'] !== null
                     && $valores['saida_1'] !== null
@@ -383,6 +436,12 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $observacao = trim((string)($dados['observacao'] ?? ''));
+
+                if ($atestado) {
+                    $observacao = trim((string)preg_replace('/^atestado\s*:?\s*/i', '', $observacao));
+                    $observacao = 'Atestado' . ($observacao !== '' ? ': ' . $observacao : '');
+                }
+
                 $observacao = function_exists('mb_substr')
                     ? mb_substr($observacao, 0, 255)
                     : substr($observacao, 0, 255);
@@ -408,6 +467,26 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $quantidadeAlterada++;
             }
 
+            if ($folhasSalvasDisponivel) {
+                $stmtFolha = $pdo->prepare("
+                    INSERT INTO folha_ponto_folhas (
+                        empresa_id, funcionario_id, data_inicio, data_fim, usuario_id
+                    ) VALUES (?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        id = LAST_INSERT_ID(id),
+                        usuario_id = VALUES(usuario_id),
+                        atualizado_em = CURRENT_TIMESTAMP
+                ");
+                $stmtFolha->execute([
+                    $empresaId,
+                    $funcionarioId,
+                    $inicioPeriodo,
+                    $fimPeriodo,
+                    $usuarioId,
+                ]);
+                $folhaSalvaId = (int)$pdo->lastInsertId();
+            }
+
             $pdo->commit();
             registrarAuditoria(
                 $pdo,
@@ -419,7 +498,16 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 null,
                 ['registros_preenchidos' => $quantidadeAlterada]
             );
-            folhaPontoRedirecionar($urlRetorno, 'Folha do período salva com sucesso.');
+            $urlFolhaSalva = $folhaSalvaId > 0
+                ? 'folha_ponto.php?' . http_build_query(['folha_id' => $folhaSalvaId])
+                : $urlRetorno;
+            folhaPontoRedirecionar(
+                $urlFolhaSalva,
+                $folhaSalvaId > 0
+                    ? 'Folha salva e bloqueada para edição.'
+                    : 'Folha salva. O histórico de períodos não está disponível neste banco.',
+                $folhaSalvaId > 0 ? 'success' : 'warning'
+            );
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
@@ -435,6 +523,10 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!$funcionario) {
             folhaPontoRedirecionar($urlRetorno, 'Selecione um funcionário válido.', 'danger');
+        }
+
+        if ($folhaSelecionada && !$modoEdicaoFolha) {
+            folhaPontoRedirecionar($urlRetorno, 'Clique em Editar folha antes de importar horários neste registro.', 'warning');
         }
 
         $jornadaFuncionario36 = $cargaSemanalDisponivel
@@ -453,16 +545,29 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     observacao, origem, usuario_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pdf', ?)
                 ON DUPLICATE KEY UPDATE
-                    entrada_1 = VALUES(entrada_1),
-                    saida_1 = VALUES(saida_1),
-                    entrada_2 = VALUES(entrada_2),
-                    saida_2 = VALUES(saida_2),
+                    entrada_1 = CASE
+                        WHEN VALUES(observacao) LIKE 'Atestado%' THEN NULL
+                        ELSE COALESCE(VALUES(entrada_1), entrada_1)
+                    END,
+                    saida_1 = CASE
+                        WHEN VALUES(observacao) LIKE 'Atestado%' THEN NULL
+                        ELSE COALESCE(VALUES(saida_1), saida_1)
+                    END,
+                    entrada_2 = CASE
+                        WHEN VALUES(observacao) LIKE 'Atestado%' THEN NULL
+                        ELSE COALESCE(VALUES(entrada_2), entrada_2)
+                    END,
+                    saida_2 = CASE
+                        WHEN VALUES(observacao) LIKE 'Atestado%' THEN NULL
+                        ELSE COALESCE(VALUES(saida_2), saida_2)
+                    END,
                     observacao = VALUES(observacao),
                     origem = 'pdf',
                     usuario_id = VALUES(usuario_id),
                     atualizado_em = CURRENT_TIMESTAMP
             ");
             $datasProcessadas = [];
+            $diasComHorarios = 0;
 
             foreach ($registrosImportados as $registro) {
                 if (!is_array($registro)) {
@@ -497,10 +602,29 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $observacao = function_exists('mb_substr')
                     ? mb_substr($observacao, 0, 255)
                     : substr($observacao, 0, 255);
-                $feriado = preg_match('/^feriado\b/i', $observacao) === 1;
+                $situacaoEspecial = preg_match('/^(?:feriado|folga|atestado)\b/i', $observacao) === 1;
 
-                if (array_filter($valores, static fn($valor) => $valor !== null) === [] && !$feriado) {
-                    continue;
+                if (preg_match('/^atestado\b/i', $observacao) === 1) {
+                    foreach ($valores as $campo => $valor) {
+                        $valores[$campo] = null;
+                    }
+                }
+
+                $camposObrigatorios = $jornadaFuncionario36
+                    ? ['entrada_1', 'saida_1']
+                    : ['entrada_1', 'saida_1', 'entrada_2', 'saida_2'];
+                $possuiHorario = array_filter($valores, static fn($valor) => $valor !== null) !== [];
+                $importacaoPendente = !$situacaoEspecial && array_filter(
+                    $camposObrigatorios,
+                    static fn($campo) => $valores[$campo] === null
+                ) !== [];
+
+                if ($importacaoPendente && $observacao === '') {
+                    $observacao = 'Importacao pendente';
+                }
+
+                if ($possuiHorario) {
+                    $diasComHorarios++;
                 }
 
                 $stmt->execute([
@@ -519,7 +643,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
-            if ($datasProcessadas === []) {
+            if ($diasComHorarios === 0) {
                 folhaPontoRedirecionar(
                     $urlRetorno,
                     'A folha foi importada, mas os horários não reconhecidos permaneceram em branco para preenchimento manual.',
@@ -538,12 +662,14 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 [
                     'data_inicio' => $inicioPeriodo,
                     'data_fim' => $fimPeriodo,
-                    'dias_importados' => count($datasProcessadas),
+                    'dias_analisados' => count($datasProcessadas),
+                    'dias_com_horarios' => $diasComHorarios,
                 ]
             );
             folhaPontoRedirecionar(
                 $urlRetorno,
-                count($datasProcessadas) . ' dia' . (count($datasProcessadas) === 1 ? '' : 's') . ' importado' . (count($datasProcessadas) === 1 ? '' : 's') . ' do arquivo.'
+                $diasComHorarios . ' dia' . ($diasComHorarios === 1 ? '' : 's')
+                    . ' com horários reconhecidos. Os campos restantes ficaram sinalizados para preenchimento manual.'
             );
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -561,6 +687,7 @@ $funcionarioSelecionado = null;
 $horarios = folhaPontoHorarioPadrao();
 $horariosFuncionarios = [];
 $registros = [];
+$folhasSalvas = [];
 $cargaContratualSelecionada = 44;
 
 if ($estruturaDisponivel) {
@@ -572,6 +699,21 @@ if ($estruturaDisponivel) {
     ");
     $stmt->execute([$empresaId]);
     $funcionarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if ($folhasSalvasDisponivel) {
+        $stmt = $pdo->prepare("
+            SELECT folhas.*, funcionarios.nome AS funcionario_nome
+            FROM folha_ponto_folhas folhas
+            INNER JOIN folha_ponto_funcionarios funcionarios
+                ON funcionarios.id = folhas.funcionario_id
+               AND funcionarios.empresa_id = folhas.empresa_id
+            WHERE folhas.empresa_id = ?
+            ORDER BY folhas.data_fim DESC, folhas.atualizado_em DESC, folhas.id DESC
+            LIMIT 100
+        ");
+        $stmt->execute([$empresaId]);
+        $folhasSalvas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     $funcionarioSelecionado = $buscarFuncionario($pdo, $empresaId, $funcionarioId);
 
@@ -677,7 +819,15 @@ if ($funcionarioSelecionado) {
             'origem' => 'manual',
         ];
         $observacaoRegistro = trim((string)($registro['observacao'] ?? ''));
+        $importacaoPendente = strcasecmp($observacaoRegistro, 'Importacao pendente') === 0;
         $feriadoInformado = preg_match('/^feriado\b/i', $observacaoRegistro) === 1;
+        $atestado = preg_match('/^atestado\b/i', $observacaoRegistro) === 1;
+        $folgaInformada = preg_match('/^folga\b/i', $observacaoRegistro) === 1;
+        $observacaoExibicao = $importacaoPendente
+            ? ''
+            : ($atestado
+                ? trim((string)preg_replace('/^atestado\s*:?\s*/i', '', $observacaoRegistro))
+                : $observacaoRegistro);
         $feriadoNacional = FolhaPontoCalendario::feriadoNacional($dataIso);
         $feriado = $feriadoInformado || $feriadoNacional !== null;
         $feriadoNome = $feriadoNacional ?? '';
@@ -691,7 +841,7 @@ if ($funcionarioSelecionado) {
         }
 
         $previstoJornada = !empty($horario['trabalha']) ? folhaPontoMinutosMarcacoes($horario) : 0;
-        $previsto = $feriado ? 0 : $previstoJornada;
+        $previsto = ($feriado || $atestado || $folgaInformada) ? 0 : $previstoJornada;
         $trabalhado = folhaPontoMinutosMarcacoes($registro);
         $marcacoes = array_filter([
             $registro['entrada_1'] ?? '',
@@ -709,6 +859,10 @@ if ($funcionarioSelecionado) {
 
         if ($feriado) {
             $status = ['Feriado', 'bg-primary'];
+        } elseif ($atestado) {
+            $status = ['Atestado', 'bg-info text-dark'];
+        } elseif ($folgaInformada) {
+            $status = ['Folga', 'bg-secondary'];
         } elseif (!$possuiMarcacao && $previsto <= 0) {
             $status = ['Folga', 'bg-secondary'];
         } elseif (!$possuiMarcacao && $dataIso > $hoje) {
@@ -742,6 +896,10 @@ if ($funcionarioSelecionado) {
             'saldo' => $trabalhado - $previsto,
             'status' => $status,
             'feriado' => $feriado,
+            'atestado' => $atestado,
+            'folga_informada' => $folgaInformada,
+            'importacao_pendente' => $importacaoPendente,
+            'observacao_exibicao' => $observacaoExibicao,
             'feriado_nacional' => $feriadoNacional !== null,
             'feriado_nome' => $feriadoNome,
             'fim_semana' => $diaSemana >= 6,
@@ -754,6 +912,16 @@ $saldoAteHoje = $totalTrabalhadoAteHoje - $totalPrevistoAteHoje;
 $jornadaSemanalReferencia = $cargaContratualSelecionada * 60;
 $referenciaMensal = ($cargaContratualSelecionada === 36 ? 180 : 220) * 60;
 $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+$urlFolhaAtual = $folhaId > 0
+    ? 'folha_ponto.php?' . http_build_query(['folha_id' => $folhaId])
+    : '';
+$urlEditarFolhaAtual = $folhaId > 0
+    ? 'folha_ponto.php?' . http_build_query(['folha_id' => $folhaId, 'editar' => 1])
+    : '';
+$retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
+    'data_inicio' => $inicioPeriodo,
+    'data_fim' => $fimPeriodo,
+]);
 ?>
 
 <!DOCTYPE html>
@@ -796,6 +964,35 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                     Execute o arquivo <code>sql/folha_ponto.sql</code> no phpMyAdmin.
                 </div>
             <?php else: ?>
+                <?php if ($empresasFolha !== []): ?>
+                    <section class="ponto-empresa-contexto mb-4 no-print" aria-label="Empresa da folha de ponto">
+                        <div class="ponto-empresa-identidade">
+                            <span class="ponto-empresa-icone" aria-hidden="true"><i class="bi bi-buildings"></i></span>
+                            <div>
+                                <span>Empresa</span>
+                                <strong><?= htmlspecialchars($empresaNomeFolha) ?></strong>
+                            </div>
+                        </div>
+                        <form method="get" action="trocar_empresa.php" id="formEmpresaFolhaPonto">
+                            <label for="empresaFolhaPonto" class="visually-hidden">Selecionar empresa</label>
+                            <select
+                                class="form-select"
+                                name="empresa_id"
+                                id="empresaFolhaPonto"
+                                <?= count($empresasFolha) <= 1 ? 'disabled' : '' ?>>
+                                <?php foreach ($empresasFolha as $empresaFolha): ?>
+                                    <option
+                                        value="<?= (int)$empresaFolha['id'] ?>"
+                                        <?= (int)$empresaFolha['id'] === $empresaId ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($empresaFolha['nome']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <input type="hidden" name="retorno" value="<?= htmlspecialchars($retornoTrocaEmpresaFolha, ENT_QUOTES, 'UTF-8') ?>">
+                        </form>
+                    </section>
+                <?php endif; ?>
+
                 <?php if ($mensagem): ?>
                     <div class="alert alert-<?= htmlspecialchars($mensagem['tipo']) ?> alerta-temporario no-print">
                         <?= htmlspecialchars($mensagem['texto']) ?>
@@ -865,27 +1062,35 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                         </div>
 
                         <div class="ponto-acoes-filtro">
-                            <button
-                                type="button"
-                                class="btn btn-outline-primary"
-                                id="btnEditarFuncionario"
-                                data-id="<?= (int)$funcionarioSelecionado['id'] ?>"
-                                data-nome="<?= htmlspecialchars($funcionarioSelecionado['nome'], ENT_QUOTES, 'UTF-8') ?>"
-                                data-ativo="<?= (int)$funcionarioSelecionado['ativo'] ?>"
-                                data-carga-semanal="<?= $cargaContratualSelecionada ?>"
-                                data-horarios="<?= htmlspecialchars($horariosJson, ENT_QUOTES, 'UTF-8') ?>"
-                                data-bs-toggle="modal"
-                                data-bs-target="#modalFuncionario">
-                                <i class="bi bi-pencil"></i> Jornada
-                            </button>
-                            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalImportarPdf">
-                                <i class="bi bi-file-earmark-arrow-up"></i> Importar PDF/Word
-                            </button>
+                            <?php if ($modoEdicaoFolha): ?>
+                                <button
+                                    type="button"
+                                    class="btn btn-outline-primary"
+                                    id="btnEditarFuncionario"
+                                    data-id="<?= (int)$funcionarioSelecionado['id'] ?>"
+                                    data-nome="<?= htmlspecialchars($funcionarioSelecionado['nome'], ENT_QUOTES, 'UTF-8') ?>"
+                                    data-ativo="<?= (int)$funcionarioSelecionado['ativo'] ?>"
+                                    data-carga-semanal="<?= $cargaContratualSelecionada ?>"
+                                    data-horarios="<?= htmlspecialchars($horariosJson, ENT_QUOTES, 'UTF-8') ?>"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#modalFuncionario">
+                                    <i class="bi bi-pencil"></i> Jornada
+                                </button>
+                                <button type="button" class="btn btn-outline-primary" id="btnSelecionarArquivoPonto">
+                                    <i class="bi bi-file-earmark-arrow-up"></i> Importar PDF/Word
+                                </button>
+                            <?php endif; ?>
                             <button type="button" class="btn btn-outline-secondary" id="btnImprimirPonto">
                                 <i class="bi bi-printer"></i> Imprimir
                             </button>
                         </div>
                     </section>
+                    <?php if ($modoEdicaoFolha): ?>
+                        <div class="alert alert-info d-none mb-4 no-print" id="avisoImportacaoDireta" role="status">
+                            <span class="spinner-border spinner-border-sm me-2" id="spinnerImportacaoDireta" aria-hidden="true"></span>
+                            <span id="textoImportacaoDireta">Lendo o arquivo...</span>
+                        </div>
+                    <?php endif; ?>
                 <?php endif; ?>
 
                 <?php if ($funcionarios === []): ?>
@@ -1004,6 +1209,76 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                             </table>
                         </div>
                     </section>
+
+                    <?php if ($folhasSalvasDisponivel): ?>
+                        <section class="ponto-painel mt-4">
+                            <div class="ponto-painel-titulo">
+                                <div>
+                                    <h5 class="mb-1">Folhas salvas</h5>
+                                    <p class="text-muted small mb-0">Períodos registrados dos funcionários</p>
+                                </div>
+                                <span class="badge bg-light text-dark border">
+                                    <?= count($folhasSalvas) ?> folha<?= count($folhasSalvas) === 1 ? '' : 's' ?>
+                                </span>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table align-middle mb-0 ponto-folhas-salvas-tabela">
+                                    <thead>
+                                        <tr>
+                                            <th>Funcionário</th>
+                                            <th>Período</th>
+                                            <th>Última atualização</th>
+                                            <th class="text-end">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php if ($folhasSalvas === []): ?>
+                                            <tr>
+                                                <td colspan="4" class="text-center text-muted py-4">Nenhuma folha salva ainda.</td>
+                                            </tr>
+                                        <?php endif; ?>
+                                        <?php foreach ($folhasSalvas as $folhaSalva): ?>
+                                            <?php
+                                            $urlFolhaSalva = 'folha_ponto.php?' . http_build_query([
+                                                'folha_id' => (int)$folhaSalva['id'],
+                                            ]);
+                                            $urlEditarFolhaSalva = 'folha_ponto.php?' . http_build_query([
+                                                'folha_id' => (int)$folhaSalva['id'],
+                                                'editar' => 1,
+                                            ]);
+                                            $urlImprimirFolhaSalva = 'folha_ponto.php?' . http_build_query([
+                                                'folha_id' => (int)$folhaSalva['id'],
+                                                'imprimir' => 1,
+                                            ]);
+                                            ?>
+                                            <tr>
+                                                <td><strong><?= htmlspecialchars($folhaSalva['funcionario_nome']) ?></strong></td>
+                                                <td class="text-nowrap">
+                                                    <?= date('d/m/Y', strtotime($folhaSalva['data_inicio'])) ?>
+                                                    a
+                                                    <?= date('d/m/Y', strtotime($folhaSalva['data_fim'])) ?>
+                                                </td>
+                                                <td class="text-nowrap"><?= date('d/m/Y H:i', strtotime($folhaSalva['atualizado_em'])) ?></td>
+                                                <td>
+                                                    <div class="ponto-acoes-funcionario">
+                                                        <a href="<?= htmlspecialchars($urlFolhaSalva) ?>" class="btn btn-sm btn-outline-primary" title="Abrir folha" aria-label="Abrir folha">
+                                                            <i class="bi bi-eye"></i>
+                                                        </a>
+                                                        <a href="<?= htmlspecialchars($urlEditarFolhaSalva) ?>" class="btn btn-sm btn-outline-primary" title="Editar folha" aria-label="Editar folha">
+                                                            <i class="bi bi-pencil"></i>
+                                                        </a>
+                                                        <a href="<?= htmlspecialchars($urlImprimirFolhaSalva) ?>" class="btn btn-sm btn-outline-secondary" title="Imprimir ou salvar em PDF" aria-label="Imprimir ou salvar em PDF">
+                                                            <i class="bi bi-printer"></i>
+                                                        </a>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    <?php endif; ?>
                 <?php else: ?>
                     <div class="ponto-impressao-cabecalho">
                         <div>
@@ -1046,33 +1321,67 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                         </div>
                     </section>
 
-                    <form method="post" id="formRegistrosPonto" data-hoje="<?= htmlspecialchars($hoje) ?>">
+                    <form
+                        method="post"
+                        id="formRegistrosPonto"
+                        class="<?= !$modoEdicaoFolha ? 'folha-modo-leitura' : '' ?>"
+                        data-hoje="<?= htmlspecialchars($hoje) ?>"
+                        data-modo-leitura="<?= !$modoEdicaoFolha ? '1' : '0' ?>">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(folhaPontoToken()) ?>">
                         <input type="hidden" name="acao" value="salvar_registros">
                         <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
                         <input type="hidden" name="data_inicio" value="<?= htmlspecialchars($inicioPeriodo) ?>">
                         <input type="hidden" name="data_fim" value="<?= htmlspecialchars($fimPeriodo) ?>">
+                        <?php if ($folhaId > 0): ?>
+                            <input type="hidden" name="folha_id" value="<?= $folhaId ?>">
+                            <?php if ($modoEdicaoFolha): ?>
+                                <input type="hidden" name="editar" value="1">
+                            <?php endif; ?>
+                        <?php endif; ?>
 
                         <section class="ponto-painel">
                             <div class="ponto-painel-titulo no-print">
                                 <div>
-                                    <h5 class="mb-1"><?= htmlspecialchars($funcionarioSelecionado['nome']) ?></h5>
-                                    <p class="text-muted small mb-0"><?= htmlspecialchars($nomePeriodo) ?> · totais atualizados durante o preenchimento</p>
+                                    <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                                        <h5 class="mb-0"><?= htmlspecialchars($funcionarioSelecionado['nome']) ?></h5>
+                                        <?php if ($folhaSelecionada): ?>
+                                            <span class="badge <?= $modoEdicaoFolha ? 'bg-warning text-dark' : 'bg-success' ?>">
+                                                <?= $modoEdicaoFolha ? 'Editando folha salva' : 'Folha salva' ?>
+                                            </span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <p class="text-muted small mb-0">
+                                        <?= htmlspecialchars($nomePeriodo) ?>
+                                        <?= $modoEdicaoFolha ? ' · totais atualizados durante o preenchimento' : ' · somente leitura' ?>
+                                    </p>
                                 </div>
                                 <div class="ponto-painel-acoes">
-                                    <button
-                                        type="button"
-                                        class="btn btn-outline-primary"
-                                        id="btnCompletarPelaJornada"
-                                        title="Preenche somente horários vazios, sem alterar os já informados">
-                                        <i class="bi bi-calendar2-check"></i> Completar pela jornada
-                                    </button>
-                                    <button type="submit" class="btn btn-success">
-                                        <i class="bi bi-check-lg"></i> Salvar folha
-                                    </button>
+                                    <?php if ($folhaSelecionada && !$modoEdicaoFolha): ?>
+                                        <a href="<?= htmlspecialchars($urlEditarFolhaAtual) ?>" class="btn btn-primary">
+                                            <i class="bi bi-pencil"></i> Editar folha
+                                        </a>
+                                    <?php else: ?>
+                                        <?php if ($folhaSelecionada): ?>
+                                            <a href="<?= htmlspecialchars($urlFolhaAtual) ?>" class="btn btn-outline-secondary">
+                                                <i class="bi bi-x-lg"></i> Cancelar edição
+                                            </a>
+                                        <?php endif; ?>
+                                        <button
+                                            type="button"
+                                            class="btn btn-outline-primary"
+                                            id="btnCompletarPelaJornada"
+                                            title="Preenche somente horários vazios, sem alterar os já informados">
+                                            <i class="bi bi-calendar2-check"></i> Completar pela jornada
+                                        </button>
+                                        <button type="submit" class="btn btn-success">
+                                            <i class="bi bi-check-lg"></i> Salvar folha
+                                        </button>
+                                    <?php endif; ?>
                                 </div>
                             </div>
-                            <div class="alert d-none mx-3 mt-3 mb-0 no-print" id="avisoCompletarPelaJornada" role="status"></div>
+                            <?php if ($modoEdicaoFolha): ?>
+                                <div class="alert d-none mx-3 mt-3 mb-0 no-print" id="avisoCompletarPelaJornada" role="status"></div>
+                            <?php endif; ?>
                             <div class="table-responsive">
                                 <table class="table align-middle mb-0 ponto-tabela">
                                     <thead>
@@ -1097,19 +1406,23 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                             <?php
                                             $previstoTexto = !empty($dia['feriado'])
                                                 ? 'Feriado' . (!empty($dia['feriado_nome']) ? ': ' . $dia['feriado_nome'] : '')
-                                                : (!empty($dia['horario']['trabalha'])
-                                                    ? trim(implode(' / ', array_filter([
-                                                        ($dia['horario']['entrada_1'] ?? '') && ($dia['horario']['saida_1'] ?? '')
-                                                            ? substr((string)$dia['horario']['entrada_1'], 0, 5) . '-' . substr((string)$dia['horario']['saida_1'], 0, 5)
-                                                            : '',
-                                                        ($dia['horario']['entrada_2'] ?? '') && ($dia['horario']['saida_2'] ?? '')
-                                                            ? substr((string)$dia['horario']['entrada_2'], 0, 5) . '-' . substr((string)$dia['horario']['saida_2'], 0, 5)
-                                                            : '',
-                                                    ])))
-                                                    : 'Folga');
+                                                : (!empty($dia['atestado'])
+                                                    ? 'Atestado'
+                                                    : (!empty($dia['folga_informada'])
+                                                        ? 'Folga'
+                                                        : (!empty($dia['horario']['trabalha'])
+                                                            ? trim(implode(' / ', array_filter([
+                                                                ($dia['horario']['entrada_1'] ?? '') && ($dia['horario']['saida_1'] ?? '')
+                                                                    ? substr((string)$dia['horario']['entrada_1'], 0, 5) . '-' . substr((string)$dia['horario']['saida_1'], 0, 5)
+                                                                    : '',
+                                                                ($dia['horario']['entrada_2'] ?? '') && ($dia['horario']['saida_2'] ?? '')
+                                                                    ? substr((string)$dia['horario']['entrada_2'], 0, 5) . '-' . substr((string)$dia['horario']['saida_2'], 0, 5)
+                                                                    : '',
+                                                            ])))
+                                                            : 'Folga')));
                                             ?>
                                             <tr
-                                                class="ponto-registro-linha<?= $dia['previsto'] <= 0 ? ' ponto-dia-folga' : '' ?><?= !empty($dia['fim_semana']) ? ' ponto-dia-fim-semana' : '' ?><?= !empty($dia['feriado']) ? ' ponto-dia-feriado' : '' ?>"
+                                                class="ponto-registro-linha<?= $dia['previsto'] <= 0 ? ' ponto-dia-folga' : '' ?><?= !empty($dia['fim_semana']) ? ' ponto-dia-fim-semana' : '' ?><?= !empty($dia['feriado']) ? ' ponto-dia-feriado' : '' ?><?= !empty($dia['atestado']) ? ' ponto-dia-atestado' : '' ?>"
                                                 data-data="<?= htmlspecialchars($dia['data']) ?>"
                                                 data-feriado-nacional="<?= !empty($dia['feriado_nacional']) ? '1' : '0' ?>"
                                                 data-feriado-nome="<?= htmlspecialchars($dia['feriado_nome'] ?? '') ?>"
@@ -1131,14 +1444,27 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                     ? ['entrada_1', 'saida_1']
                                                     : ['entrada_1', 'saida_1', 'entrada_2', 'saida_2']; ?>
                                                 <?php foreach ($camposRegistro as $campo): ?>
+                                                    <?php
+                                                    $valorRegistroCampo = (string)($dia['registro'][$campo] ?? '');
+                                                    $valorJornadaCampo = substr((string)($dia['horario'][$campo] ?? ''), 0, 5);
+                                                    $horarioNaoReconhecido = !empty($dia['importacao_pendente'])
+                                                        && empty($dia['feriado'])
+                                                        && empty($dia['atestado'])
+                                                        && empty($dia['folga_informada'])
+                                                        && $valorJornadaCampo !== ''
+                                                        && $valorRegistroCampo === '';
+                                                    ?>
                                                     <td>
                                                         <input
                                                             type="time"
-                                                            class="form-control form-control-sm ponto-hora-registro"
+                                                            class="form-control form-control-sm ponto-hora-registro<?= $horarioNaoReconhecido ? ' ponto-hora-nao-reconhecida' : '' ?>"
                                                             name="registros[<?= $dia['data'] ?>][<?= $campo ?>]"
                                                             data-campo="<?= htmlspecialchars($campo) ?>"
-                                                            data-horario-jornada="<?= htmlspecialchars(substr((string)($dia['horario'][$campo] ?? ''), 0, 5)) ?>"
-                                                            value="<?= htmlspecialchars($dia['registro'][$campo] ?? '') ?>"
+                                                            data-horario-jornada="<?= htmlspecialchars($valorJornadaCampo) ?>"
+                                                            data-importacao-pendente="<?= $horarioNaoReconhecido ? '1' : '0' ?>"
+                                                            value="<?= htmlspecialchars($valorRegistroCampo) ?>"
+                                                            <?= !$modoEdicaoFolha ? 'readonly' : '' ?>
+                                                            <?= $horarioNaoReconhecido ? 'title="Horário não reconhecido. Preencha manualmente ou use Completar pela jornada."' : '' ?>
                                                             aria-label="<?= htmlspecialchars($campo . ' de ' . $dia['data_br']) ?>">
                                                     </td>
                                                 <?php endforeach; ?>
@@ -1150,24 +1476,40 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                 </td>
                                                 <td><span class="badge ponto-status-dia <?= $dia['status'][1] ?>"><?= $dia['status'][0] ?></span></td>
                                                 <td>
-                                                    <input
-                                                        type="text"
-                                                        class="form-control form-control-sm ponto-observacao"
-                                                        name="registros[<?= $dia['data'] ?>][observacao]"
-                                                        value="<?= htmlspecialchars($dia['registro']['observacao'] ?? '') ?>"
-                                                        maxlength="255"
-                                                        placeholder="Opcional">
+                                                    <div class="ponto-observacao-grupo">
+                                                        <div class="form-check ponto-atestado-controle">
+                                                            <input
+                                                                type="checkbox"
+                                                                class="form-check-input ponto-atestado"
+                                                                name="registros[<?= $dia['data'] ?>][atestado]"
+                                                                value="1"
+                                                                id="atestado-<?= htmlspecialchars($dia['data']) ?>"
+                                                                <?= !$modoEdicaoFolha ? 'disabled' : '' ?>
+                                                                <?= !empty($dia['atestado']) ? 'checked' : '' ?>>
+                                                            <label class="form-check-label" for="atestado-<?= htmlspecialchars($dia['data']) ?>">Atestado</label>
+                                                        </div>
+                                                        <input
+                                                            type="text"
+                                                            class="form-control form-control-sm ponto-observacao"
+                                                            name="registros[<?= $dia['data'] ?>][observacao]"
+                                                            value="<?= htmlspecialchars($dia['observacao_exibicao'] ?? '') ?>"
+                                                            maxlength="245"
+                                                            <?= !$modoEdicaoFolha ? 'readonly' : '' ?>
+                                                            placeholder="Observação opcional">
+                                                    </div>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
                                     </tbody>
                                 </table>
                             </div>
-                            <div class="ponto-rodape no-print">
-                                <button type="submit" class="btn btn-success">
-                                    <i class="bi bi-check-lg"></i> Salvar folha
-                                </button>
-                            </div>
+                            <?php if ($modoEdicaoFolha): ?>
+                                <div class="ponto-rodape no-print">
+                                    <button type="submit" class="btn btn-success">
+                                        <i class="bi bi-check-lg"></i> Salvar folha
+                                    </button>
+                                </div>
+                            <?php endif; ?>
                         </section>
                     </form>
                 <?php endif; ?>
@@ -1320,7 +1662,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
             </div>
         <?php endif; ?>
 
-        <?php if ($funcionarioSelecionado): ?>
+        <?php if ($funcionarioSelecionado && $modoEdicaoFolha): ?>
             <div class="modal fade" id="modalImportarPdf" tabindex="-1" aria-hidden="true">
                 <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable ponto-modal-importacao">
                     <div class="modal-content">
@@ -1331,6 +1673,10 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                             <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>" data-mes-original="<?= htmlspecialchars($mes) ?>">
                             <input type="hidden" name="data_inicio" value="<?= htmlspecialchars($inicioPeriodo) ?>">
                             <input type="hidden" name="data_fim" value="<?= htmlspecialchars($fimPeriodo) ?>">
+                            <?php if ($folhaId > 0): ?>
+                                <input type="hidden" name="folha_id" value="<?= $folhaId ?>">
+                                <input type="hidden" name="editar" value="1">
+                            <?php endif; ?>
                             <input type="hidden" name="registros_pdf" id="registrosPdf">
                             <div class="modal-header">
                                 <div>
@@ -1382,9 +1728,6 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                <button type="button" class="btn btn-outline-primary" id="btnLerPdf">
-                                    <i class="bi bi-eye"></i> Ler e pré-visualizar
-                                </button>
                                 <button type="submit" class="btn btn-success" id="btnConfirmarImportacaoPdf" disabled>
                                     <i class="bi bi-upload"></i> Confirmar importação
                                 </button>
