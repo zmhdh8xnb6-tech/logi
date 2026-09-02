@@ -41,13 +41,22 @@
     gap: 8px;
 }
 
+.ponto-periodo-controle {
+    min-width: 0;
+}
+
+.ponto-periodo-controle>.form-label {
+    display: block;
+    margin-bottom: 8px;
+}
+
 .ponto-navegacao-mes {
     min-width: 0;
-    gap: 0;
+    gap: 7px;
     white-space: nowrap;
 }
 
-.ponto-navegacao-mes .btn {
+.ponto-navegacao-mes>.btn {
     flex: 0 0 40px;
     width: 40px;
     height: 40px;
@@ -55,27 +64,42 @@
 }
 
 .ponto-navegacao-mes form {
-    width: 180px;
-    min-width: 145px;
+    display: grid;
+    grid-template-columns: minmax(138px, 1fr) auto minmax(138px, 1fr) auto;
+    align-items: center;
+    gap: 7px;
+    width: 414px;
+    min-width: 0;
 }
 
 .ponto-navegacao-mes .form-control {
     min-height: 40px;
-    border-radius: 0;
+    min-width: 0;
+    border-radius: 6px;
     font-weight: 700;
 }
 
+.ponto-periodo-separador {
+    color: #64748b;
+    font-size: .82rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.ponto-periodo-aplicar {
+    min-height: 40px;
+    white-space: nowrap;
+}
+
 .ponto-navegacao-mes .ponto-nav-anterior {
-    border-radius: 6px 0 0 6px;
+    border-radius: 6px;
 }
 
 .ponto-navegacao-mes .ponto-nav-proximo {
-    margin-left: -1px;
-    border-radius: 0 6px 6px 0;
+    border-radius: 6px;
 }
 
 .ponto-navegacao-mes .ponto-nav-atual {
-    margin-left: 7px;
     border-radius: 6px;
 }
 
@@ -477,6 +501,7 @@
     }
 
     .ponto-filtros-form>div,
+    .ponto-periodo-controle,
     .ponto-navegacao-mes,
     .ponto-acoes-filtro {
         width: 100%;
@@ -484,7 +509,7 @@
 
     .ponto-navegacao-mes form {
         flex: 1 1 auto;
-        width: auto;
+        width: min(100%, 414px);
     }
 
     .ponto-acoes-filtro {
@@ -522,6 +547,21 @@
 }
 
 @media (max-width: 480px) {
+    .ponto-navegacao-mes {
+        flex-wrap: wrap;
+    }
+
+    .ponto-navegacao-mes form {
+        order: -1;
+        flex: 1 0 100%;
+        width: 100%;
+        grid-template-columns: minmax(118px, 1fr) auto minmax(118px, 1fr);
+    }
+
+    .ponto-periodo-aplicar {
+        grid-column: 1 / -1;
+    }
+
     .ponto-resumo {
         grid-template-columns: 1fr;
     }

@@ -24,11 +24,32 @@ $cargaSemanalDisponivel = $estruturaDisponivel
 $empresaId = (int)(empresaAtivaId($pdo) ?? 1);
 $empresaId = $empresaId > 0 ? $empresaId : 1;
 $usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
-$mes = folhaPontoMesValido($_GET['mes'] ?? $_POST['mes'] ?? null);
-$inicioMes = $mes . '-01';
-$fimMes = date('Y-m-d', strtotime($inicioMes . ' +1 month'));
-$mesAnterior = date('Y-m', strtotime($inicioMes . ' -1 month'));
-$proximoMes = date('Y-m', strtotime($inicioMes . ' +1 month'));
+$mesLegado = folhaPontoMesValido($_GET['mes'] ?? $_POST['mes'] ?? null);
+$dataInicioInformada = folhaPontoDataValida($_GET['data_inicio'] ?? $_POST['data_inicio'] ?? null);
+$dataFimInformada = folhaPontoDataValida($_GET['data_fim'] ?? $_POST['data_fim'] ?? null);
+$inicioPeriodo = $dataInicioInformada ?? ($mesLegado . '-01');
+$fimPeriodo = $dataFimInformada ?? date('Y-m-t', strtotime($inicioPeriodo));
+
+if ($fimPeriodo < $inicioPeriodo) {
+    [$inicioPeriodo, $fimPeriodo] = [$fimPeriodo, $inicioPeriodo];
+}
+
+$inicioPeriodoData = new DateTimeImmutable($inicioPeriodo);
+$fimPeriodoData = new DateTimeImmutable($fimPeriodo);
+$quantidadeDiasPeriodo = ((int)$inicioPeriodoData->diff($fimPeriodoData)->days) + 1;
+
+if ($quantidadeDiasPeriodo > 366) {
+    $fimPeriodoData = $inicioPeriodoData->modify('+365 days');
+    $fimPeriodo = $fimPeriodoData->format('Y-m-d');
+    $quantidadeDiasPeriodo = 366;
+}
+
+$fimPeriodoExclusivo = $fimPeriodoData->modify('+1 day')->format('Y-m-d');
+$fimPeriodoAnterior = $inicioPeriodoData->modify('-1 day');
+$inicioPeriodoAnterior = $fimPeriodoAnterior->modify('-' . ($quantidadeDiasPeriodo - 1) . ' days');
+$inicioPeriodoProximo = $fimPeriodoData->modify('+1 day');
+$fimPeriodoProximo = $inicioPeriodoProximo->modify('+' . ($quantidadeDiasPeriodo - 1) . ' days');
+$mes = substr($inicioPeriodo, 0, 7);
 $funcionarioId = (int)($_GET['funcionario_id'] ?? $_POST['funcionario_id'] ?? 0);
 $nomesMeses = [
     1 => 'Janeiro',
@@ -44,9 +65,12 @@ $nomesMeses = [
     11 => 'Novembro',
     12 => 'Dezembro',
 ];
-$nomeMes = $nomesMeses[(int)date('n', strtotime($inicioMes))]
+$nomeMes = $nomesMeses[(int)date('n', strtotime($inicioPeriodo))]
     . '/'
-    . date('Y', strtotime($inicioMes));
+    . date('Y', strtotime($inicioPeriodo));
+$nomePeriodo = date('d/m/Y', strtotime($inicioPeriodo))
+    . ' a '
+    . date('d/m/Y', strtotime($fimPeriodo));
 
 $buscarFuncionario = static function (PDO $pdo, int $empresaId, int $id): ?array {
     if ($id <= 0) {
@@ -65,7 +89,8 @@ $buscarFuncionario = static function (PDO $pdo, int $empresaId, int $id): ?array
 
 if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $urlRetorno = 'folha_ponto.php?' . http_build_query([
-        'mes' => $mes,
+        'data_inicio' => $inicioPeriodo,
+        'data_fim' => $fimPeriodo,
         'funcionario_id' => $funcionarioId,
     ]);
 
@@ -113,7 +138,10 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             );
 
             folhaPontoRedirecionar(
-                'folha_ponto.php?' . http_build_query(['mes' => $mes]),
+                'folha_ponto.php?' . http_build_query([
+                    'data_inicio' => $inicioPeriodo,
+                    'data_fim' => $fimPeriodo,
+                ]),
                 'Funcionário e registros de ponto excluídos com sucesso.'
             );
         } catch (Throwable $e) {
@@ -261,7 +289,8 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
             folhaPontoRedirecionar(
                 'folha_ponto.php?' . http_build_query([
-                    'mes' => $mes,
+                    'data_inicio' => $inicioPeriodo,
+                    'data_fim' => $fimPeriodo,
                     'funcionario_id' => $funcionarioId,
                 ]),
                 $mensagem,
@@ -316,7 +345,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
-                if ($data < $inicioMes || $data >= $fimMes || date('Y-m-d', strtotime($data)) !== $data) {
+                if ($data < $inicioPeriodo || $data > $fimPeriodo || date('Y-m-d', strtotime($data)) !== $data) {
                     throw new RuntimeException('Existe uma data inválida nos registros enviados.');
                 }
 
@@ -386,11 +415,11 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 'editar',
                 'registros_ponto',
                 $funcionarioId,
-                'Atualizou a folha de ' . $funcionario['nome'] . ' em ' . $nomeMes,
+                'Atualizou a folha de ' . $funcionario['nome'] . ' no período de ' . $nomePeriodo,
                 null,
                 ['registros_preenchidos' => $quantidadeAlterada]
             );
-            folhaPontoRedirecionar($urlRetorno, 'Folha mensal salva com sucesso.');
+            folhaPontoRedirecionar($urlRetorno, 'Folha do período salva com sucesso.');
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
@@ -411,7 +440,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $jornadaFuncionario36 = $cargaSemanalDisponivel
             && (int)($funcionario['carga_semanal'] ?? 44) === 36;
 
-        if (!is_array($registrosImportados) || $registrosImportados === [] || count($registrosImportados) > 31) {
+        if (!is_array($registrosImportados) || $registrosImportados === [] || count($registrosImportados) > 366) {
             folhaPontoRedirecionar($urlRetorno, 'Nenhum registro válido foi encontrado no arquivo.', 'danger');
         }
 
@@ -444,8 +473,8 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if (
                     !preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)
-                    || $data < $inicioMes
-                    || $data >= $fimMes
+                    || $data < $inicioPeriodo
+                    || $data > $fimPeriodo
                     || date('Y-m-d', strtotime($data)) !== $data
                     || isset($datasProcessadas[$data])
                 ) {
@@ -506,7 +535,11 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $funcionarioId,
                 'Importou registros de ponto por arquivo para ' . $funcionario['nome'],
                 null,
-                ['mes' => $mes, 'dias_importados' => count($datasProcessadas)]
+                [
+                    'data_inicio' => $inicioPeriodo,
+                    'data_fim' => $fimPeriodo,
+                    'dias_importados' => count($datasProcessadas),
+                ]
             );
             folhaPontoRedirecionar(
                 $urlRetorno,
@@ -588,7 +621,7 @@ if ($estruturaDisponivel) {
               AND data_registro < ?
             ORDER BY data_registro
         ");
-        $stmt->execute([$empresaId, $funcionarioId, $inicioMes, $fimMes]);
+        $stmt->execute([$empresaId, $funcionarioId, $inicioPeriodo, $fimPeriodoExclusivo]);
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $registro) {
             foreach (['entrada_1', 'saida_1', 'entrada_2', 'saida_2'] as $campo) {
@@ -622,8 +655,8 @@ $diasSemRegistro = 0;
 $hoje = date('Y-m-d');
 
 if ($funcionarioSelecionado) {
-    $data = new DateTime($inicioMes);
-    $limite = new DateTime($fimMes);
+    $data = new DateTime($inicioPeriodo);
+    $limite = new DateTime($fimPeriodoExclusivo);
 
     while ($data < $limite) {
         $dataIso = $data->format('Y-m-d');
@@ -740,10 +773,13 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
             <div class="ponto-cabecalho mb-4 no-print">
                 <div>
                     <h3 class="mb-1">Folha de Ponto</h3>
-                    <p class="text-muted mb-0">Jornadas semanais e registros mensais dos funcionários</p>
+                    <p class="text-muted mb-0">Jornadas semanais e registros por período dos funcionários</p>
                 </div>
                 <div class="d-flex flex-wrap gap-2">
-                    <a href="<?= $funcionarioSelecionado ? 'folha_ponto.php?' . http_build_query(['mes' => $mes]) : 'home.php' ?>" class="btn btn-outline-secondary">
+                    <a href="<?= $funcionarioSelecionado ? 'folha_ponto.php?' . http_build_query([
+                                    'data_inicio' => $inicioPeriodo,
+                                    'data_fim' => $fimPeriodo,
+                                ]) : 'home.php' ?>" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left"></i> Voltar
                     </a>
                     <?php if ($estruturaDisponivel): ?>
@@ -788,24 +824,44 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                            <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
+                            <input type="hidden" name="data_inicio" value="<?= htmlspecialchars($inicioPeriodo) ?>">
+                            <input type="hidden" name="data_fim" value="<?= htmlspecialchars($fimPeriodo) ?>">
                         </form>
 
-                        <div class="ponto-navegacao-mes">
-                            <a href="folha_ponto.php?<?= http_build_query(['mes' => $mesAnterior, 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-secondary ponto-nav-anterior" title="Mês anterior" aria-label="Mês anterior">
-                                <i class="bi bi-chevron-left"></i>
-                            </a>
-                            <form method="get" id="formMesPonto">
-                                <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
-                                <label for="mesPonto" class="visually-hidden">Escolher mês</label>
-                                <input type="month" class="form-control" name="mes" id="mesPonto" value="<?= htmlspecialchars($mes) ?>">
-                            </form>
-                            <a href="folha_ponto.php?<?= http_build_query(['mes' => $proximoMes, 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-secondary ponto-nav-proximo" title="Próximo mês" aria-label="Próximo mês">
-                                <i class="bi bi-chevron-right"></i>
-                            </a>
-                            <a href="folha_ponto.php?<?= http_build_query(['mes' => date('Y-m'), 'funcionario_id' => $funcionarioId]) ?>" class="btn btn-outline-primary ponto-nav-atual" title="Ir para o mês atual" aria-label="Ir para o mês atual">
-                                <i class="bi bi-calendar-check"></i>
-                            </a>
+                        <div class="ponto-periodo-controle">
+                            <label class="form-label" for="dataInicioPonto">Período</label>
+                            <div class="ponto-navegacao-mes">
+                                <a href="folha_ponto.php?<?= http_build_query([
+                                                                'data_inicio' => $inicioPeriodoAnterior->format('Y-m-d'),
+                                                                'data_fim' => $fimPeriodoAnterior->format('Y-m-d'),
+                                                                'funcionario_id' => $funcionarioId,
+                                                            ]) ?>" class="btn btn-outline-secondary ponto-nav-anterior" title="Período anterior" aria-label="Período anterior">
+                                    <i class="bi bi-chevron-left"></i>
+                                </a>
+                                <form method="get" id="formPeriodoPonto">
+                                    <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
+                                    <input type="date" class="form-control" name="data_inicio" id="dataInicioPonto" value="<?= htmlspecialchars($inicioPeriodo) ?>" aria-label="Data inicial">
+                                    <span class="ponto-periodo-separador">a</span>
+                                    <input type="date" class="form-control" name="data_fim" id="dataFimPonto" value="<?= htmlspecialchars($fimPeriodo) ?>" aria-label="Data final">
+                                    <button type="submit" class="btn btn-primary ponto-periodo-aplicar">
+                                        <i class="bi bi-check-lg"></i> Aplicar
+                                    </button>
+                                </form>
+                                <a href="folha_ponto.php?<?= http_build_query([
+                                                                'data_inicio' => $inicioPeriodoProximo->format('Y-m-d'),
+                                                                'data_fim' => $fimPeriodoProximo->format('Y-m-d'),
+                                                                'funcionario_id' => $funcionarioId,
+                                                            ]) ?>" class="btn btn-outline-secondary ponto-nav-proximo" title="Próximo período" aria-label="Próximo período">
+                                    <i class="bi bi-chevron-right"></i>
+                                </a>
+                                <a href="folha_ponto.php?<?= http_build_query([
+                                                                'data_inicio' => date('Y-m-01'),
+                                                                'data_fim' => date('Y-m-t'),
+                                                                'funcionario_id' => $funcionarioId,
+                                                            ]) ?>" class="btn btn-outline-primary ponto-nav-atual" title="Ir para o período atual" aria-label="Ir para o período atual">
+                                    <i class="bi bi-calendar-check"></i>
+                                </a>
+                            </div>
                         </div>
 
                         <div class="ponto-acoes-filtro">
@@ -846,7 +902,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                         <div class="ponto-painel-titulo">
                             <div>
                                 <h5 class="mb-1">Funcionários</h5>
-                                <p class="text-muted small mb-0">Abra um funcionário para consultar ou preencher a folha mensal.</p>
+                                <p class="text-muted small mb-0">Abra um funcionário para consultar ou preencher a folha do período.</p>
                             </div>
                             <span class="badge bg-light text-dark border">
                                 <?= count($funcionarios) ?> cadastrado<?= count($funcionarios) === 1 ? '' : 's' ?>
@@ -886,7 +942,8 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
                                         );
                                         $urlFuncionario = 'folha_ponto.php?' . http_build_query([
-                                            'mes' => $mes,
+                                            'data_inicio' => $inicioPeriodo,
+                                            'data_fim' => $fimPeriodo,
                                             'funcionario_id' => $idFuncionarioLista,
                                         ]);
                                         ?>
@@ -951,7 +1008,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                     <div class="ponto-impressao-cabecalho">
                         <div>
                             <h1>Folha de Ponto</h1>
-                            <p><?= htmlspecialchars($funcionarioSelecionado['nome']) ?> · <?= htmlspecialchars($nomeMes) ?></p>
+                            <p><?= htmlspecialchars($funcionarioSelecionado['nome']) ?> · <?= htmlspecialchars($nomePeriodo) ?></p>
                         </div>
                         <div>
                             <strong><?= htmlspecialchars(empresaAtivaNome($pdo) ?: 'Logi') ?></strong><br>
@@ -993,13 +1050,14 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(folhaPontoToken()) ?>">
                         <input type="hidden" name="acao" value="salvar_registros">
                         <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
-                        <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
+                        <input type="hidden" name="data_inicio" value="<?= htmlspecialchars($inicioPeriodo) ?>">
+                        <input type="hidden" name="data_fim" value="<?= htmlspecialchars($fimPeriodo) ?>">
 
                         <section class="ponto-painel">
                             <div class="ponto-painel-titulo no-print">
                                 <div>
                                     <h5 class="mb-1"><?= htmlspecialchars($funcionarioSelecionado['nome']) ?></h5>
-                                    <p class="text-muted small mb-0"><?= htmlspecialchars($nomeMes) ?> · totais atualizados durante o preenchimento</p>
+                                    <p class="text-muted small mb-0"><?= htmlspecialchars($nomePeriodo) ?> · totais atualizados durante o preenchimento</p>
                                 </div>
                                 <button type="submit" class="btn btn-success">
                                     <i class="bi bi-check-lg"></i> Salvar folha
@@ -1113,7 +1171,8 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                         <input type="hidden" name="acao" value="salvar_funcionario">
                         <input type="hidden" name="id" id="funcionarioIdModal">
                         <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
-                        <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
+                        <input type="hidden" name="data_inicio" value="<?= htmlspecialchars($inicioPeriodo) ?>">
+                        <input type="hidden" name="data_fim" value="<?= htmlspecialchars($fimPeriodo) ?>">
                         <div class="modal-header">
                             <div>
                                 <h5 class="modal-title" id="tituloModalFuncionario">Novo funcionário</h5>
@@ -1212,7 +1271,8 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                             <input type="hidden" name="acao" value="excluir_funcionario">
                             <input type="hidden" name="id" id="funcionarioExcluirId" value="<?= $funcionarioSelecionado ? $funcionarioId : '' ?>">
                             <input type="hidden" name="funcionario_id" value="<?= $funcionarioSelecionado ? $funcionarioId : '' ?>">
-                            <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>">
+                            <input type="hidden" name="data_inicio" value="<?= htmlspecialchars($inicioPeriodo) ?>">
+                            <input type="hidden" name="data_fim" value="<?= htmlspecialchars($fimPeriodo) ?>">
                             <div class="modal-header">
                                 <h5 class="modal-title">Excluir funcionário</h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
@@ -1244,6 +1304,8 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                             <input type="hidden" name="acao" value="importar_pdf">
                             <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
                             <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>" data-mes-original="<?= htmlspecialchars($mes) ?>">
+                            <input type="hidden" name="data_inicio" value="<?= htmlspecialchars($inicioPeriodo) ?>">
+                            <input type="hidden" name="data_fim" value="<?= htmlspecialchars($fimPeriodo) ?>">
                             <input type="hidden" name="registros_pdf" id="registrosPdf">
                             <div class="modal-header">
                                 <div>

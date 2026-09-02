@@ -13,6 +13,16 @@ function folhaPontoMesValido(?string $mes): string
     return date('Y-m');
 }
 
+function folhaPontoDataValida(?string $data): ?string
+{
+    if (!is_string($data) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
+        return null;
+    }
+
+    $dataValida = DateTime::createFromFormat('!Y-m-d', $data);
+    return $dataValida && $dataValida->format('Y-m-d') === $data ? $data : null;
+}
+
 function folhaPontoToken(): string
 {
     if (empty($_SESSION['folha_ponto_csrf'])) {

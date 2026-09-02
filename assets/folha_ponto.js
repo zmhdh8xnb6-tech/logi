@@ -418,17 +418,31 @@
     }
 
     function definirMesImportacao(mesDetectado) {
-        const campoMes = document.querySelector('#formImportarPdf input[name="mes"]');
+        const formulario = document.getElementById('formImportarPdf');
+        const campoMes = formulario?.querySelector('input[name="mes"]');
+        const campoInicio = formulario?.querySelector('input[name="data_inicio"]');
+        const campoFim = formulario?.querySelector('input[name="data_fim"]');
         const aviso = document.getElementById('avisoMesImportacaoPdf');
         const tituloMes = document.getElementById('mesImportacaoPdf');
         const mesOriginal = campoMes?.dataset.mesOriginal || campoMes?.value || '';
         const mesFinal = mesDetectado || mesOriginal;
+        const mesInicio = campoInicio?.value.slice(0, 7) || '';
+        const mesFim = campoFim?.value.slice(0, 7) || '';
+        const foraDoPeriodo = Boolean(mesInicio && mesFim && (mesFinal < mesInicio || mesFinal > mesFim));
 
         if (campoMes) campoMes.value = mesFinal;
+        if (foraDoPeriodo && campoInicio && campoFim) {
+            const [ano, mes] = mesFinal.split('-').map(Number);
+            const ultimoDia = new Date(ano, mes, 0).getDate();
+            campoInicio.value = mesFinal + '-01';
+            campoFim.value = mesFinal + '-' + String(ultimoDia).padStart(2, '0');
+        }
         if (tituloMes) tituloMes.textContent = nomeMesIso(mesFinal);
         if (aviso) {
             aviso.textContent = mesFinal !== mesOriginal
-                ? 'O arquivo é de ' + nomeMesIso(mesFinal) + '. Ele será importado diretamente nesse mês.'
+                ? (foraDoPeriodo
+                    ? 'O arquivo é de ' + nomeMesIso(mesFinal) + '. Ele será importado diretamente nesse mês.'
+                    : 'O arquivo é de ' + nomeMesIso(mesFinal) + '. Serão importados os dias que fazem parte do período selecionado.')
                 : '';
             aviso.classList.toggle('d-none', mesFinal === mesOriginal);
         }
@@ -1429,10 +1443,6 @@
 
         document.getElementById('funcionarioPonto')?.addEventListener('change', function () {
             document.getElementById('formFiltrosPonto')?.submit();
-        });
-
-        document.getElementById('mesPonto')?.addEventListener('change', function () {
-            document.getElementById('formMesPonto')?.submit();
         });
 
         document.getElementById('btnImprimirPonto')?.addEventListener('click', function () {
