@@ -135,6 +135,41 @@
         }
     }
 
+    function replicarPrimeiroDiaDaJornada() {
+        const jornada36 = cargaSemanalEscolhida() === 36;
+        const linhasAtivas = Array.from(document.querySelectorAll('.jornada-linha')).filter(function (linha) {
+            return linha.querySelector('.jornada-trabalha')?.checked;
+        });
+        const aviso = document.getElementById('avisoReplicarJornada');
+        const linhaBase = linhasAtivas.find(function (linha) {
+            const dados = dadosLinha(linha);
+            const primeiroPeriodoValido = minutosIntervalo(dados.entrada_1, dados.saida_1) > 0;
+            const segundoPeriodoVazio = !dados.entrada_2 && !dados.saida_2;
+            const segundoPeriodoValido = minutosIntervalo(dados.entrada_2, dados.saida_2) > 0;
+            return primeiroPeriodoValido && (jornada36 || segundoPeriodoVazio || segundoPeriodoValido);
+        });
+
+        if (!linhaBase) {
+            aviso?.classList.remove('d-none');
+            return;
+        }
+
+        const horarioBase = dadosLinha(linhaBase);
+        linhasAtivas.forEach(function (linha) {
+            linha.querySelectorAll('.jornada-hora').forEach(function (campo) {
+                const campoIntervalo = campo.dataset.campo === 'entrada_2'
+                    || campo.dataset.campo === 'saida_2';
+                campo.value = jornada36 && campoIntervalo
+                    ? ''
+                    : (horarioBase[campo.dataset.campo] || '');
+                campo.classList.remove('is-invalid');
+            });
+        });
+
+        aviso?.classList.add('d-none');
+        atualizarCargaSemanal();
+    }
+
     function preencherModalFuncionario(configuracao) {
         const dados = configuracao || {};
         const editando = Boolean(dados.id);
@@ -161,6 +196,7 @@
         if (grupoAtivo) grupoAtivo.classList.toggle('d-none', !editando);
         if (excluir) excluir.classList.toggle('d-none', !editando);
         if (titulo) titulo.textContent = editando ? 'Editar funcionário e jornada' : 'Novo funcionário';
+        document.getElementById('avisoReplicarJornada')?.classList.add('d-none');
 
         document.querySelectorAll('.jornada-carga-opcao').forEach(function (opcao) {
             opcao.checked = Number(opcao.value) === cargaSemanal;
@@ -359,6 +395,58 @@
         metricaSaldo?.classList.toggle('metrica-positiva', saldo >= 0);
         metricaSemRegistro?.classList.toggle('metrica-negativa', diasSemRegistro > 0);
         metricaSemRegistro?.classList.toggle('metrica-positiva', diasSemRegistro === 0);
+    }
+
+    function completarCamposPelaJornada() {
+        const hoje = document.getElementById('formRegistrosPonto')?.dataset.hoje || '';
+        const aviso = document.getElementById('avisoCompletarPelaJornada');
+        let horariosPreenchidos = 0;
+        let diasAlterados = 0;
+
+        document.querySelectorAll('.ponto-registro-linha').forEach(function (linha) {
+            const observacao = linha.querySelector('.ponto-observacao')?.value.trim() || '';
+            const diaEspecial = /^(?:feriado|folga|atestado|falta)\b/i.test(observacao);
+            const foraDoLimite = Boolean(hoje && linha.dataset.data > hoje);
+
+            if (
+                linha.dataset.trabalha !== '1'
+                || linha.dataset.feriadoNacional === '1'
+                || diaEspecial
+                || foraDoLimite
+            ) {
+                return;
+            }
+
+            let linhaAlterada = false;
+            linha.querySelectorAll('.ponto-hora-registro').forEach(function (campo) {
+                const horarioJornada = campo.dataset.horarioJornada || '';
+
+                if (campo.value === '' && horarioJornada) {
+                    campo.value = horarioJornada;
+                    linhaAlterada = true;
+                    horariosPreenchidos += 1;
+                }
+            });
+
+            if (linhaAlterada) {
+                diasAlterados += 1;
+            }
+        });
+
+        atualizarResumoRegistros();
+
+        if (!aviso) {
+            return;
+        }
+
+        aviso.classList.remove('d-none', 'alert-success', 'alert-info');
+        aviso.classList.add(horariosPreenchidos > 0 ? 'alert-success' : 'alert-info');
+        aviso.textContent = horariosPreenchidos > 0
+            ? horariosPreenchidos + ' horário' + (horariosPreenchidos === 1 ? '' : 's')
+            + ' vazio' + (horariosPreenchidos === 1 ? '' : 's')
+            + ' preenchido' + (horariosPreenchidos === 1 ? '' : 's')
+            + ' pela jornada em ' + diasAlterados + ' dia' + (diasAlterados === 1 ? '' : 's') + '. Confira e salve a folha.'
+            : 'Não há horários vazios que possam ser completados pela jornada até hoje.';
     }
 
     function dataIsoValida(ano, mes, dia) {
@@ -1477,9 +1565,17 @@
             });
         });
 
+        document.getElementById('btnReplicarJornada')?.addEventListener('click', replicarPrimeiroDiaDaJornada);
+
         document.querySelectorAll('.jornada-trabalha, .jornada-hora').forEach(function (campo) {
-            campo.addEventListener('change', atualizarCargaSemanal);
-            campo.addEventListener('input', atualizarCargaSemanal);
+            campo.addEventListener('change', function () {
+                document.getElementById('avisoReplicarJornada')?.classList.add('d-none');
+                atualizarCargaSemanal();
+            });
+            campo.addEventListener('input', function () {
+                document.getElementById('avisoReplicarJornada')?.classList.add('d-none');
+                atualizarCargaSemanal();
+            });
         });
 
         document.getElementById('formFuncionario')?.addEventListener('submit', validarFuncionario);
@@ -1528,6 +1624,7 @@
             campo.addEventListener('input', atualizarResumoRegistros);
             campo.addEventListener('change', atualizarResumoRegistros);
         });
+        document.getElementById('btnCompletarPelaJornada')?.addEventListener('click', completarCamposPelaJornada);
         atualizarResumoRegistros();
 
         const modalPdf = document.getElementById('modalImportarPdf');

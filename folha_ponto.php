@@ -1059,10 +1059,20 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                     <h5 class="mb-1"><?= htmlspecialchars($funcionarioSelecionado['nome']) ?></h5>
                                     <p class="text-muted small mb-0"><?= htmlspecialchars($nomePeriodo) ?> · totais atualizados durante o preenchimento</p>
                                 </div>
-                                <button type="submit" class="btn btn-success">
-                                    <i class="bi bi-check-lg"></i> Salvar folha
-                                </button>
+                                <div class="ponto-painel-acoes">
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline-primary"
+                                        id="btnCompletarPelaJornada"
+                                        title="Preenche somente horários vazios, sem alterar os já informados">
+                                        <i class="bi bi-calendar2-check"></i> Completar pela jornada
+                                    </button>
+                                    <button type="submit" class="btn btn-success">
+                                        <i class="bi bi-check-lg"></i> Salvar folha
+                                    </button>
+                                </div>
                             </div>
+                            <div class="alert d-none mx-3 mt-3 mb-0 no-print" id="avisoCompletarPelaJornada" role="status"></div>
                             <div class="table-responsive">
                                 <table class="table align-middle mb-0 ponto-tabela">
                                     <thead>
@@ -1103,6 +1113,7 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                 data-data="<?= htmlspecialchars($dia['data']) ?>"
                                                 data-feriado-nacional="<?= !empty($dia['feriado_nacional']) ? '1' : '0' ?>"
                                                 data-feriado-nome="<?= htmlspecialchars($dia['feriado_nome'] ?? '') ?>"
+                                                data-trabalha="<?= !empty($dia['horario']['trabalha']) ? '1' : '0' ?>"
                                                 data-jornada-prevista="<?= htmlspecialchars(!empty($dia['horario']['trabalha'])
                                                                             ? trim(implode(' / ', array_filter([
                                                                                 ($dia['horario']['entrada_1'] ?? '') && ($dia['horario']['saida_1'] ?? '')
@@ -1125,6 +1136,8 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                                             type="time"
                                                             class="form-control form-control-sm ponto-hora-registro"
                                                             name="registros[<?= $dia['data'] ?>][<?= $campo ?>]"
+                                                            data-campo="<?= htmlspecialchars($campo) ?>"
+                                                            data-horario-jornada="<?= htmlspecialchars(substr((string)($dia['horario'][$campo] ?? ''), 0, 5)) ?>"
                                                             value="<?= htmlspecialchars($dia['registro'][$campo] ?? '') ?>"
                                                             aria-label="<?= htmlspecialchars($campo . ' de ' . $dia['data_br']) ?>">
                                                     </td>
@@ -1206,7 +1219,19 @@ $horariosJson = json_encode(array_values($horarios), JSON_UNESCAPED_UNICODE | JS
                                         <label class="btn btn-outline-primary" for="jornadaCarga36">36 horas</label>
                                     </div>
                                 </div>
-                                <div class="ponto-carga-semanal" id="cargaSemanalModal">44h00 por semana</div>
+                                <div class="ponto-jornada-acoes">
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline-primary"
+                                        id="btnReplicarJornada"
+                                        title="Copiar os horários do primeiro dia preenchido">
+                                        <i class="bi bi-files"></i> Repetir horários
+                                    </button>
+                                    <div class="ponto-carga-semanal" id="cargaSemanalModal">44h00 por semana</div>
+                                </div>
+                            </div>
+                            <div class="text-danger small fw-semibold d-none mb-3" id="avisoReplicarJornada" role="alert">
+                                Preencha corretamente os horários do primeiro dia trabalhado antes de copiar.
                             </div>
 
                             <div class="table-responsive">

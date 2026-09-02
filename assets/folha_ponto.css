@@ -41,6 +41,13 @@
     gap: 8px;
 }
 
+.ponto-painel-acoes,
+.ponto-jornada-acoes {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .ponto-periodo-controle {
     min-width: 0;
 }
@@ -543,6 +550,20 @@
     .ponto-painel-titulo .btn,
     .ponto-rodape .btn {
         width: 100%;
+    }
+
+    .ponto-painel-acoes,
+    .ponto-jornada-acoes {
+        width: 100%;
+    }
+
+    .ponto-painel-acoes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .ponto-jornada-acoes {
+        flex-wrap: wrap;
     }
 }
 
