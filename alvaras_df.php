@@ -309,6 +309,7 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
                     <select id="filtroAlvaraDf" class="form-select">
                         <option value="">Todos os alvarás</option>
                         <option value="possui">Possui</option>
+                        <option value="vence_30_dias">Vence em até 30 dias</option>
                         <option value="vencido">Vencido</option>
                         <option value="nao_possui">Não possui</option>
                         <option value="nao_precisa_momento">Não precisa no momento</option>
@@ -928,6 +929,43 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
             }, 4000);
         }
 
+        function alvarasDfVencemEmAte30Dias(linha) {
+            const botao = linha.querySelector('.btn-editar-alvara');
+
+            if (!botao || botao.dataset.paralisada === '1' || botao.dataset.alvara !== 'possui') {
+                return false;
+            }
+
+            let alvaras = {};
+
+            try {
+                alvaras = JSON.parse(botao.dataset.alvaras || '{}');
+            } catch (erro) {
+                return false;
+            }
+
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+
+            const limite = new Date(hoje);
+            limite.setDate(limite.getDate() + 30);
+
+            return Object.values(alvaras).some(function(alvara) {
+                if (alvara.situacao !== 'com_vencimento' || !alvara.vencimento) {
+                    return false;
+                }
+
+                const partes = alvara.vencimento.split('-');
+
+                if (partes.length !== 3) {
+                    return false;
+                }
+
+                const vencimento = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+                return vencimento >= hoje && vencimento <= limite;
+            });
+        }
+
         function alvarasDfFiltradas() {
             const busca = document.getElementById('buscaAlvaraDf').value.toLocaleLowerCase('pt-BR');
             const filtro = document.getElementById('filtroAlvaraDf').value;
@@ -939,7 +977,9 @@ function alvaraDfPossuiVencido(array $alvarasCliente): bool
                     linha.querySelector('.nome-cliente').textContent
                 ].join(' ').toLocaleLowerCase('pt-BR');
                 const correspondeBusca = texto.includes(busca);
-                const correspondeFiltro = filtro === '' || linha.dataset.alvaraFiltro === filtro;
+                const correspondeFiltro = filtro === 'vence_30_dias' ?
+                    alvarasDfVencemEmAte30Dias(linha) :
+                    filtro === '' || linha.dataset.alvaraFiltro === filtro;
 
                 return correspondeBusca && correspondeFiltro && linha.isConnected;
             });

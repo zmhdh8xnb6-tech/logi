@@ -23,19 +23,64 @@ $cargaSemanalDisponivel = $estruturaDisponivel
 
 $empresaId = (int)(empresaAtivaId($pdo) ?? 1);
 $empresaId = $empresaId > 0 ? $empresaId : 1;
-$empresasFolha = empresasDisponiveis($pdo);
-$empresaNomeFolha = empresaAtivaNome($pdo) ?: 'Empresa atual';
 $usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
+$vinculoClienteDisponivel = $estruturaDisponivel
+    && logiTabelaExiste($pdo, 'clientes')
+    && folhaPontoGarantirVinculoCliente($pdo);
+$clientesFolha = [];
+$clientesFolhaPorId = [];
+$funcionariosSemCliente = 0;
+$clienteId = (int)($_GET['cliente_id'] ?? $_POST['cliente_id'] ?? 0);
+
+if ($vinculoClienteDisponivel) {
+    $stmt = $pdo->query("
+        SELECT id, codigo, documento, nome, nome_fantasia, email
+        FROM clientes
+        WHERE cliente_contabil = 1
+        " . clientesFiltroAtivos($pdo) . "
+        " . empresaFiltroClienteDireto($pdo) . "
+        ORDER BY CAST(codigo AS UNSIGNED) ASC, nome ASC, id ASC
+    ");
+    $clientesFolha = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($clientesFolha as &$clienteFolha) {
+        $codigoCliente = trim((string)($clienteFolha['codigo'] ?? ''));
+        $razaoSocial = trim((string)$clienteFolha['nome']);
+        $clienteFolha['nome_exibicao'] = ($codigoCliente !== '' ? $codigoCliente . ' - ' : '')
+            . $razaoSocial;
+        $clientesFolhaPorId[(int)$clienteFolha['id']] = $clienteFolha;
+    }
+    unset($clienteFolha);
+
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM folha_ponto_funcionarios
+        WHERE empresa_id = ? AND cliente_id IS NULL
+    ");
+    $stmt->execute([$empresaId]);
+    $funcionariosSemCliente = (int)$stmt->fetchColumn();
+}
+
 $folhasSalvasDisponivel = $estruturaDisponivel && folhaPontoGarantirTabelaFolhas($pdo);
 $folhaId = (int)($_GET['folha_id'] ?? $_POST['folha_id'] ?? 0);
 $folhaSelecionada = null;
 
 if ($folhasSalvasDisponivel && $folhaId > 0) {
-    $stmt = $pdo->prepare("
-        SELECT *
-        FROM folha_ponto_folhas
-        WHERE id = ? AND empresa_id = ?
-    ");
+    $sqlFolhaSelecionada = $vinculoClienteDisponivel
+        ? "
+            SELECT folhas.*, funcionarios.cliente_id
+            FROM folha_ponto_folhas folhas
+            INNER JOIN folha_ponto_funcionarios funcionarios
+                ON funcionarios.id = folhas.funcionario_id
+               AND funcionarios.empresa_id = folhas.empresa_id
+            WHERE folhas.id = ? AND folhas.empresa_id = ?
+        "
+        : "
+            SELECT *
+            FROM folha_ponto_folhas
+            WHERE id = ? AND empresa_id = ?
+        ";
+    $stmt = $pdo->prepare($sqlFolhaSelecionada);
     $stmt->execute([$folhaId, $empresaId]);
     $folhaSelecionada = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 }
@@ -112,12 +157,37 @@ $buscarFuncionario = static function (PDO $pdo, int $empresaId, int $id): ?array
     return $funcionario ?: null;
 };
 
+if ($vinculoClienteDisponivel && $funcionarioId > 0) {
+    $funcionarioContexto = $buscarFuncionario($pdo, $empresaId, $funcionarioId);
+
+    if ($funcionarioContexto) {
+        $clienteFuncionario = (int)($funcionarioContexto['cliente_id'] ?? 0);
+        $clienteId = $clienteFuncionario > 0 ? $clienteFuncionario : -1;
+    }
+}
+
+if ($clienteId > 0 && !isset($clientesFolhaPorId[$clienteId])) {
+    $clienteId = 0;
+} elseif ($clienteId === -1 && $funcionariosSemCliente === 0) {
+    $clienteId = 0;
+} elseif ($clienteId < -1) {
+    $clienteId = 0;
+}
+
+$clienteSelecionado = $clienteId > 0 ? ($clientesFolhaPorId[$clienteId] ?? null) : null;
+$clienteNomeFolha = $clienteSelecionado['nome_exibicao']
+    ?? ($clienteId === -1 ? 'Sem empresa vinculada' : 'Selecione uma empresa cliente');
+
 if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $parametrosRetorno = [
         'data_inicio' => $inicioPeriodo,
         'data_fim' => $fimPeriodo,
         'funcionario_id' => $funcionarioId,
     ];
+
+    if ($clienteId !== 0) {
+        $parametrosRetorno['cliente_id'] = $clienteId;
+    }
 
     if ($folhaId > 0) {
         $parametrosRetorno['folha_id'] = $folhaId;
@@ -181,6 +251,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 'folha_ponto.php?' . http_build_query([
                     'data_inicio' => $inicioPeriodo,
                     'data_fim' => $fimPeriodo,
+                    'cliente_id' => !empty($funcionario['cliente_id']) ? (int)$funcionario['cliente_id'] : -1,
                 ]),
                 'Funcionário e registros de ponto excluídos com sucesso.'
             );
@@ -195,6 +266,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($acao === 'salvar_funcionario') {
         $id = (int)($_POST['id'] ?? 0);
+        $clienteFuncionarioId = (int)($_POST['cliente_id'] ?? 0);
         $nome = trim((string)($_POST['nome'] ?? ''));
         $ativo = !empty($_POST['ativo']) ? 1 : 0;
         $cargaContratual = (int)($_POST['carga_semanal'] ?? 44);
@@ -202,6 +274,21 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $horarios = [];
         $cargaSemanal = 0;
         $funcionarioAntes = $id > 0 ? $buscarFuncionario($pdo, $empresaId, $id) : null;
+
+        $parametrosRetorno['cliente_id'] = $clienteFuncionarioId;
+        $urlRetorno = 'folha_ponto.php?' . http_build_query($parametrosRetorno);
+
+        if (!$vinculoClienteDisponivel) {
+            folhaPontoRedirecionar(
+                $urlRetorno,
+                'Atualize o banco com o arquivo sql/folha_ponto_clientes.sql antes de vincular funcionários.',
+                'danger'
+            );
+        }
+
+        if ($clienteFuncionarioId <= 0 || !isset($clientesFolhaPorId[$clienteFuncionarioId])) {
+            folhaPontoRedirecionar($urlRetorno, 'Selecione uma empresa válida do cadastro de Clientes.', 'danger');
+        }
 
         if ($nome === '' || (function_exists('mb_strlen') ? mb_strlen($nome) : strlen($nome)) > 150) {
             folhaPontoRedirecionar($urlRetorno, 'Informe corretamente o nome do funcionário.', 'danger');
@@ -242,33 +329,33 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($cargaSemanalDisponivel) {
                     $stmt = $pdo->prepare("
                         UPDATE folha_ponto_funcionarios
-                        SET nome = ?, ativo = ?, carga_semanal = ?
+                        SET cliente_id = ?, nome = ?, ativo = ?, carga_semanal = ?
                         WHERE id = ? AND empresa_id = ?
                     ");
-                    $stmt->execute([$nome, $ativo, $cargaContratual, $id, $empresaId]);
+                    $stmt->execute([$clienteFuncionarioId, $nome, $ativo, $cargaContratual, $id, $empresaId]);
                 } else {
                     $stmt = $pdo->prepare("
                         UPDATE folha_ponto_funcionarios
-                        SET nome = ?, ativo = ?
+                        SET cliente_id = ?, nome = ?, ativo = ?
                         WHERE id = ? AND empresa_id = ?
                     ");
-                    $stmt->execute([$nome, $ativo, $id, $empresaId]);
+                    $stmt->execute([$clienteFuncionarioId, $nome, $ativo, $id, $empresaId]);
                 }
 
                 $funcionarioId = $id;
             } else {
                 if ($cargaSemanalDisponivel) {
                     $stmt = $pdo->prepare("
-                        INSERT INTO folha_ponto_funcionarios (empresa_id, nome, ativo, carga_semanal)
-                        VALUES (?, ?, 1, ?)
+                        INSERT INTO folha_ponto_funcionarios (empresa_id, cliente_id, nome, ativo, carga_semanal)
+                        VALUES (?, ?, ?, 1, ?)
                     ");
-                    $stmt->execute([$empresaId, $nome, $cargaContratual]);
+                    $stmt->execute([$empresaId, $clienteFuncionarioId, $nome, $cargaContratual]);
                 } else {
                     $stmt = $pdo->prepare("
-                        INSERT INTO folha_ponto_funcionarios (empresa_id, nome, ativo)
-                        VALUES (?, ?, 1)
+                        INSERT INTO folha_ponto_funcionarios (empresa_id, cliente_id, nome, ativo)
+                        VALUES (?, ?, ?, 1)
                     ");
-                    $stmt->execute([$empresaId, $nome]);
+                    $stmt->execute([$empresaId, $clienteFuncionarioId, $nome]);
                 }
 
                 $funcionarioId = (int)$pdo->lastInsertId();
@@ -312,6 +399,8 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 ($id > 0 ? 'Alterou' : 'Cadastrou') . ' o funcionário ' . $nome,
                 $funcionarioAntes,
                 [
+                    'cliente_id' => $clienteFuncionarioId,
+                    'empresa_cliente' => $clientesFolhaPorId[$clienteFuncionarioId]['nome_exibicao'],
                     'nome' => $nome,
                     'ativo' => $ativo,
                     'carga_contratual' => $cargaContratual . 'h semanais',
@@ -331,6 +420,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 'folha_ponto.php?' . http_build_query([
                     'data_inicio' => $inicioPeriodo,
                     'data_fim' => $fimPeriodo,
+                    'cliente_id' => $clienteFuncionarioId,
                     'funcionario_id' => $funcionarioId,
                 ]),
                 $mensagem,
@@ -690,17 +780,24 @@ $registros = [];
 $folhasSalvas = [];
 $cargaContratualSelecionada = 44;
 
-if ($estruturaDisponivel) {
+if ($estruturaDisponivel && $vinculoClienteDisponivel && $clienteId !== 0) {
+    $filtroClienteFuncionario = $clienteId > 0 ? 'cliente_id = ?' : 'cliente_id IS NULL';
+    $parametrosFuncionarios = $clienteId > 0 ? [$empresaId, $clienteId] : [$empresaId];
     $stmt = $pdo->prepare("
         SELECT *
         FROM folha_ponto_funcionarios
         WHERE empresa_id = ?
+          AND {$filtroClienteFuncionario}
         ORDER BY ativo DESC, nome ASC, id ASC
     ");
-    $stmt->execute([$empresaId]);
+    $stmt->execute($parametrosFuncionarios);
     $funcionarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     if ($folhasSalvasDisponivel) {
+        $filtroClienteFolha = $clienteId > 0
+            ? 'funcionarios.cliente_id = ?'
+            : 'funcionarios.cliente_id IS NULL';
+        $parametrosFolhas = $clienteId > 0 ? [$empresaId, $clienteId] : [$empresaId];
         $stmt = $pdo->prepare("
             SELECT folhas.*, funcionarios.nome AS funcionario_nome
             FROM folha_ponto_folhas folhas
@@ -708,27 +805,45 @@ if ($estruturaDisponivel) {
                 ON funcionarios.id = folhas.funcionario_id
                AND funcionarios.empresa_id = folhas.empresa_id
             WHERE folhas.empresa_id = ?
+              AND {$filtroClienteFolha}
             ORDER BY folhas.data_fim DESC, folhas.atualizado_em DESC, folhas.id DESC
             LIMIT 100
         ");
-        $stmt->execute([$empresaId]);
+        $stmt->execute($parametrosFolhas);
         $folhasSalvas = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     $funcionarioSelecionado = $buscarFuncionario($pdo, $empresaId, $funcionarioId);
+
+    if ($funcionarioSelecionado) {
+        $clienteFuncionarioSelecionado = (int)($funcionarioSelecionado['cliente_id'] ?? 0);
+        $pertenceAoCliente = $clienteId > 0
+            ? $clienteFuncionarioSelecionado === $clienteId
+            : $clienteFuncionarioSelecionado === 0;
+
+        if (!$pertenceAoCliente) {
+            $funcionarioSelecionado = null;
+        }
+    }
 
     if (!$funcionarioSelecionado) {
         $funcionarioId = 0;
     }
 
     if ($funcionarios !== []) {
+        $idsFuncionariosCliente = array_map(
+            static fn(array $funcionario): int => (int)$funcionario['id'],
+            $funcionarios
+        );
+        $marcadoresFuncionarios = implode(',', array_fill(0, count($idsFuncionariosCliente), '?'));
         $stmt = $pdo->prepare("
             SELECT *
             FROM folha_ponto_horarios
             WHERE empresa_id = ?
+              AND funcionario_id IN ({$marcadoresFuncionarios})
             ORDER BY funcionario_id, dia_semana
         ");
-        $stmt->execute([$empresaId]);
+        $stmt->execute(array_merge([$empresaId], $idsFuncionariosCliente));
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $horario) {
             foreach (['entrada_1', 'saida_1', 'entrada_2', 'saida_2'] as $campo) {
@@ -918,9 +1033,10 @@ $urlFolhaAtual = $folhaId > 0
 $urlEditarFolhaAtual = $folhaId > 0
     ? 'folha_ponto.php?' . http_build_query(['folha_id' => $folhaId, 'editar' => 1])
     : '';
-$retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
+$urlListaFuncionarios = 'folha_ponto.php?' . http_build_query([
     'data_inicio' => $inicioPeriodo,
     'data_fim' => $fimPeriodo,
+    'cliente_id' => $clienteId,
 ]);
 ?>
 
@@ -944,14 +1060,16 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                     <p class="text-muted mb-0">Jornadas semanais e registros por período dos funcionários</p>
                 </div>
                 <div class="d-flex flex-wrap gap-2">
-                    <a href="<?= $funcionarioSelecionado ? 'folha_ponto.php?' . http_build_query([
-                                    'data_inicio' => $inicioPeriodo,
-                                    'data_fim' => $fimPeriodo,
-                                ]) : 'home.php' ?>" class="btn btn-outline-secondary">
+                    <a href="<?= $funcionarioSelecionado ? htmlspecialchars($urlListaFuncionarios) : 'home.php' ?>" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left"></i> Voltar
                     </a>
                     <?php if ($estruturaDisponivel): ?>
-                        <button type="button" class="btn btn-primary" id="btnNovoFuncionario" data-bs-toggle="modal" data-bs-target="#modalFuncionario">
+                        <button
+                            type="button"
+                            class="btn btn-primary"
+                            id="btnNovoFuncionario"
+                            data-cliente-id="<?= $clienteId > 0 ? $clienteId : '' ?>"
+                            <?= $clienteId > 0 && $vinculoClienteDisponivel ? 'data-bs-toggle="modal" data-bs-target="#modalFuncionario"' : 'disabled title="Selecione uma empresa cliente"' ?>>
                             <i class="bi bi-person-plus"></i> Novo funcionário
                         </button>
                     <?php endif; ?>
@@ -964,31 +1082,72 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                     Execute o arquivo <code>sql/folha_ponto.sql</code> no phpMyAdmin.
                 </div>
             <?php else: ?>
-                <?php if ($empresasFolha !== []): ?>
-                    <section class="ponto-empresa-contexto mb-4 no-print" aria-label="Empresa da folha de ponto">
+                <?php if ($vinculoClienteDisponivel): ?>
+                    <section class="ponto-empresa-contexto mb-4 no-print" aria-label="Empresa cliente da folha de ponto">
                         <div class="ponto-empresa-identidade">
                             <span class="ponto-empresa-icone" aria-hidden="true"><i class="bi bi-buildings"></i></span>
                             <div>
-                                <span>Empresa</span>
-                                <strong><?= htmlspecialchars($empresaNomeFolha) ?></strong>
+                                <span>Empresa cliente</span>
+                                <strong><?= htmlspecialchars($clienteNomeFolha) ?></strong>
                             </div>
                         </div>
-                        <form method="get" action="trocar_empresa.php" id="formEmpresaFolhaPonto">
-                            <label for="empresaFolhaPonto" class="visually-hidden">Selecionar empresa</label>
-                            <select
-                                class="form-select"
-                                name="empresa_id"
-                                id="empresaFolhaPonto"
-                                <?= count($empresasFolha) <= 1 ? 'disabled' : '' ?>>
-                                <?php foreach ($empresasFolha as $empresaFolha): ?>
-                                    <option
-                                        value="<?= (int)$empresaFolha['id'] ?>"
-                                        <?= (int)$empresaFolha['id'] === $empresaId ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($empresaFolha['nome']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                            <input type="hidden" name="retorno" value="<?= htmlspecialchars($retornoTrocaEmpresaFolha, ENT_QUOTES, 'UTF-8') ?>">
+                        <form method="get" action="folha_ponto.php" id="formClienteFolhaPonto">
+                            <label for="clienteBuscaFolhaPonto" class="visually-hidden">Pesquisar empresa cliente</label>
+                            <div class="cliente-seletor" id="clienteSeletorFolhaPonto">
+                                <i class="bi bi-search cliente-seletor-icone" aria-hidden="true"></i>
+                                <input
+                                    type="search"
+                                    class="form-control cliente-seletor-input"
+                                    id="clienteBuscaFolhaPonto"
+                                    placeholder="Buscar por código, nome, CPF/CNPJ ou e-mail..."
+                                    value="<?= $clienteId !== 0 ? htmlspecialchars($clienteNomeFolha) : '' ?>"
+                                    autocomplete="off"
+                                    aria-haspopup="listbox"
+                                    aria-expanded="false"
+                                    <?= $clientesFolha === [] && $funcionariosSemCliente === 0 ? 'disabled' : '' ?>>
+                                <div class="cliente-seletor-menu d-none" id="clienteSeletorFolhaPontoMenu">
+                                    <div class="cliente-seletor-opcoes" id="clienteOpcoesFolhaPonto" role="listbox">
+                                        <?php foreach ($clientesFolha as $clienteFolha): ?>
+                                            <button
+                                                type="button"
+                                                class="cliente-seletor-opcao<?= (int)$clienteFolha['id'] === $clienteId ? ' selecionado' : '' ?>"
+                                                data-id="<?= (int)$clienteFolha['id'] ?>"
+                                                data-texto="<?= htmlspecialchars($clienteFolha['nome_exibicao'], ENT_QUOTES, 'UTF-8') ?>"
+                                                data-busca="<?= htmlspecialchars(trim(implode(' ', [
+                                                                $clienteFolha['codigo'] ?? '',
+                                                                $clienteFolha['documento'] ?? '',
+                                                                $clienteFolha['nome'] ?? '',
+                                                                $clienteFolha['nome_fantasia'] ?? '',
+                                                                $clienteFolha['email'] ?? '',
+                                                            ])), ENT_QUOTES, 'UTF-8') ?>"
+                                                role="option"
+                                                aria-selected="<?= (int)$clienteFolha['id'] === $clienteId ? 'true' : 'false' ?>">
+                                                <strong><?= htmlspecialchars($clienteFolha['codigo'] ?: '-') ?></strong>
+                                                <span><?= htmlspecialchars($clienteFolha['nome']) ?></span>
+                                            </button>
+                                        <?php endforeach; ?>
+                                        <?php if ($funcionariosSemCliente > 0): ?>
+                                            <button
+                                                type="button"
+                                                class="cliente-seletor-opcao<?= $clienteId === -1 ? ' selecionado' : '' ?>"
+                                                data-id="-1"
+                                                data-texto="Sem empresa vinculada"
+                                                data-busca="sem empresa vinculada antigos"
+                                                role="option"
+                                                aria-selected="<?= $clienteId === -1 ? 'true' : 'false' ?>">
+                                                <strong>-</strong>
+                                                <span>Sem empresa vinculada (<?= $funcionariosSemCliente ?>)</span>
+                                            </button>
+                                        <?php endif; ?>
+                                        <div class="cliente-seletor-vazio d-none" id="clienteVazioFolhaPonto">
+                                            Nenhum cliente encontrado.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <input type="hidden" name="cliente_id" id="clienteFolhaPontoId" value="<?= $clienteId !== 0 ? $clienteId : '' ?>">
+                            <input type="hidden" name="data_inicio" value="<?= htmlspecialchars($inicioPeriodo) ?>">
+                            <input type="hidden" name="data_fim" value="<?= htmlspecialchars($fimPeriodo) ?>">
                         </form>
                     </section>
                 <?php endif; ?>
@@ -1002,6 +1161,12 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                 <?php if (!$cargaSemanalDisponivel): ?>
                     <div class="alert alert-warning no-print">
                         Para liberar a jornada de 36 horas, execute <code>sql/folha_ponto_carga_semanal.sql</code> no banco de dados.
+                    </div>
+                <?php endif; ?>
+
+                <?php if (!$vinculoClienteDisponivel): ?>
+                    <div class="alert alert-warning no-print">
+                        Para vincular funcionários às empresas de Clientes, execute <code>sql/folha_ponto_clientes.sql</code> no banco de dados.
                     </div>
                 <?php endif; ?>
 
@@ -1021,6 +1186,7 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                                     <?php endforeach; ?>
                                 </select>
                             </div>
+                            <input type="hidden" name="cliente_id" value="<?= $clienteId ?>">
                             <input type="hidden" name="data_inicio" value="<?= htmlspecialchars($inicioPeriodo) ?>">
                             <input type="hidden" name="data_fim" value="<?= htmlspecialchars($fimPeriodo) ?>">
                         </form>
@@ -1031,11 +1197,13 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                                 <a href="folha_ponto.php?<?= http_build_query([
                                                                 'data_inicio' => $inicioPeriodoAnterior->format('Y-m-d'),
                                                                 'data_fim' => $fimPeriodoAnterior->format('Y-m-d'),
+                                                                'cliente_id' => $clienteId,
                                                                 'funcionario_id' => $funcionarioId,
                                                             ]) ?>" class="btn btn-outline-secondary ponto-nav-anterior" title="Período anterior" aria-label="Período anterior">
                                     <i class="bi bi-chevron-left"></i>
                                 </a>
                                 <form method="get" id="formPeriodoPonto">
+                                    <input type="hidden" name="cliente_id" value="<?= $clienteId ?>">
                                     <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
                                     <input type="date" class="form-control" name="data_inicio" id="dataInicioPonto" value="<?= htmlspecialchars($inicioPeriodo) ?>" aria-label="Data inicial">
                                     <span class="ponto-periodo-separador">a</span>
@@ -1047,6 +1215,7 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                                 <a href="folha_ponto.php?<?= http_build_query([
                                                                 'data_inicio' => $inicioPeriodoProximo->format('Y-m-d'),
                                                                 'data_fim' => $fimPeriodoProximo->format('Y-m-d'),
+                                                                'cliente_id' => $clienteId,
                                                                 'funcionario_id' => $funcionarioId,
                                                             ]) ?>" class="btn btn-outline-secondary ponto-nav-proximo" title="Próximo período" aria-label="Próximo período">
                                     <i class="bi bi-chevron-right"></i>
@@ -1054,6 +1223,7 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                                 <a href="folha_ponto.php?<?= http_build_query([
                                                                 'data_inicio' => date('Y-m-01'),
                                                                 'data_fim' => date('Y-m-t'),
+                                                                'cliente_id' => $clienteId,
                                                                 'funcionario_id' => $funcionarioId,
                                                             ]) ?>" class="btn btn-outline-primary ponto-nav-atual" title="Ir para o período atual" aria-label="Ir para o período atual">
                                     <i class="bi bi-calendar-check"></i>
@@ -1069,6 +1239,7 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                                     id="btnEditarFuncionario"
                                     data-id="<?= (int)$funcionarioSelecionado['id'] ?>"
                                     data-nome="<?= htmlspecialchars($funcionarioSelecionado['nome'], ENT_QUOTES, 'UTF-8') ?>"
+                                    data-cliente-id="<?= (int)($funcionarioSelecionado['cliente_id'] ?? 0) ?>"
                                     data-ativo="<?= (int)$funcionarioSelecionado['ativo'] ?>"
                                     data-carga-semanal="<?= $cargaContratualSelecionada ?>"
                                     data-horarios="<?= htmlspecialchars($horariosJson, ENT_QUOTES, 'UTF-8') ?>"
@@ -1093,20 +1264,45 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                     <?php endif; ?>
                 <?php endif; ?>
 
-                <?php if ($funcionarios === []): ?>
+                <?php if (!$vinculoClienteDisponivel): ?>
+                    <section class="ponto-painel ponto-vazio">
+                        <i class="bi bi-database-exclamation"></i>
+                        <h5>Vínculo com Clientes indisponível</h5>
+                        <p>Atualize o banco para organizar os funcionários pelas empresas cadastradas em Clientes.</p>
+                    </section>
+                <?php elseif ($clientesFolha === [] && $funcionariosSemCliente === 0): ?>
+                    <section class="ponto-painel ponto-vazio">
+                        <i class="bi bi-buildings"></i>
+                        <h5>Nenhuma empresa cliente cadastrada</h5>
+                        <p>Cadastre primeiro uma empresa na tela Clientes para incluir seus funcionários.</p>
+                        <a href="clientes.php" class="btn btn-primary">
+                            <i class="bi bi-plus-circle"></i> Ir para Clientes
+                        </a>
+                    </section>
+                <?php elseif ($clienteId === 0): ?>
+                    <section class="ponto-painel ponto-vazio">
+                        <i class="bi bi-building-check"></i>
+                        <h5>Selecione uma empresa cliente</h5>
+                        <p>Escolha uma empresa acima para ver seus funcionários e folhas salvas.</p>
+                    </section>
+                <?php elseif ($funcionarios === []): ?>
                     <section class="ponto-painel ponto-vazio">
                         <i class="bi bi-person-badge"></i>
                         <h5>Nenhum funcionário cadastrado</h5>
-                        <p>Cadastre o nome e defina a jornada semanal para começar.</p>
-                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalFuncionario">
-                            <i class="bi bi-person-plus"></i> Cadastrar funcionário
-                        </button>
+                        <p><?= $clienteId > 0
+                                ? 'Cadastre o primeiro funcionário de ' . htmlspecialchars($clienteNomeFolha) . '.'
+                                : 'Edite um funcionário antigo para vinculá-lo a uma empresa cliente.' ?></p>
+                        <?php if ($clienteId > 0): ?>
+                            <button type="button" class="btn btn-primary" data-cliente-id="<?= $clienteId ?>" data-bs-toggle="modal" data-bs-target="#modalFuncionario">
+                                <i class="bi bi-person-plus"></i> Cadastrar funcionário
+                            </button>
+                        <?php endif; ?>
                     </section>
                 <?php elseif (!$funcionarioSelecionado): ?>
                     <section class="ponto-painel">
                         <div class="ponto-painel-titulo">
                             <div>
-                                <h5 class="mb-1">Funcionários</h5>
+                                <h5 class="mb-1">Funcionários de <?= htmlspecialchars($clienteNomeFolha) ?></h5>
                                 <p class="text-muted small mb-0">Abra um funcionário para consultar ou preencher a folha do período.</p>
                             </div>
                             <span class="badge bg-light text-dark border">
@@ -1149,6 +1345,7 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                                         $urlFuncionario = 'folha_ponto.php?' . http_build_query([
                                             'data_inicio' => $inicioPeriodo,
                                             'data_fim' => $fimPeriodo,
+                                            'cliente_id' => $clienteId,
                                             'funcionario_id' => $idFuncionarioLista,
                                         ]);
                                         ?>
@@ -1183,6 +1380,7 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                                                         aria-label="Editar <?= htmlspecialchars($funcionario['nome'], ENT_QUOTES, 'UTF-8') ?>"
                                                         data-id="<?= $idFuncionarioLista ?>"
                                                         data-nome="<?= htmlspecialchars($funcionario['nome'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-cliente-id="<?= (int)($funcionario['cliente_id'] ?? 0) ?>"
                                                         data-ativo="<?= (int)$funcionario['ativo'] ?>"
                                                         data-carga-semanal="<?= $cargaContratualLista ?>"
                                                         data-horarios="<?= htmlspecialchars($horariosListaJson, ENT_QUOTES, 'UTF-8') ?>"
@@ -1215,7 +1413,7 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                             <div class="ponto-painel-titulo">
                                 <div>
                                     <h5 class="mb-1">Folhas salvas</h5>
-                                    <p class="text-muted small mb-0">Períodos registrados dos funcionários</p>
+                                    <p class="text-muted small mb-0">Períodos registrados de <?= htmlspecialchars($clienteNomeFolha) ?></p>
                                 </div>
                                 <span class="badge bg-light text-dark border">
                                     <?= count($folhasSalvas) ?> folha<?= count($folhasSalvas) === 1 ? '' : 's' ?>
@@ -1283,10 +1481,10 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                     <div class="ponto-impressao-cabecalho">
                         <div>
                             <h1>Folha de Ponto</h1>
-                            <p><?= htmlspecialchars($funcionarioSelecionado['nome']) ?> · <?= htmlspecialchars($nomePeriodo) ?></p>
+                            <p><?= htmlspecialchars($clienteNomeFolha) ?> · <?= htmlspecialchars($funcionarioSelecionado['nome']) ?> · <?= htmlspecialchars($nomePeriodo) ?></p>
                         </div>
                         <div>
-                            <strong><?= htmlspecialchars(empresaAtivaNome($pdo) ?: 'Logi') ?></strong><br>
+                            <strong><?= htmlspecialchars($clienteNomeFolha) ?></strong><br>
                             Emitido em <?= date('d/m/Y H:i') ?>
                         </div>
                     </div>
@@ -1329,6 +1527,7 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                         data-modo-leitura="<?= !$modoEdicaoFolha ? '1' : '0' ?>">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(folhaPontoToken()) ?>">
                         <input type="hidden" name="acao" value="salvar_registros">
+                        <input type="hidden" name="cliente_id" value="<?= $clienteId ?>">
                         <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
                         <input type="hidden" name="data_inicio" value="<?= htmlspecialchars($inicioPeriodo) ?>">
                         <input type="hidden" name="data_fim" value="<?= htmlspecialchars($fimPeriodo) ?>">
@@ -1537,12 +1736,54 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                         </div>
                         <div class="modal-body">
                             <div class="row g-3 mb-4">
-                                <div class="col-md-8">
+                                <div class="col-md-6">
+                                    <label for="funcionarioClienteBusca" class="form-label">Empresa cliente</label>
+                                    <div class="cliente-seletor" id="funcionarioClienteSeletor">
+                                        <i class="bi bi-search cliente-seletor-icone" aria-hidden="true"></i>
+                                        <input
+                                            type="search"
+                                            class="form-control cliente-seletor-input"
+                                            id="funcionarioClienteBusca"
+                                            placeholder="Digite o código ou a razão social"
+                                            autocomplete="off"
+                                            aria-haspopup="listbox"
+                                            aria-expanded="false">
+                                        <div class="cliente-seletor-menu d-none" id="funcionarioClienteMenu">
+                                            <div class="cliente-seletor-opcoes" id="funcionarioClienteOpcoes" role="listbox">
+                                                <?php foreach ($clientesFolha as $clienteFolha): ?>
+                                                    <button
+                                                        type="button"
+                                                        class="cliente-seletor-opcao"
+                                                        data-id="<?= (int)$clienteFolha['id'] ?>"
+                                                        data-texto="<?= htmlspecialchars($clienteFolha['nome_exibicao'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-busca="<?= htmlspecialchars(trim(implode(' ', [
+                                                                        $clienteFolha['codigo'] ?? '',
+                                                                        $clienteFolha['documento'] ?? '',
+                                                                        $clienteFolha['nome'] ?? '',
+                                                                        $clienteFolha['nome_fantasia'] ?? '',
+                                                                        $clienteFolha['email'] ?? '',
+                                                                    ])), ENT_QUOTES, 'UTF-8') ?>"
+                                                        role="option"
+                                                        aria-selected="false">
+                                                        <strong><?= htmlspecialchars($clienteFolha['codigo'] ?: '-') ?></strong>
+                                                        <span><?= htmlspecialchars($clienteFolha['nome']) ?></span>
+                                                    </button>
+                                                <?php endforeach; ?>
+                                                <div class="cliente-seletor-vazio d-none" id="funcionarioClienteVazio">
+                                                    Nenhum cliente encontrado.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <input type="hidden" name="cliente_id" id="funcionarioCliente" value="">
+                                    <div class="invalid-feedback" id="funcionarioClienteFeedback">Selecione a empresa do funcionário.</div>
+                                </div>
+                                <div class="col-md-6">
                                     <label for="funcionarioNome" class="form-label">Nome do funcionário</label>
                                     <input type="text" class="form-control" name="nome" id="funcionarioNome" maxlength="150" required>
                                     <div class="invalid-feedback">Informe o nome do funcionário.</div>
                                 </div>
-                                <div class="col-md-4 d-flex align-items-end">
+                                <div class="col-12">
                                     <div class="form-check form-switch mb-2 d-none" id="grupoFuncionarioAtivo">
                                         <input class="form-check-input" type="checkbox" role="switch" name="ativo" value="1" id="funcionarioAtivo" checked>
                                         <label class="form-check-label" for="funcionarioAtivo">Funcionário ativo</label>
@@ -1636,6 +1877,7 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                         <form method="post">
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(folhaPontoToken()) ?>">
                             <input type="hidden" name="acao" value="excluir_funcionario">
+                            <input type="hidden" name="cliente_id" value="<?= $clienteId ?>">
                             <input type="hidden" name="id" id="funcionarioExcluirId" value="<?= $funcionarioSelecionado ? $funcionarioId : '' ?>">
                             <input type="hidden" name="funcionario_id" value="<?= $funcionarioSelecionado ? $funcionarioId : '' ?>">
                             <input type="hidden" name="data_inicio" value="<?= htmlspecialchars($inicioPeriodo) ?>">
@@ -1669,6 +1911,7 @@ $retornoTrocaEmpresaFolha = 'folha_ponto.php?' . http_build_query([
                         <form method="post" id="formImportarPdf">
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(folhaPontoToken()) ?>">
                             <input type="hidden" name="acao" value="importar_pdf">
+                            <input type="hidden" name="cliente_id" value="<?= $clienteId ?>">
                             <input type="hidden" name="funcionario_id" value="<?= $funcionarioId ?>">
                             <input type="hidden" name="mes" value="<?= htmlspecialchars($mes) ?>" data-mes-original="<?= htmlspecialchars($mes) ?>">
                             <input type="hidden" name="data_inicio" value="<?= htmlspecialchars($inicioPeriodo) ?>">

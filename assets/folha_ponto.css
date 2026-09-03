@@ -42,6 +42,8 @@
 }
 
 .ponto-empresa-contexto {
+    position: relative;
+    z-index: 20;
     display: flex;
     min-height: 74px;
     align-items: center;
@@ -97,13 +99,21 @@
 }
 
 .ponto-empresa-contexto form {
-    width: min(100%, 380px);
+    width: min(100%, 560px);
 }
 
-.ponto-empresa-contexto .form-select {
-    min-height: 42px;
+.ponto-empresa-contexto .cliente-seletor {
+    position: relative;
+}
+
+.ponto-empresa-contexto .cliente-seletor-input {
+    min-height: 44px;
     border-radius: 6px;
-    font-weight: 700;
+}
+
+.ponto-empresa-contexto .cliente-seletor-menu {
+    width: 100%;
+    max-width: 100%;
 }
 
 .ponto-painel-acoes,

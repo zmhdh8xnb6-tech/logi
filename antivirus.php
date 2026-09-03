@@ -379,7 +379,7 @@ if ($tabelaAntivirusExiste) {
                     <option value="nao_possui">Não possui</option>
                     <option value="nao_precisa_momento">Não precisa no momento</option>
                     <option value="vencido">Vencidos</option>
-                    <option value="a_vencer">A vencer em 30 dias</option>
+                    <option value="a_vencer">Vence em até 30 dias</option>
                 </select>
             </div>
 

@@ -117,6 +117,7 @@ function certificadoClienteParalisado(array $cliente): bool
                     <select class="form-select" id="filtroCertificado">
                         <option value="">Todos</option>
                         <option value="possui">Possui</option>
+                        <option value="vence_30_dias">Vence em até 30 dias</option>
                         <option value="vencido">Vencido</option>
                         <option value="nao_possui">Não possui</option>
                         <option value="nao_precisa_momento">Não precisa no momento</option>
@@ -354,6 +355,28 @@ function certificadoClienteParalisado(array $cliente): bool
         let salvandoCertificado = false;
         let vencimentoCertificadoInicial = '';
 
+        function certificadoVenceEmAte30Dias(linha) {
+            if (linha.dataset.statusFiltro !== 'possui') {
+                return false;
+            }
+
+            const vencimento = linha.querySelector('.vencimento-certificado')?.dataset.valor || '';
+            const partes = vencimento.split('-');
+
+            if (partes.length !== 3) {
+                return false;
+            }
+
+            const dataVencimento = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+
+            const limite = new Date(hoje);
+            limite.setDate(limite.getDate() + 30);
+
+            return dataVencimento >= hoje && dataVencimento <= limite;
+        }
+
         function certificadosFiltrados() {
             const valor = buscaCertificado.value.trim().toLowerCase();
             const filtro = filtroCertificado ? filtroCertificado.value : '';
@@ -363,7 +386,9 @@ function certificadoClienteParalisado(array $cliente): bool
                 const nome = linha.querySelector('.nome-cliente').textContent.toLowerCase();
                 const documento = linha.querySelector('.doc-cliente').textContent.toLowerCase();
                 const correspondeBusca = !valor || nome.includes(valor) || documento.includes(valor) || codigo.includes(valor);
-                const correspondeFiltro = !filtro || linha.dataset.statusFiltro === filtro;
+                const correspondeFiltro = filtro === 'vence_30_dias' ?
+                    certificadoVenceEmAte30Dias(linha) :
+                    !filtro || linha.dataset.statusFiltro === filtro;
 
                 return correspondeBusca && correspondeFiltro;
             });

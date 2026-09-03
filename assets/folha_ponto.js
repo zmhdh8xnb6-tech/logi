@@ -174,6 +174,9 @@
         const dados = configuracao || {};
         const editando = Boolean(dados.id);
         const id = document.getElementById('funcionarioIdModal');
+        const cliente = document.getElementById('funcionarioCliente');
+        const clienteBusca = document.getElementById('funcionarioClienteBusca');
+        const clienteFeedback = document.getElementById('funcionarioClienteFeedback');
         const nome = document.getElementById('funcionarioNome');
         const ativo = document.getElementById('funcionarioAtivo');
         const grupoAtivo = document.getElementById('grupoFuncionarioAtivo');
@@ -188,6 +191,25 @@
         });
 
         if (id) id.value = dados.id || '';
+        if (cliente) {
+            cliente.value = Number(dados.clienteId) > 0 ? String(dados.clienteId) : '';
+        }
+        if (clienteBusca) {
+            const opcaoCliente = Array.from(document.querySelectorAll('#funcionarioClienteOpcoes .cliente-seletor-opcao'))
+                .find(function (opcao) {
+                    return opcao.dataset.id === cliente?.value;
+                });
+            clienteBusca.value = opcaoCliente?.dataset.texto || '';
+            clienteBusca.classList.remove('is-invalid');
+            clienteFeedback?.classList.remove('d-block');
+            document.querySelectorAll('#funcionarioClienteOpcoes .cliente-seletor-opcao').forEach(function (opcao) {
+                const selecionado = opcao === opcaoCliente;
+                opcao.classList.toggle('selecionado', selecionado);
+                opcao.setAttribute('aria-selected', selecionado ? 'true' : 'false');
+            });
+            document.getElementById('funcionarioClienteMenu')?.classList.add('d-none');
+            clienteBusca.setAttribute('aria-expanded', 'false');
+        }
         if (nome) {
             nome.value = dados.nome || '';
             nome.classList.remove('is-invalid');
@@ -223,8 +245,20 @@
 
     function validarFuncionario(evento) {
         const formulario = evento.currentTarget;
+        const cliente = document.getElementById('funcionarioCliente');
+        const clienteBusca = document.getElementById('funcionarioClienteBusca');
+        const clienteFeedback = document.getElementById('funcionarioClienteFeedback');
         const nome = document.getElementById('funcionarioNome');
         let valido = true;
+
+        if (!cliente || Number(cliente.value) <= 0) {
+            clienteBusca?.classList.add('is-invalid');
+            clienteFeedback?.classList.add('d-block');
+            valido = false;
+        } else {
+            clienteBusca?.classList.remove('is-invalid');
+            clienteFeedback?.classList.remove('d-block');
+        }
 
         if (!nome || nome.value.trim() === '') {
             nome?.classList.add('is-invalid');
@@ -1581,6 +1615,144 @@
         }
     }
 
+    function configurarSeletorCliente(configuracao) {
+        const seletor = document.getElementById(configuracao.seletorId);
+        const formulario = configuracao.formularioId
+            ? document.getElementById(configuracao.formularioId)
+            : null;
+        const campoBusca = document.getElementById(configuracao.campoBuscaId);
+        const campoClienteId = document.getElementById(configuracao.campoClienteId);
+        const menu = document.getElementById(configuracao.menuId);
+        const opcoesContainer = document.getElementById(configuracao.opcoesId);
+        const avisoVazio = document.getElementById(configuracao.avisoVazioId);
+        const feedback = configuracao.feedbackId
+            ? document.getElementById(configuracao.feedbackId)
+            : null;
+
+        if (!seletor || !campoBusca || !campoClienteId || !menu || !opcoesContainer) {
+            return;
+        }
+
+        const opcoes = Array.from(opcoesContainer.querySelectorAll('.cliente-seletor-opcao'));
+
+        function normalizarBusca(texto) {
+            return String(texto || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .trim();
+        }
+
+        function opcoesVisiveis() {
+            return opcoes.filter(function (opcao) {
+                return !opcao.classList.contains('d-none');
+            });
+        }
+
+        function filtrarClientes() {
+            const busca = normalizarBusca(campoBusca.value);
+            let totalVisivel = 0;
+
+            opcoes.forEach(function (opcao) {
+                const textoBusca = opcao.dataset.busca || opcao.dataset.texto || '';
+                const visivel = normalizarBusca(textoBusca).includes(busca);
+                opcao.classList.toggle('d-none', !visivel);
+                totalVisivel += visivel ? 1 : 0;
+            });
+
+            avisoVazio?.classList.toggle('d-none', totalVisivel > 0);
+        }
+
+        function abrirLista() {
+            menu.classList.remove('d-none');
+            campoBusca.setAttribute('aria-expanded', 'true');
+            filtrarClientes();
+        }
+
+        function fecharLista() {
+            menu.classList.add('d-none');
+            campoBusca.setAttribute('aria-expanded', 'false');
+        }
+
+        function selecionarCliente(opcao) {
+            campoClienteId.value = opcao.dataset.id || '';
+            campoBusca.value = opcao.dataset.texto || '';
+            campoBusca.classList.remove('is-invalid');
+            feedback?.classList.remove('d-block');
+
+            opcoes.forEach(function (item) {
+                const selecionado = item === opcao;
+                item.classList.toggle('selecionado', selecionado);
+                item.setAttribute('aria-selected', selecionado ? 'true' : 'false');
+            });
+
+            fecharLista();
+
+            if (configuracao.enviarAoSelecionar && formulario) {
+                formulario.requestSubmit();
+            }
+        }
+
+        campoBusca.addEventListener('focus', function () {
+            abrirLista();
+            campoBusca.select();
+        });
+
+        campoBusca.addEventListener('input', function () {
+            campoClienteId.value = '';
+            campoBusca.classList.remove('is-invalid');
+            feedback?.classList.remove('d-block');
+            abrirLista();
+        });
+
+        campoBusca.addEventListener('keydown', function (evento) {
+            const visiveis = opcoesVisiveis();
+
+            if (evento.key === 'Enter') {
+                evento.preventDefault();
+
+                if (visiveis[0]) {
+                    selecionarCliente(visiveis[0]);
+                }
+            } else if (evento.key === 'ArrowDown' && visiveis[0]) {
+                evento.preventDefault();
+                visiveis[0].focus();
+            } else if (evento.key === 'Escape') {
+                fecharLista();
+            }
+        });
+
+        opcoes.forEach(function (opcao) {
+            opcao.addEventListener('click', function () {
+                selecionarCliente(opcao);
+            });
+            opcao.addEventListener('keydown', function (evento) {
+                const visiveis = opcoesVisiveis();
+                const posicao = visiveis.indexOf(opcao);
+
+                if (evento.key === 'Enter' || evento.key === ' ') {
+                    evento.preventDefault();
+                    selecionarCliente(opcao);
+                } else if (evento.key === 'ArrowDown' && visiveis[posicao + 1]) {
+                    evento.preventDefault();
+                    visiveis[posicao + 1].focus();
+                } else if (evento.key === 'ArrowUp') {
+                    evento.preventDefault();
+                    (visiveis[posicao - 1] || campoBusca).focus();
+                } else if (evento.key === 'Escape') {
+                    fecharLista();
+                    campoBusca.focus();
+                }
+            });
+        });
+
+        document.addEventListener('click', function (evento) {
+            if (!seletor.contains(evento.target)) {
+                fecharLista();
+            }
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         document.querySelectorAll('.alerta-temporario').forEach(function (alerta) {
             window.setTimeout(function () {
@@ -1594,8 +1766,25 @@
             document.getElementById('formFiltrosPonto')?.submit();
         });
 
-        document.getElementById('empresaFolhaPonto')?.addEventListener('change', function () {
-            document.getElementById('formEmpresaFolhaPonto')?.submit();
+        configurarSeletorCliente({
+            seletorId: 'clienteSeletorFolhaPonto',
+            formularioId: 'formClienteFolhaPonto',
+            campoBuscaId: 'clienteBuscaFolhaPonto',
+            campoClienteId: 'clienteFolhaPontoId',
+            menuId: 'clienteSeletorFolhaPontoMenu',
+            opcoesId: 'clienteOpcoesFolhaPonto',
+            avisoVazioId: 'clienteVazioFolhaPonto',
+            enviarAoSelecionar: true
+        });
+        configurarSeletorCliente({
+            seletorId: 'funcionarioClienteSeletor',
+            campoBuscaId: 'funcionarioClienteBusca',
+            campoClienteId: 'funcionarioCliente',
+            menuId: 'funcionarioClienteMenu',
+            opcoesId: 'funcionarioClienteOpcoes',
+            avisoVazioId: 'funcionarioClienteVazio',
+            feedbackId: 'funcionarioClienteFeedback',
+            enviarAoSelecionar: false
         });
 
         document.getElementById('btnImprimirPonto')?.addEventListener('click', function () {
@@ -1623,6 +1812,7 @@
 
             preencherModalFuncionario({
                 id: botao?.dataset.id || '',
+                clienteId: botao?.dataset.clienteId || '',
                 nome: botao?.dataset.nome || '',
                 ativo: Number(botao?.dataset.ativo ?? 1),
                 cargaSemanal: Number(botao?.dataset.cargaSemanal ?? 44),

@@ -200,6 +200,7 @@ foreach ($opcoesStatus as $valor => $rotulo) {
 }
 
 if ($mostrarVencimento) {
+    $opcoesFiltroStatus['vence_30_dias'] = 'Vence em até 30 dias';
     $opcoesFiltroStatus['vencido'] = 'Vencido';
 }
 
@@ -731,13 +732,37 @@ if (!function_exists('controleFormatarPrazo')) {
             return '<span class="badge bg-success">' + diferenca + (diferenca === 1 ? ' dia para vencer' : ' dias para vencer') + '</span>';
         }
 
+        function controleVenceEmAte30Dias(linha) {
+            if (!controlePossuiVencimento || linha.dataset.status !== 'possui') {
+                return false;
+            }
+
+            const vencimento = linha.dataset.vencimento || '';
+            const partes = vencimento.split('-');
+
+            if (partes.length !== 3) {
+                return false;
+            }
+
+            const dataVencimento = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+
+            const limite = new Date(hoje);
+            limite.setDate(limite.getDate() + 30);
+
+            return dataVencimento >= hoje && dataVencimento <= limite;
+        }
+
         function controleLinhasFiltradas() {
             const termo = (controleBusca.value || '').trim().toLowerCase();
             const filtroStatus = controleFiltroStatus ? controleFiltroStatus.value : '';
 
             return controleLinhas.filter((linha) => {
                 const correspondeBusca = !termo || linha.dataset.busca.includes(termo);
-                const correspondeStatus = !filtroStatus || linha.dataset.statusFiltro === filtroStatus;
+                const correspondeStatus = filtroStatus === 'vence_30_dias' ?
+                    controleVenceEmAte30Dias(linha) :
+                    !filtroStatus || linha.dataset.statusFiltro === filtroStatus;
 
                 return correspondeBusca && correspondeStatus;
             });

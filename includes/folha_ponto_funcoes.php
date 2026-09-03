@@ -48,6 +48,33 @@ function folhaPontoGarantirTabelaFolhas(PDO $pdo): bool
     }
 }
 
+function folhaPontoGarantirVinculoCliente(PDO $pdo): bool
+{
+    try {
+        $stmt = $pdo->query("SHOW COLUMNS FROM folha_ponto_funcionarios LIKE 'cliente_id'");
+
+        if (!$stmt->fetch(PDO::FETCH_ASSOC)) {
+            $pdo->exec("
+                ALTER TABLE folha_ponto_funcionarios
+                ADD COLUMN cliente_id INT UNSIGNED NULL AFTER empresa_id
+            ");
+        }
+
+        $stmt = $pdo->query("SHOW INDEX FROM folha_ponto_funcionarios WHERE Key_name = 'idx_folha_funcionarios_cliente'");
+
+        if (!$stmt->fetch(PDO::FETCH_ASSOC)) {
+            $pdo->exec("
+                ALTER TABLE folha_ponto_funcionarios
+                ADD INDEX idx_folha_funcionarios_cliente (empresa_id, cliente_id, ativo, nome)
+            ");
+        }
+
+        return true;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
 function folhaPontoToken(): string
 {
     if (empty($_SESSION['folha_ponto_csrf'])) {
