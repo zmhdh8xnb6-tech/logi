@@ -16,16 +16,16 @@ function frotaTokenValido(mixed $token): bool
         && hash_equals(frotaToken(), $token);
 }
 
-function frotaRedirecionar(string $mensagem, string $tipo = 'success', string $aba = 'visao-geral'): void
+function frotaRedirecionar(string $mensagem, string $tipo = 'success', string $aba = 'visao-geral', array $parametros = []): void
 {
     $abas = ['visao-geral', 'obrigacoes', 'multas'];
     $aba = in_array($aba, $abas, true) ? $aba : 'visao-geral';
 
-    header('Location: frota.php?' . http_build_query([
+    header('Location: frota.php?' . http_build_query(array_merge([
         'aba' => $aba,
         'msg' => $mensagem,
         'tipo' => $tipo,
-    ]));
+    ], $parametros)));
     exit;
 }
 

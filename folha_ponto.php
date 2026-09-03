@@ -1094,10 +1094,9 @@ $urlListaFuncionarios = 'folha_ponto.php?' . http_build_query([
                         <form method="get" action="folha_ponto.php" id="formClienteFolhaPonto">
                             <label for="clienteBuscaFolhaPonto" class="visually-hidden">Pesquisar empresa cliente</label>
                             <div class="cliente-seletor" id="clienteSeletorFolhaPonto">
-                                <i class="bi bi-search cliente-seletor-icone" aria-hidden="true"></i>
                                 <input
-                                    type="search"
-                                    class="form-control cliente-seletor-input"
+                                    type="text"
+                                    class="form-control"
                                     id="clienteBuscaFolhaPonto"
                                     placeholder="Buscar por código, nome, CPF/CNPJ ou e-mail..."
                                     value="<?= $clienteId !== 0 ? htmlspecialchars($clienteNomeFolha) : '' ?>"

@@ -59,21 +59,10 @@
     line-height: 1.1;
 }
 
-.metrica-veiculos {
-    --metrica-cor: #0284c7;
-}
-
-.metrica-vencidos {
-    --metrica-cor: #dc3545;
-}
-
-.metrica-proximos {
-    --metrica-cor: #d97706;
-}
-
-.metrica-multas {
-    --metrica-cor: #7c3aed;
-}
+.metrica-veiculos { --metrica-cor: #0284c7; }
+.metrica-vencidos { --metrica-cor: #dc3545; }
+.metrica-proximos { --metrica-cor: #d97706; }
+.metrica-multas { --metrica-cor: #7c3aed; }
 
 .frota-abas {
     display: flex;
@@ -133,6 +122,25 @@
     margin: 0;
     color: #64748b;
     font-size: 0.9rem;
+}
+
+.frota-seletor-ano {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.frota-seletor-ano label {
+    color: #5b6b82;
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
+.frota-seletor-ano .form-select {
+    width: 112px;
+    min-height: 42px;
+    font-weight: 700;
 }
 
 .frota-filtros {
@@ -246,11 +254,91 @@
     text-align: center;
 }
 
+.frota-tabela-controle {
+    min-width: 820px;
+}
+
+.frota-tabela-controle tbody td:first-child {
+    min-width: 250px;
+}
+
+.frota-tabela-controle tbody td:first-child .frota-placa {
+    margin-right: 12px;
+}
+
+.frota-tabela-controle tbody tr.tem-pendencia td {
+    background: #fff7f7;
+}
+
+.frota-controle-chave {
+    display: inline-flex;
+    align-items: center;
+    min-height: 38px;
+    margin: 0;
+    padding-left: 3.25rem;
+}
+
+.frota-controle-chave .form-check-input {
+    width: 2.65rem;
+    height: 1.45rem;
+    margin-top: 0;
+    margin-left: -3.25rem;
+    cursor: pointer;
+    border-color: #a7b2c2;
+    box-shadow: none;
+}
+
+.frota-controle-chave .form-check-input:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.14);
+}
+
+.frota-controle-chave .form-check-input:checked {
+    background-color: #198754;
+    border-color: #198754;
+}
+
+.frota-controle-chave .form-check-label {
+    min-width: 112px;
+    color: #536176;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.frota-quantidade-multas {
+    width: 120px;
+    min-height: 42px;
+}
+
+.frota-quantidade-multas:disabled {
+    color: #8290a3;
+    background: #eef2f6;
+}
+
+.frota-status-controle {
+    min-width: 104px;
+    padding: 7px 10px;
+    font-size: 0.76rem;
+}
+
+.frota-salvar-controle {
+    display: flex;
+    justify-content: flex-end;
+    padding: 16px 22px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+}
+
+.frota-salvar-controle .btn {
+    min-height: 42px;
+}
+
 .frota-ativacao {
     padding: 28px;
 }
 
-.frota-ativacao>i {
+.frota-ativacao > i {
     float: left;
     margin-right: 16px;
     color: #0d6efd;
@@ -349,6 +437,10 @@
     .frota-painel-titulo {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .frota-seletor-ano {
+        justify-content: space-between;
     }
 
     .frota-cabecalho-acoes .btn,

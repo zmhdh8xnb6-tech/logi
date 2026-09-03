@@ -1694,8 +1694,10 @@
         }
 
         campoBusca.addEventListener('focus', function () {
-            abrirLista();
-            campoBusca.select();
+            if (configuracao.abrirAoFocar !== false) {
+                abrirLista();
+                campoBusca.select();
+            }
         });
 
         campoBusca.addEventListener('input', function () {
@@ -1774,6 +1776,7 @@
             menuId: 'clienteSeletorFolhaPontoMenu',
             opcoesId: 'clienteOpcoesFolhaPonto',
             avisoVazioId: 'clienteVazioFolhaPonto',
+            abrirAoFocar: false,
             enviarAoSelecionar: true
         });
         configurarSeletorCliente({

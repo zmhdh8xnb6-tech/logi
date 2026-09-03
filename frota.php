@@ -14,7 +14,7 @@ $tipoMensagem = (string)($_GET['tipo'] ?? 'success');
 $tipoMensagem = in_array($tipoMensagem, ['success', 'warning', 'danger', 'info'], true)
     ? $tipoMensagem
     : 'success';
-$tabelasFrota = ['frota_veiculos', 'frota_obrigacoes', 'frota_multas'];
+$tabelasFrota = ['frota_veiculos', 'frota_controles_anuais'];
 $estruturaDisponivel = true;
 
 foreach ($tabelasFrota as $tabelaFrota) {
@@ -25,18 +25,12 @@ foreach ($tabelasFrota as $tabelaFrota) {
 }
 
 $sqlFrota = (string)@file_get_contents(__DIR__ . '/sql/frota.sql');
-$tiposObrigacao = [
-    'ipva' => 'IPVA',
-    'licenciamento' => 'Licenciamento / CRLV',
-    'seguro' => 'Seguro',
-    'revisao' => 'Revisão',
-    'troca_oleo' => 'Troca de óleo',
-    'pneus' => 'Pneus',
-    'outro' => 'Outro',
-];
 $situacoesVeiculo = ['ativo', 'manutencao', 'inativo', 'vendido'];
-$situacoesObrigacao = ['pendente', 'pago', 'dispensado'];
-$situacoesMulta = ['pendente', 'paga', 'recorrida', 'cancelada'];
+$anoAtual = (int)date('Y');
+$anoControle = (int)($_GET['ano'] ?? $_POST['ano'] ?? $anoAtual);
+if ($anoControle < $anoAtual - 5 || $anoControle > $anoAtual + 1) {
+    $anoControle = $anoAtual;
+}
 
 if (
     !$estruturaDisponivel
@@ -70,16 +64,6 @@ $buscarVeiculo = static function (PDO $pdo, int $empresaId, int $id): ?array {
     }
 
     $stmt = $pdo->prepare('SELECT * FROM frota_veiculos WHERE id = ? AND empresa_id = ?');
-    $stmt->execute([$id, $empresaId]);
-    return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-};
-
-$buscarRegistro = static function (PDO $pdo, string $tabela, int $empresaId, int $id): ?array {
-    if ($id <= 0 || !in_array($tabela, ['frota_obrigacoes', 'frota_multas'], true)) {
-        return null;
-    }
-
-    $stmt = $pdo->prepare("SELECT * FROM {$tabela} WHERE id = ? AND empresa_id = ?");
     $stmt->execute([$id, $empresaId]);
     return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 };
@@ -224,310 +208,131 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if ($acao === 'salvar_obrigacao') {
-        $id = (int)($_POST['id'] ?? 0);
-        $antes = $id > 0 ? $buscarRegistro($pdo, 'frota_obrigacoes', $empresaId, $id) : null;
-        $veiculoId = (int)($_POST['veiculo_id'] ?? 0);
-        $veiculo = $buscarVeiculo($pdo, $empresaId, $veiculoId);
-        $tipo = (string)($_POST['tipo'] ?? 'outro');
-        $titulo = frotaTexto((string)($_POST['titulo'] ?? ''), 150);
-        $competencia = frotaTexto((string)($_POST['competencia'] ?? ''), 20);
-        $vencimento = trim((string)($_POST['vencimento'] ?? ''));
-        $valor = frotaValorEntrada((string)($_POST['valor'] ?? ''));
-        $situacao = (string)($_POST['situacao'] ?? 'pendente');
-        $pagoEm = trim((string)($_POST['pago_em'] ?? ''));
-        $referencia = frotaTexto((string)($_POST['referencia'] ?? ''), 120);
-        $observacoes = trim((string)($_POST['observacoes'] ?? ''));
+    if (in_array($acao, ['salvar_controle_obrigacoes', 'salvar_controle_multas'], true)) {
+        $veiculosInformados = array_values(array_unique(array_filter(
+            array_map('intval', (array)($_POST['veiculos'] ?? [])),
+            static fn(int $id): bool => $id > 0
+        )));
 
-        if ($id > 0 && !$antes) {
-            frotaRedirecionar('Obrigação não encontrada nesta empresa.', 'danger', 'obrigacoes');
+        if ($veiculosInformados === []) {
+            frotaRedirecionar('Cadastre ao menos um veículo para fazer o acompanhamento.', 'warning', $aba, ['ano' => $anoControle]);
         }
 
-        if (!$veiculo || !array_key_exists($tipo, $tiposObrigacao) || !frotaDataValida($vencimento) || $valor < 0) {
-            frotaRedirecionar('Revise o veículo, o tipo, o vencimento e o valor da obrigação.', 'danger', 'obrigacoes');
-        }
+        $marcadores = implode(',', array_fill(0, count($veiculosInformados), '?'));
+        $stmtPermitidos = $pdo->prepare("SELECT id FROM frota_veiculos WHERE empresa_id = ? AND id IN ({$marcadores})");
+        $stmtPermitidos->execute(array_merge([$empresaId], $veiculosInformados));
+        $veiculosPermitidos = array_map('intval', $stmtPermitidos->fetchAll(PDO::FETCH_COLUMN));
 
-        if ($titulo === '') {
-            $titulo = $tiposObrigacao[$tipo];
-        }
-
-        if (!in_array($situacao, $situacoesObrigacao, true)) {
-            $situacao = 'pendente';
-        }
-
-        $pagoEm = $situacao === 'pago' ? ($pagoEm !== '' ? $pagoEm : date('Y-m-d')) : '';
-        if (!frotaDataValida($pagoEm, false)) {
-            frotaRedirecionar('Revise a data de pagamento da obrigação.', 'danger', 'obrigacoes');
+        if (count($veiculosPermitidos) !== count($veiculosInformados)) {
+            frotaRedirecionar('Um dos veículos informados não pertence a esta empresa.', 'danger', $aba, ['ano' => $anoControle]);
         }
 
         try {
-            if ($id > 0) {
-                $stmt = $pdo->prepare("
-                    UPDATE frota_obrigacoes
-                    SET veiculo_id = ?, tipo = ?, titulo = ?, competencia = ?, vencimento = ?,
-                        valor = ?, situacao = ?, pago_em = ?, referencia = ?, observacoes = ?, usuario_id = ?
-                    WHERE id = ? AND empresa_id = ?
+            $pdo->beginTransaction();
+
+            if ($acao === 'salvar_controle_obrigacoes') {
+                $documentos = (array)($_POST['documento_emitido'] ?? []);
+                $boletos = (array)($_POST['boletos_enviados'] ?? []);
+                $stmtSalvar = $pdo->prepare("
+                    INSERT INTO frota_controles_anuais (
+                        empresa_id, veiculo_id, ano, documento_emitido, boletos_enviados, usuario_id
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        documento_emitido = VALUES(documento_emitido),
+                        boletos_enviados = VALUES(boletos_enviados),
+                        usuario_id = VALUES(usuario_id)
                 ");
-                $parametros = [
-                    $veiculoId,
-                    $tipo,
-                    $titulo,
-                    $competencia ?: null,
-                    $vencimento,
-                    $valor,
-                    $situacao,
-                    $pagoEm ?: null,
-                    $referencia ?: null,
-                    $observacoes ?: null,
-                    $usuarioId,
-                    $id,
-                    $empresaId,
-                ];
+
+                foreach ($veiculosPermitidos as $veiculoId) {
+                    $stmtSalvar->execute([
+                        $empresaId,
+                        $veiculoId,
+                        $anoControle,
+                        isset($documentos[$veiculoId]) ? 1 : 0,
+                        isset($boletos[$veiculoId]) ? 1 : 0,
+                        $usuarioId,
+                    ]);
+                }
+                $descricaoAuditoria = "Atualizou o acompanhamento de documentos da frota de {$anoControle}";
             } else {
-                $stmt = $pdo->prepare("
-                    INSERT INTO frota_obrigacoes (
-                        empresa_id, veiculo_id, tipo, titulo, competencia, vencimento,
-                        valor, situacao, pago_em, referencia, observacoes, usuario_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                $possuiMultas = (array)($_POST['possui_multas'] ?? []);
+                $quantidades = (array)($_POST['quantidade_multas'] ?? []);
+                $stmtSalvar = $pdo->prepare("
+                    INSERT INTO frota_controles_anuais (
+                        empresa_id, veiculo_id, ano, possui_multas, quantidade_multas, usuario_id
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        possui_multas = VALUES(possui_multas),
+                        quantidade_multas = VALUES(quantidade_multas),
+                        usuario_id = VALUES(usuario_id)
                 ");
-                $parametros = [
-                    $empresaId,
-                    $veiculoId,
-                    $tipo,
-                    $titulo,
-                    $competencia ?: null,
-                    $vencimento,
-                    $valor,
-                    $situacao,
-                    $pagoEm ?: null,
-                    $referencia ?: null,
-                    $observacoes ?: null,
-                    $usuarioId,
-                ];
+
+                foreach ($veiculosPermitidos as $veiculoId) {
+                    $temMulta = isset($possuiMultas[$veiculoId]);
+                    $quantidade = $temMulta ? max(0, min(9999, (int)($quantidades[$veiculoId] ?? 0))) : 0;
+                    if ($temMulta && $quantidade < 1) {
+                        throw new InvalidArgumentException('Informe a quantidade de multas dos veículos marcados com multa.');
+                    }
+                    $stmtSalvar->execute([$empresaId, $veiculoId, $anoControle, $temMulta ? 1 : 0, $quantidade, $usuarioId]);
+                }
+                $descricaoAuditoria = "Atualizou o acompanhamento de multas da frota de {$anoControle}";
             }
 
-            $stmt->execute($parametros);
-            if ($id <= 0) {
-                $id = (int)$pdo->lastInsertId();
-            }
-            $depois = $buscarRegistro($pdo, 'frota_obrigacoes', $empresaId, $id);
+            $pdo->commit();
             registrarAuditoria(
                 $pdo,
                 'Gestão da Frota',
-                $antes ? 'editar' : 'criar',
-                'obrigacao_frota',
-                $id,
-                ($antes ? 'Alterou' : 'Cadastrou') . ' ' . $titulo . ' de ' . frotaPlacaFormatada((string)$veiculo['placa']),
-                $antes,
-                $depois
+                'editar',
+                'controle_anual_frota',
+                null,
+                $descricaoAuditoria,
+                null,
+                ['ano' => $anoControle, 'veiculos' => count($veiculosPermitidos)]
             );
-            frotaRedirecionar($antes ? 'Obrigação atualizada com sucesso.' : 'Obrigação cadastrada com sucesso.', 'success', 'obrigacoes');
-        } catch (Throwable $e) {
-            frotaRedirecionar('Não foi possível salvar a obrigação.', 'danger', 'obrigacoes');
-        }
-    }
-
-    if ($acao === 'quitar_obrigacao') {
-        $id = (int)($_POST['id'] ?? 0);
-        $antes = $buscarRegistro($pdo, 'frota_obrigacoes', $empresaId, $id);
-
-        if (!$antes) {
-            frotaRedirecionar('Obrigação não encontrada.', 'danger', 'obrigacoes');
-        }
-
-        $pdo->prepare("
-            UPDATE frota_obrigacoes
-            SET situacao = 'pago', pago_em = ?, usuario_id = ?
-            WHERE id = ? AND empresa_id = ?
-        ")->execute([date('Y-m-d'), $usuarioId, $id, $empresaId]);
-        registrarAuditoria($pdo, 'Gestão da Frota', 'quitar', 'obrigacao_frota', $id, 'Marcou uma obrigação como paga', $antes, [
-            'situacao' => 'pago',
-            'pago_em' => date('Y-m-d'),
-        ]);
-        frotaRedirecionar('Obrigação marcada como paga.', 'success', 'obrigacoes');
-    }
-
-    if ($acao === 'excluir_obrigacao') {
-        $id = (int)($_POST['id'] ?? 0);
-        $antes = $buscarRegistro($pdo, 'frota_obrigacoes', $empresaId, $id);
-        if (!$antes) {
-            frotaRedirecionar('Obrigação não encontrada.', 'danger', 'obrigacoes');
-        }
-        $pdo->prepare('DELETE FROM frota_obrigacoes WHERE id = ? AND empresa_id = ?')->execute([$id, $empresaId]);
-        registrarAuditoria($pdo, 'Gestão da Frota', 'excluir', 'obrigacao_frota', $id, 'Excluiu a obrigação ' . $antes['titulo'], $antes, null);
-        frotaRedirecionar('Obrigação excluída.', 'success', 'obrigacoes');
-    }
-
-    if ($acao === 'salvar_multa') {
-        $id = (int)($_POST['id'] ?? 0);
-        $antes = $id > 0 ? $buscarRegistro($pdo, 'frota_multas', $empresaId, $id) : null;
-        $veiculoId = (int)($_POST['veiculo_id'] ?? 0);
-        $veiculo = $buscarVeiculo($pdo, $empresaId, $veiculoId);
-        $autoInfracao = frotaTexto((string)($_POST['auto_infracao'] ?? ''), 80);
-        $dataInfracao = trim((string)($_POST['data_infracao'] ?? ''));
-        $descricao = frotaTexto((string)($_POST['descricao'] ?? ''), 255);
-        $motorista = frotaTexto((string)($_POST['motorista'] ?? ''), 150);
-        $valor = frotaValorEntrada((string)($_POST['valor'] ?? ''));
-        $vencimento = trim((string)($_POST['vencimento'] ?? ''));
-        $pontos = max(0, min(99, (int)($_POST['pontos'] ?? 0)));
-        $situacao = (string)($_POST['situacao'] ?? 'pendente');
-        $pagoEm = trim((string)($_POST['pago_em'] ?? ''));
-        $observacoes = trim((string)($_POST['observacoes'] ?? ''));
-
-        if ($id > 0 && !$antes) {
-            frotaRedirecionar('Multa não encontrada nesta empresa.', 'danger', 'multas');
-        }
-
-        if (!$veiculo || !frotaDataValida($dataInfracao) || !frotaDataValida($vencimento, false) || $descricao === '' || $valor < 0) {
-            frotaRedirecionar('Revise o veículo, a data, a descrição, o vencimento e o valor da multa.', 'danger', 'multas');
-        }
-
-        if (!in_array($situacao, $situacoesMulta, true)) {
-            $situacao = 'pendente';
-        }
-
-        $pagoEm = $situacao === 'paga' ? ($pagoEm !== '' ? $pagoEm : date('Y-m-d')) : '';
-        if (!frotaDataValida($pagoEm, false)) {
-            frotaRedirecionar('Revise a data de pagamento da multa.', 'danger', 'multas');
-        }
-
-        try {
-            if ($id > 0) {
-                $stmt = $pdo->prepare("
-                    UPDATE frota_multas
-                    SET veiculo_id = ?, auto_infracao = ?, data_infracao = ?, descricao = ?,
-                        motorista = ?, valor = ?, vencimento = ?, pontos = ?, situacao = ?,
-                        pago_em = ?, observacoes = ?, usuario_id = ?
-                    WHERE id = ? AND empresa_id = ?
-                ");
-                $parametros = [
-                    $veiculoId,
-                    $autoInfracao ?: null,
-                    $dataInfracao,
-                    $descricao,
-                    $motorista ?: null,
-                    $valor,
-                    $vencimento ?: null,
-                    $pontos,
-                    $situacao,
-                    $pagoEm ?: null,
-                    $observacoes ?: null,
-                    $usuarioId,
-                    $id,
-                    $empresaId,
-                ];
-            } else {
-                $stmt = $pdo->prepare("
-                    INSERT INTO frota_multas (
-                        empresa_id, veiculo_id, auto_infracao, data_infracao, descricao,
-                        motorista, valor, vencimento, pontos, situacao, pago_em,
-                        observacoes, usuario_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ");
-                $parametros = [
-                    $empresaId,
-                    $veiculoId,
-                    $autoInfracao ?: null,
-                    $dataInfracao,
-                    $descricao,
-                    $motorista ?: null,
-                    $valor,
-                    $vencimento ?: null,
-                    $pontos,
-                    $situacao,
-                    $pagoEm ?: null,
-                    $observacoes ?: null,
-                    $usuarioId,
-                ];
+            frotaRedirecionar('Acompanhamento atualizado com sucesso.', 'success', $aba, ['ano' => $anoControle]);
+        } catch (InvalidArgumentException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
             }
-
-            $stmt->execute($parametros);
-            if ($id <= 0) {
-                $id = (int)$pdo->lastInsertId();
-            }
-            $depois = $buscarRegistro($pdo, 'frota_multas', $empresaId, $id);
-            registrarAuditoria(
-                $pdo,
-                'Gestão da Frota',
-                $antes ? 'editar' : 'criar',
-                'multa_frota',
-                $id,
-                ($antes ? 'Alterou' : 'Cadastrou') . ' multa de ' . frotaPlacaFormatada((string)$veiculo['placa']),
-                $antes,
-                $depois
-            );
-            frotaRedirecionar($antes ? 'Multa atualizada com sucesso.' : 'Multa cadastrada com sucesso.', 'success', 'multas');
+            frotaRedirecionar($e->getMessage(), 'danger', $aba, ['ano' => $anoControle]);
         } catch (Throwable $e) {
-            frotaRedirecionar('Não foi possível salvar a multa.', 'danger', 'multas');
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            frotaRedirecionar('Não foi possível salvar o acompanhamento da frota.', 'danger', $aba, ['ano' => $anoControle]);
         }
-    }
-
-    if ($acao === 'quitar_multa') {
-        $id = (int)($_POST['id'] ?? 0);
-        $antes = $buscarRegistro($pdo, 'frota_multas', $empresaId, $id);
-        if (!$antes) {
-            frotaRedirecionar('Multa não encontrada.', 'danger', 'multas');
-        }
-        $pdo->prepare("
-            UPDATE frota_multas
-            SET situacao = 'paga', pago_em = ?, usuario_id = ?
-            WHERE id = ? AND empresa_id = ?
-        ")->execute([date('Y-m-d'), $usuarioId, $id, $empresaId]);
-        registrarAuditoria($pdo, 'Gestão da Frota', 'quitar', 'multa_frota', $id, 'Marcou uma multa como paga', $antes, [
-            'situacao' => 'paga',
-            'pago_em' => date('Y-m-d'),
-        ]);
-        frotaRedirecionar('Multa marcada como paga.', 'success', 'multas');
-    }
-
-    if ($acao === 'excluir_multa') {
-        $id = (int)($_POST['id'] ?? 0);
-        $antes = $buscarRegistro($pdo, 'frota_multas', $empresaId, $id);
-        if (!$antes) {
-            frotaRedirecionar('Multa não encontrada.', 'danger', 'multas');
-        }
-        $pdo->prepare('DELETE FROM frota_multas WHERE id = ? AND empresa_id = ?')->execute([$id, $empresaId]);
-        registrarAuditoria($pdo, 'Gestão da Frota', 'excluir', 'multa_frota', $id, 'Excluiu uma multa da frota', $antes, null);
-        frotaRedirecionar('Multa excluída.', 'success', 'multas');
     }
 }
 
 $veiculos = [];
-$obrigacoes = [];
-$multas = [];
+$controles = [];
 $resumo = [
     'veiculos_ativos' => 0,
-    'vencidos' => 0,
-    'proximos' => 0,
+    'documentos_pendentes' => 0,
+    'boletos_pendentes' => 0,
     'multas_pendentes' => 0,
 ];
 $busca = trim((string)($_GET['busca'] ?? ''));
 $situacaoVeiculoFiltro = (string)($_GET['situacao_veiculo'] ?? 'todos');
-$veiculoFiltro = max(0, (int)($_GET['veiculo'] ?? 0));
-$prazoFiltro = (string)($_GET['prazo'] ?? 'todos');
 
 if ($estruturaDisponivel) {
     $stmtResumo = $pdo->prepare("
         SELECT
-            (SELECT COUNT(*) FROM frota_veiculos WHERE empresa_id = ? AND situacao = 'ativo') AS veiculos_ativos,
-            (
-                (SELECT COUNT(*) FROM frota_obrigacoes WHERE empresa_id = ? AND situacao = 'pendente' AND vencimento < CURDATE())
-                +
-                (SELECT COUNT(*) FROM frota_multas WHERE empresa_id = ? AND situacao = 'pendente' AND vencimento IS NOT NULL AND vencimento < CURDATE())
-            ) AS vencidos,
-            (
-                (SELECT COUNT(*) FROM frota_obrigacoes WHERE empresa_id = ? AND situacao = 'pendente' AND vencimento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY))
-                +
-                (SELECT COUNT(*) FROM frota_multas WHERE empresa_id = ? AND situacao = 'pendente' AND vencimento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY))
-            ) AS proximos,
-            (SELECT COUNT(*) FROM frota_multas WHERE empresa_id = ? AND situacao = 'pendente') AS multas_pendentes
+            COUNT(*) AS veiculos_ativos,
+            COALESCE(SUM(CASE WHEN COALESCE(c.documento_emitido, 0) = 0 THEN 1 ELSE 0 END), 0) AS documentos_pendentes,
+            COALESCE(SUM(CASE WHEN COALESCE(c.boletos_enviados, 0) = 0 THEN 1 ELSE 0 END), 0) AS boletos_pendentes,
+            COALESCE(SUM(CASE WHEN COALESCE(c.possui_multas, 0) = 1 THEN COALESCE(c.quantidade_multas, 0) ELSE 0 END), 0) AS multas_pendentes
+        FROM frota_veiculos v
+        LEFT JOIN frota_controles_anuais c
+            ON c.empresa_id = v.empresa_id AND c.veiculo_id = v.id AND c.ano = ?
+        WHERE v.empresa_id = ? AND v.situacao = 'ativo'
     ");
-    $stmtResumo->execute(array_fill(0, 6, $empresaId));
+    $stmtResumo->execute([$anoControle, $empresaId]);
     $dadosResumo = $stmtResumo->fetch(PDO::FETCH_ASSOC) ?: [];
     $resumo = [
         'veiculos_ativos' => (int)($dadosResumo['veiculos_ativos'] ?? 0),
-        'vencidos' => (int)($dadosResumo['vencidos'] ?? 0),
-        'proximos' => (int)($dadosResumo['proximos'] ?? 0),
+        'documentos_pendentes' => (int)($dadosResumo['documentos_pendentes'] ?? 0),
+        'boletos_pendentes' => (int)($dadosResumo['boletos_pendentes'] ?? 0),
         'multas_pendentes' => (int)($dadosResumo['multas_pendentes'] ?? 0),
     ];
 
@@ -545,84 +350,34 @@ if ($estruturaDisponivel) {
 
     $stmtVeiculos = $pdo->prepare("
         SELECT v.*,
-            (SELECT COUNT(*) FROM frota_obrigacoes o WHERE o.empresa_id = v.empresa_id AND o.veiculo_id = v.id AND o.situacao = 'pendente' AND o.vencimento < CURDATE())
-            +
-            (SELECT COUNT(*) FROM frota_multas m WHERE m.empresa_id = v.empresa_id AND m.veiculo_id = v.id AND m.situacao = 'pendente' AND m.vencimento IS NOT NULL AND m.vencimento < CURDATE()) AS vencidos,
-            (SELECT COUNT(*) FROM frota_obrigacoes o WHERE o.empresa_id = v.empresa_id AND o.veiculo_id = v.id AND o.situacao = 'pendente' AND o.vencimento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY))
-            +
-            (SELECT COUNT(*) FROM frota_multas m WHERE m.empresa_id = v.empresa_id AND m.veiculo_id = v.id AND m.situacao = 'pendente' AND m.vencimento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)) AS proximos
+            COALESCE(c.documento_emitido, 0) AS documento_emitido,
+            COALESCE(c.boletos_enviados, 0) AS boletos_enviados,
+            COALESCE(c.possui_multas, 0) AS possui_multas,
+            COALESCE(c.quantidade_multas, 0) AS quantidade_multas
         FROM frota_veiculos v
+        LEFT JOIN frota_controles_anuais c
+            ON c.empresa_id = v.empresa_id AND c.veiculo_id = v.id AND c.ano = ?
         WHERE {$filtroVeiculos}
         ORDER BY FIELD(v.situacao, 'ativo', 'manutencao', 'inativo', 'vendido'), v.modelo, v.placa
     ");
-    $stmtVeiculos->execute($parametrosVeiculos);
+    $stmtVeiculos->execute(array_merge([$anoControle], $parametrosVeiculos));
     $veiculos = $stmtVeiculos->fetchAll(PDO::FETCH_ASSOC);
 
-    $filtroRegistros = 'r.empresa_id = ?';
-    $parametrosRegistros = [$empresaId];
-    if ($veiculoFiltro > 0) {
-        $filtroRegistros .= ' AND r.veiculo_id = ?';
-        $parametrosRegistros[] = $veiculoFiltro;
-    }
-    if ($prazoFiltro === 'vencido') {
-        $filtroRegistros .= " AND r.situacao = 'pendente' AND r.vencimento < CURDATE()";
-    } elseif ($prazoFiltro === 'proximo') {
-        $filtroRegistros .= " AND r.situacao = 'pendente' AND r.vencimento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)";
-    } elseif ($prazoFiltro === 'pendente') {
-        $filtroRegistros .= " AND r.situacao = 'pendente'";
-    } elseif ($prazoFiltro === 'pago') {
-        $filtroRegistros .= " AND r.situacao = 'pago'";
-    } elseif ($prazoFiltro === 'dispensado') {
-        $filtroRegistros .= " AND r.situacao = 'dispensado'";
-    }
-
-    $stmtObrigacoes = $pdo->prepare("
-        SELECT r.*, v.placa, v.marca, v.modelo
-        FROM frota_obrigacoes r
-        INNER JOIN frota_veiculos v ON v.id = r.veiculo_id AND v.empresa_id = r.empresa_id
-        WHERE {$filtroRegistros}
-        ORDER BY FIELD(r.situacao, 'pendente', 'pago', 'dispensado'), r.vencimento ASC, r.id DESC
+    $stmtControles = $pdo->prepare("
+        SELECT v.id, v.placa, v.marca, v.modelo, v.renavam, v.situacao,
+            COALESCE(c.documento_emitido, 0) AS documento_emitido,
+            COALESCE(c.boletos_enviados, 0) AS boletos_enviados,
+            COALESCE(c.possui_multas, 0) AS possui_multas,
+            COALESCE(c.quantidade_multas, 0) AS quantidade_multas,
+            c.atualizado_em
+        FROM frota_veiculos v
+        LEFT JOIN frota_controles_anuais c
+            ON c.empresa_id = v.empresa_id AND c.veiculo_id = v.id AND c.ano = ?
+        WHERE v.empresa_id = ? AND v.situacao <> 'vendido'
+        ORDER BY FIELD(v.situacao, 'ativo', 'manutencao', 'inativo'), v.modelo, v.placa
     ");
-    $stmtObrigacoes->execute($parametrosRegistros);
-    $obrigacoes = $stmtObrigacoes->fetchAll(PDO::FETCH_ASSOC);
-
-    $filtroMultas = 'm.empresa_id = ?';
-    $parametrosMultas = [$empresaId];
-    if ($veiculoFiltro > 0) {
-        $filtroMultas .= ' AND m.veiculo_id = ?';
-        $parametrosMultas[] = $veiculoFiltro;
-    }
-    if ($prazoFiltro === 'vencido') {
-        $filtroMultas .= " AND m.situacao = 'pendente' AND m.vencimento IS NOT NULL AND m.vencimento < CURDATE()";
-    } elseif ($prazoFiltro === 'proximo') {
-        $filtroMultas .= " AND m.situacao = 'pendente' AND m.vencimento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)";
-    } elseif ($prazoFiltro === 'pendente') {
-        $filtroMultas .= " AND m.situacao = 'pendente'";
-    } elseif ($prazoFiltro === 'pago') {
-        $filtroMultas .= " AND m.situacao = 'paga'";
-    }
-
-    $stmtMultas = $pdo->prepare("
-        SELECT m.*, v.placa, v.marca, v.modelo
-        FROM frota_multas m
-        INNER JOIN frota_veiculos v ON v.id = m.veiculo_id AND v.empresa_id = m.empresa_id
-        WHERE {$filtroMultas}
-        ORDER BY FIELD(m.situacao, 'pendente', 'recorrida', 'paga', 'cancelada'), COALESCE(m.vencimento, m.data_infracao) ASC, m.id DESC
-    ");
-    $stmtMultas->execute($parametrosMultas);
-    $multas = $stmtMultas->fetchAll(PDO::FETCH_ASSOC);
-}
-
-$todosVeiculos = [];
-if ($estruturaDisponivel) {
-    $stmtTodosVeiculos = $pdo->prepare("
-        SELECT id, placa, marca, modelo, situacao
-        FROM frota_veiculos
-        WHERE empresa_id = ?
-        ORDER BY modelo, placa
-    ");
-    $stmtTodosVeiculos->execute([$empresaId]);
-    $todosVeiculos = $stmtTodosVeiculos->fetchAll(PDO::FETCH_ASSOC);
+    $stmtControles->execute([$anoControle, $empresaId]);
+    $controles = $stmtControles->fetchAll(PDO::FETCH_ASSOC);
 }
 
 $statusClasse = static function (string $status): string {
@@ -669,7 +424,7 @@ $statusRotulo = static function (string $status): string {
             <header class="frota-cabecalho">
                 <div>
                     <h3 class="mb-1">Gestão da Frota</h3>
-                    <p class="text-muted mb-0">Veículos, documentos, multas e vencimentos da <?= htmlspecialchars(empresaAtivaNome($pdo)) ?>.</p>
+                    <p class="text-muted mb-0">Acompanhamento anual de documentos e multas da <?= htmlspecialchars(empresaAtivaNome($pdo)) ?>.</p>
                 </div>
                 <div class="frota-cabecalho-acoes">
                     <a href="home.php" class="btn btn-outline-secondary">
@@ -694,7 +449,7 @@ $statusRotulo = static function (string $status): string {
                     <i class="bi bi-database-add"></i>
                     <div>
                         <h5>Estrutura da frota ainda não criada</h5>
-                        <p>Ative as tabelas de veículos, obrigações e multas para começar.</p>
+                        <p>Ative as tabelas de veículos e acompanhamento anual para começar.</p>
                     </div>
                     <?php if (usuarioEhAdmin()): ?>
                         <form method="post" class="frota-ativacao-acoes">
@@ -717,12 +472,12 @@ $statusRotulo = static function (string $status): string {
                         <strong><?= (int)$resumo['veiculos_ativos'] ?></strong>
                     </div>
                     <div class="frota-metrica metrica-vencidos">
-                        <span>Vencidos</span>
-                        <strong><?= (int)$resumo['vencidos'] ?></strong>
+                        <span>Documentos pendentes</span>
+                        <strong><?= (int)$resumo['documentos_pendentes'] ?></strong>
                     </div>
                     <div class="frota-metrica metrica-proximos">
-                        <span>Próximos 30 dias</span>
-                        <strong><?= (int)$resumo['proximos'] ?></strong>
+                        <span>Boletos não enviados</span>
+                        <strong><?= (int)$resumo['boletos_pendentes'] ?></strong>
                     </div>
                     <div class="frota-metrica metrica-multas">
                         <span>Multas pendentes</span>
@@ -731,13 +486,13 @@ $statusRotulo = static function (string $status): string {
                 </section>
 
                 <nav class="frota-abas" aria-label="Seções da frota">
-                    <a href="frota.php?aba=visao-geral" class="<?= $aba === 'visao-geral' ? 'ativo' : '' ?>">
+                    <a href="frota.php?aba=visao-geral&amp;ano=<?= $anoControle ?>" class="<?= $aba === 'visao-geral' ? 'ativo' : '' ?>">
                         <i class="bi bi-car-front"></i> Veículos
                     </a>
-                    <a href="frota.php?aba=obrigacoes" class="<?= $aba === 'obrigacoes' ? 'ativo' : '' ?>">
+                    <a href="frota.php?aba=obrigacoes&amp;ano=<?= $anoControle ?>" class="<?= $aba === 'obrigacoes' ? 'ativo' : '' ?>">
                         <i class="bi bi-file-earmark-check"></i> Obrigações
                     </a>
-                    <a href="frota.php?aba=multas" class="<?= $aba === 'multas' ? 'ativo' : '' ?>">
+                    <a href="frota.php?aba=multas&amp;ano=<?= $anoControle ?>" class="<?= $aba === 'multas' ? 'ativo' : '' ?>">
                         <i class="bi bi-sign-stop"></i> Multas
                     </a>
                 </nav>
@@ -746,6 +501,7 @@ $statusRotulo = static function (string $status): string {
                     <section class="frota-painel">
                         <form method="get" class="frota-filtros">
                             <input type="hidden" name="aba" value="visao-geral">
+                            <input type="hidden" name="ano" value="<?= $anoControle ?>">
                             <div class="frota-busca">
                                 <i class="bi bi-search"></i>
                                 <input type="search" class="form-control" name="busca" value="<?= htmlspecialchars($busca) ?>" placeholder="Buscar placa, modelo, RENAVAM ou responsável...">
@@ -794,12 +550,17 @@ $statusRotulo = static function (string $status): string {
                                             <td><?= htmlspecialchars($veiculo['responsavel'] ?: '-') ?></td>
                                             <td><span class="badge text-bg-<?= $statusClasse((string)$veiculo['situacao']) ?>"><?= htmlspecialchars(frotaSituacaoVeiculo((string)$veiculo['situacao'])) ?></span></td>
                                             <td>
-                                                <?php if ((int)$veiculo['vencidos'] > 0): ?>
-                                                    <span class="badge text-bg-danger"><?= (int)$veiculo['vencidos'] ?> vencido<?= (int)$veiculo['vencidos'] === 1 ? '' : 's' ?></span>
-                                                <?php elseif ((int)$veiculo['proximos'] > 0): ?>
-                                                    <span class="badge text-bg-warning"><?= (int)$veiculo['proximos'] ?> próximo<?= (int)$veiculo['proximos'] === 1 ? '' : 's' ?></span>
+                                                <?php
+                                                $pendenciasVeiculo = ((int)$veiculo['documento_emitido'] === 0 ? 1 : 0)
+                                                    + ((int)$veiculo['boletos_enviados'] === 0 ? 1 : 0)
+                                                    + ((int)$veiculo['possui_multas'] === 1 ? 1 : 0);
+                                                ?>
+                                                <?php if ($veiculo['situacao'] !== 'ativo'): ?>
+                                                    <span class="badge text-bg-secondary">Fora de operação</span>
+                                                <?php elseif ($pendenciasVeiculo > 0): ?>
+                                                    <span class="badge text-bg-danger"><?= $pendenciasVeiculo ?> pendência<?= $pendenciasVeiculo === 1 ? '' : 's' ?> em <?= $anoControle ?></span>
                                                 <?php else: ?>
-                                                    <span class="text-success"><i class="bi bi-check-circle"></i> Em dia</span>
+                                                    <span class="text-success"><i class="bi bi-check-circle"></i> Em dia em <?= $anoControle ?></span>
                                                 <?php endif; ?>
                                             </td>
                                             <td class="text-end frota-acoes">
@@ -818,72 +579,66 @@ $statusRotulo = static function (string $status): string {
                     <section class="frota-painel">
                         <div class="frota-painel-titulo">
                             <div>
-                                <h5>Obrigações e documentos</h5>
-                                <p>IPVA, licenciamento, seguro e manutenções programadas.</p>
+                                <h5>Documentos do ano</h5>
+                                <p>Marque o que já foi concluído para cada veículo.</p>
                             </div>
-                            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalObrigacao" <?= $todosVeiculos === [] ? 'disabled' : '' ?>><i class="bi bi-plus-lg"></i> Nova obrigação</button>
+                            <form method="get" class="frota-seletor-ano">
+                                <input type="hidden" name="aba" value="obrigacoes">
+                                <label for="anoObrigacoes">Ano</label>
+                                <select class="form-select" name="ano" id="anoObrigacoes" onchange="this.form.submit()">
+                                    <?php for ($anoOpcao = $anoAtual + 1; $anoOpcao >= $anoAtual - 5; $anoOpcao--): ?>
+                                        <option value="<?= $anoOpcao ?>" <?= $anoOpcao === $anoControle ? 'selected' : '' ?>><?= $anoOpcao ?></option>
+                                    <?php endfor; ?>
+                                </select>
+                            </form>
                         </div>
-                        <form method="get" class="frota-filtros frota-filtros-registros">
+                        <form method="post" class="frota-acompanhamento-form">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(frotaToken()) ?>">
+                            <input type="hidden" name="acao" value="salvar_controle_obrigacoes">
                             <input type="hidden" name="aba" value="obrigacoes">
-                            <select name="veiculo" class="form-select">
-                                <option value="0">Todos os veículos</option>
-                                <?php foreach ($todosVeiculos as $veiculoOpcao): ?>
-                                    <option value="<?= (int)$veiculoOpcao['id'] ?>" <?= $veiculoFiltro === (int)$veiculoOpcao['id'] ? 'selected' : '' ?>><?= htmlspecialchars(frotaPlacaFormatada((string)$veiculoOpcao['placa']) . ' · ' . $veiculoOpcao['modelo']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <select name="prazo" class="form-select">
-                                <option value="todos">Todos os prazos</option>
-                                <option value="vencido" <?= $prazoFiltro === 'vencido' ? 'selected' : '' ?>>Vencidos</option>
-                                <option value="proximo" <?= $prazoFiltro === 'proximo' ? 'selected' : '' ?>>Próximos 30 dias</option>
-                                <option value="pendente" <?= $prazoFiltro === 'pendente' ? 'selected' : '' ?>>Pendentes</option>
-                                <option value="pago" <?= $prazoFiltro === 'pago' ? 'selected' : '' ?>>Pagos</option>
-                                <option value="dispensado" <?= $prazoFiltro === 'dispensado' ? 'selected' : '' ?>>Dispensados</option>
-                            </select>
-                            <button type="submit" class="btn btn-primary"><i class="bi bi-funnel"></i> Filtrar</button>
-                        </form>
-                        <div class="table-responsive">
-                            <table class="table align-middle frota-tabela">
-                                <thead>
-                                    <tr>
-                                        <th>Veículo</th>
-                                        <th>Obrigação</th>
-                                        <th>Competência</th>
-                                        <th>Vencimento</th>
-                                        <th>Valor</th>
-                                        <th>Situação</th>
-                                        <th>Referência</th>
-                                        <th class="text-end">Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if ($obrigacoes === []): ?><tr>
-                                            <td colspan="8" class="frota-vazio">Nenhuma obrigação encontrada.</td>
-                                        </tr><?php endif; ?>
-                                    <?php foreach ($obrigacoes as $obrigacao): ?>
-                                        <?php
-                                        $situacaoPrazo = frotaSituacaoPrazo($obrigacao);
-                                        $dadosObrigacao = htmlspecialchars(json_encode($obrigacao, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
-                                        ?>
+                            <input type="hidden" name="ano" value="<?= $anoControle ?>">
+                            <div class="table-responsive">
+                                <table class="table align-middle frota-tabela frota-tabela-controle">
+                                    <thead>
                                         <tr>
-                                            <td><span class="frota-placa frota-placa-menor"><?= htmlspecialchars(frotaPlacaFormatada((string)$obrigacao['placa'])) ?></span><small><?= htmlspecialchars($obrigacao['modelo']) ?></small></td>
-                                            <td><strong><?= htmlspecialchars($obrigacao['titulo']) ?></strong><small><?= htmlspecialchars(frotaTipoObrigacao((string)$obrigacao['tipo'])) ?></small></td>
-                                            <td><?= htmlspecialchars($obrigacao['competencia'] ?: '-') ?></td>
-                                            <td><?= htmlspecialchars(frotaData((string)$obrigacao['vencimento'])) ?></td>
-                                            <td><?= htmlspecialchars(frotaMoeda((float)$obrigacao['valor'])) ?></td>
-                                            <td><span class="badge text-bg-<?= $statusClasse($situacaoPrazo) ?>"><?= htmlspecialchars($statusRotulo($situacaoPrazo)) ?></span></td>
-                                            <td><?= htmlspecialchars($obrigacao['referencia'] ?: '-') ?></td>
-                                            <td class="text-end frota-acoes">
-                                                <?php if ($obrigacao['situacao'] === 'pendente'): ?>
-                                                    <form method="post" class="d-inline"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars(frotaToken()) ?>"><input type="hidden" name="acao" value="quitar_obrigacao"><input type="hidden" name="aba" value="obrigacoes"><input type="hidden" name="id" value="<?= (int)$obrigacao['id'] ?>"><button type="submit" class="btn btn-sm btn-outline-success" title="Marcar como paga"><i class="bi bi-check-lg"></i></button></form>
-                                                <?php endif; ?>
-                                                <button type="button" class="btn btn-sm btn-outline-primary btn-editar-obrigacao" data-bs-toggle="modal" data-bs-target="#modalObrigacao" data-registro="<?= $dadosObrigacao ?>" title="Editar obrigação"><i class="bi bi-pencil"></i></button>
-                                                <button type="button" class="btn btn-sm btn-outline-danger btn-excluir-registro" data-bs-toggle="modal" data-bs-target="#modalExcluirFrota" data-acao="excluir_obrigacao" data-aba="obrigacoes" data-id="<?= (int)$obrigacao['id'] ?>" data-nome="<?= htmlspecialchars($obrigacao['titulo'], ENT_QUOTES) ?>" title="Excluir obrigação"><i class="bi bi-trash"></i></button>
-                                            </td>
+                                            <th>Veículo</th>
+                                            <th>Tirou o documento de <?= $anoControle ?>?</th>
+                                            <th>Mandou os boletos de IPVA e licenciamento?</th>
+                                            <th>Status</th>
                                         </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
+                                    </thead>
+                                    <tbody>
+                                        <?php if ($controles === []): ?><tr>
+                                                <td colspan="4" class="frota-vazio">Nenhum veículo disponível para acompanhamento.</td>
+                                            </tr><?php endif; ?>
+                                        <?php foreach ($controles as $controle): ?>
+                                            <?php $pendenteDocumento = (int)$controle['documento_emitido'] === 0 || (int)$controle['boletos_enviados'] === 0; ?>
+                                            <tr class="frota-linha-controle <?= $pendenteDocumento ? 'tem-pendencia' : '' ?>" data-tipo-controle="obrigacoes">
+                                                <td>
+                                                    <input type="hidden" name="veiculos[]" value="<?= (int)$controle['id'] ?>">
+                                                    <span class="frota-placa frota-placa-menor"><?= htmlspecialchars(frotaPlacaFormatada((string)$controle['placa'])) ?></span>
+                                                    <strong><?= htmlspecialchars($controle['marca'] . ' ' . $controle['modelo']) ?></strong>
+                                                </td>
+                                                <td>
+                                                    <div class="form-check form-switch frota-controle-chave">
+                                                        <input class="form-check-input frota-switch-documento" type="checkbox" role="switch" name="documento_emitido[<?= (int)$controle['id'] ?>]" id="documento<?= (int)$controle['id'] ?>" value="1" <?= (int)$controle['documento_emitido'] === 1 ? 'checked' : '' ?>>
+                                                        <label class="form-check-label" for="documento<?= (int)$controle['id'] ?>"><?= (int)$controle['documento_emitido'] === 1 ? 'Sim, concluído' : 'Não, pendente' ?></label>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <div class="form-check form-switch frota-controle-chave">
+                                                        <input class="form-check-input frota-switch-boletos" type="checkbox" role="switch" name="boletos_enviados[<?= (int)$controle['id'] ?>]" id="boletos<?= (int)$controle['id'] ?>" value="1" <?= (int)$controle['boletos_enviados'] === 1 ? 'checked' : '' ?>>
+                                                        <label class="form-check-label" for="boletos<?= (int)$controle['id'] ?>"><?= (int)$controle['boletos_enviados'] === 1 ? 'Sim, enviados' : 'Não, pendente' ?></label>
+                                                    </div>
+                                                </td>
+                                                <td><span class="badge frota-status-controle <?= $pendenteDocumento ? 'text-bg-danger' : 'text-bg-success' ?>"><?= $pendenteDocumento ? 'Com pendência' : 'Em dia' ?></span></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="frota-salvar-controle"><button type="submit" class="btn btn-primary" <?= $controles === [] ? 'disabled' : '' ?>><i class="bi bi-check-lg"></i> Salvar acompanhamento</button></div>
+                        </form>
                     </section>
                 <?php endif; ?>
 
@@ -891,73 +646,61 @@ $statusRotulo = static function (string $status): string {
                     <section class="frota-painel">
                         <div class="frota-painel-titulo">
                             <div>
-                                <h5>Multas</h5>
-                                <p>Infrações, responsáveis, pontos, vencimentos e pagamentos.</p>
+                                <h5>Controle de multas</h5>
+                                <p>Informe se o veículo possui multas e a quantidade existente.</p>
                             </div>
-                            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalMulta" <?= $todosVeiculos === [] ? 'disabled' : '' ?>><i class="bi bi-plus-lg"></i> Nova multa</button>
+                            <form method="get" class="frota-seletor-ano">
+                                <input type="hidden" name="aba" value="multas">
+                                <label for="anoMultas">Ano</label>
+                                <select class="form-select" name="ano" id="anoMultas" onchange="this.form.submit()">
+                                    <?php for ($anoOpcao = $anoAtual + 1; $anoOpcao >= $anoAtual - 5; $anoOpcao--): ?>
+                                        <option value="<?= $anoOpcao ?>" <?= $anoOpcao === $anoControle ? 'selected' : '' ?>><?= $anoOpcao ?></option>
+                                    <?php endfor; ?>
+                                </select>
+                            </form>
                         </div>
-                        <form method="get" class="frota-filtros frota-filtros-registros">
+                        <form method="post" class="frota-acompanhamento-form frota-form-multas" novalidate>
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(frotaToken()) ?>">
+                            <input type="hidden" name="acao" value="salvar_controle_multas">
                             <input type="hidden" name="aba" value="multas">
-                            <select name="veiculo" class="form-select">
-                                <option value="0">Todos os veículos</option>
-                                <?php foreach ($todosVeiculos as $veiculoOpcao): ?>
-                                    <option value="<?= (int)$veiculoOpcao['id'] ?>" <?= $veiculoFiltro === (int)$veiculoOpcao['id'] ? 'selected' : '' ?>><?= htmlspecialchars(frotaPlacaFormatada((string)$veiculoOpcao['placa']) . ' · ' . $veiculoOpcao['modelo']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <select name="prazo" class="form-select">
-                                <option value="todos">Todas as situações</option>
-                                <option value="vencido" <?= $prazoFiltro === 'vencido' ? 'selected' : '' ?>>Vencidas</option>
-                                <option value="proximo" <?= $prazoFiltro === 'proximo' ? 'selected' : '' ?>>Próximos 30 dias</option>
-                                <option value="pendente" <?= $prazoFiltro === 'pendente' ? 'selected' : '' ?>>Pendentes</option>
-                                <option value="pago" <?= $prazoFiltro === 'pago' ? 'selected' : '' ?>>Pagas</option>
-                            </select>
-                            <button type="submit" class="btn btn-primary"><i class="bi bi-funnel"></i> Filtrar</button>
-                        </form>
-                        <div class="table-responsive">
-                            <table class="table align-middle frota-tabela">
-                                <thead>
-                                    <tr>
-                                        <th>Veículo</th>
-                                        <th>Infração</th>
-                                        <th>Data</th>
-                                        <th>Motorista</th>
-                                        <th>Vencimento</th>
-                                        <th>Valor</th>
-                                        <th>Pontos</th>
-                                        <th>Situação</th>
-                                        <th class="text-end">Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if ($multas === []): ?><tr>
-                                            <td colspan="9" class="frota-vazio">Nenhuma multa encontrada.</td>
-                                        </tr><?php endif; ?>
-                                    <?php foreach ($multas as $multa): ?>
-                                        <?php
-                                        $situacaoPrazo = frotaSituacaoPrazo($multa);
-                                        $dadosMulta = htmlspecialchars(json_encode($multa, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
-                                        ?>
+                            <input type="hidden" name="ano" value="<?= $anoControle ?>">
+                            <div class="table-responsive">
+                                <table class="table align-middle frota-tabela frota-tabela-controle">
+                                    <thead>
                                         <tr>
-                                            <td><span class="frota-placa frota-placa-menor"><?= htmlspecialchars(frotaPlacaFormatada((string)$multa['placa'])) ?></span><small><?= htmlspecialchars($multa['modelo']) ?></small></td>
-                                            <td><strong><?= htmlspecialchars($multa['descricao']) ?></strong><small><?= htmlspecialchars($multa['auto_infracao'] ? 'Auto ' . $multa['auto_infracao'] : '') ?></small></td>
-                                            <td><?= htmlspecialchars(frotaData((string)$multa['data_infracao'])) ?></td>
-                                            <td><?= htmlspecialchars($multa['motorista'] ?: '-') ?></td>
-                                            <td><?= htmlspecialchars(frotaData($multa['vencimento'])) ?></td>
-                                            <td><?= htmlspecialchars(frotaMoeda((float)$multa['valor'])) ?></td>
-                                            <td><?= (int)$multa['pontos'] ?></td>
-                                            <td><span class="badge text-bg-<?= $statusClasse($situacaoPrazo) ?>"><?= htmlspecialchars($statusRotulo($situacaoPrazo)) ?></span></td>
-                                            <td class="text-end frota-acoes">
-                                                <?php if ($multa['situacao'] === 'pendente'): ?>
-                                                    <form method="post" class="d-inline"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars(frotaToken()) ?>"><input type="hidden" name="acao" value="quitar_multa"><input type="hidden" name="aba" value="multas"><input type="hidden" name="id" value="<?= (int)$multa['id'] ?>"><button type="submit" class="btn btn-sm btn-outline-success" title="Marcar como paga"><i class="bi bi-check-lg"></i></button></form>
-                                                <?php endif; ?>
-                                                <button type="button" class="btn btn-sm btn-outline-primary btn-editar-multa" data-bs-toggle="modal" data-bs-target="#modalMulta" data-registro="<?= $dadosMulta ?>" title="Editar multa"><i class="bi bi-pencil"></i></button>
-                                                <button type="button" class="btn btn-sm btn-outline-danger btn-excluir-registro" data-bs-toggle="modal" data-bs-target="#modalExcluirFrota" data-acao="excluir_multa" data-aba="multas" data-id="<?= (int)$multa['id'] ?>" data-nome="multa de <?= htmlspecialchars(frotaPlacaFormatada((string)$multa['placa']), ENT_QUOTES) ?>" title="Excluir multa"><i class="bi bi-trash"></i></button>
-                                            </td>
+                                            <th>Veículo</th>
+                                            <th>Tem multas?</th>
+                                            <th>Quantidade</th>
+                                            <th>Status</th>
                                         </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
+                                    </thead>
+                                    <tbody>
+                                        <?php if ($controles === []): ?><tr>
+                                                <td colspan="4" class="frota-vazio">Nenhum veículo disponível para acompanhamento.</td>
+                                            </tr><?php endif; ?>
+                                        <?php foreach ($controles as $controle): ?>
+                                            <?php $temMulta = (int)$controle['possui_multas'] === 1; ?>
+                                            <tr class="frota-linha-controle <?= $temMulta ? 'tem-pendencia' : '' ?>" data-tipo-controle="multas">
+                                                <td>
+                                                    <input type="hidden" name="veiculos[]" value="<?= (int)$controle['id'] ?>">
+                                                    <span class="frota-placa frota-placa-menor"><?= htmlspecialchars(frotaPlacaFormatada((string)$controle['placa'])) ?></span>
+                                                    <strong><?= htmlspecialchars($controle['marca'] . ' ' . $controle['modelo']) ?></strong>
+                                                </td>
+                                                <td>
+                                                    <div class="form-check form-switch frota-controle-chave">
+                                                        <input class="form-check-input frota-switch-multas" type="checkbox" role="switch" name="possui_multas[<?= (int)$controle['id'] ?>]" id="multas<?= (int)$controle['id'] ?>" value="1" <?= $temMulta ? 'checked' : '' ?>>
+                                                        <label class="form-check-label" for="multas<?= (int)$controle['id'] ?>"><?= $temMulta ? 'Sim' : 'Não' ?></label>
+                                                    </div>
+                                                </td>
+                                                <td><input type="number" class="form-control frota-quantidade-multas" name="quantidade_multas[<?= (int)$controle['id'] ?>]" min="1" max="9999" value="<?= $temMulta ? max(1, (int)$controle['quantidade_multas']) : 0 ?>" <?= $temMulta ? '' : 'disabled' ?> aria-label="Quantidade de multas"></td>
+                                                <td><span class="badge frota-status-controle <?= $temMulta ? 'text-bg-danger' : 'text-bg-success' ?>"><?= $temMulta ? ((int)$controle['quantidade_multas'] . ' multa' . ((int)$controle['quantidade_multas'] === 1 ? '' : 's') . ' pendente' . ((int)$controle['quantidade_multas'] === 1 ? '' : 's')) : 'Sem multas' ?></span></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="frota-salvar-controle"><button type="submit" class="btn btn-primary" <?= $controles === [] ? 'disabled' : '' ?>><i class="bi bi-check-lg"></i> Salvar acompanhamento</button></div>
+                        </form>
                     </section>
                 <?php endif; ?>
             <?php endif; ?>
@@ -1000,94 +743,6 @@ $statusRotulo = static function (string $status): string {
                             </div>
                         </div>
                         <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Salvar veículo</button></div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <div class="modal fade" id="modalObrigacao" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
-                <div class="modal-content">
-                    <form method="post" id="formObrigacao" class="frota-form" novalidate>
-                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(frotaToken()) ?>"><input type="hidden" name="acao" value="salvar_obrigacao"><input type="hidden" name="aba" value="obrigacoes"><input type="hidden" name="id" id="obrigacaoId">
-                        <div class="modal-header">
-                            <h5 class="modal-title" id="modalObrigacaoTitulo">Nova obrigação</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="row g-3">
-                                <div class="col-md-7"><label class="form-label" for="obrigacaoVeiculo">Veículo</label><select class="form-select" name="veiculo_id" id="obrigacaoVeiculo" required>
-                                        <option value="">Selecione</option><?php foreach ($todosVeiculos as $veiculoOpcao): ?><option value="<?= (int)$veiculoOpcao['id'] ?>"><?= htmlspecialchars(frotaPlacaFormatada((string)$veiculoOpcao['placa']) . ' · ' . $veiculoOpcao['marca'] . ' ' . $veiculoOpcao['modelo']) ?></option><?php endforeach; ?>
-                                    </select>
-                                    <div class="invalid-feedback">Selecione o veículo.</div>
-                                </div>
-                                <div class="col-md-5"><label class="form-label" for="obrigacaoTipo">Tipo</label><select class="form-select" name="tipo" id="obrigacaoTipo"><?php foreach ($tiposObrigacao as $chaveTipo => $rotuloTipo): ?><option value="<?= htmlspecialchars($chaveTipo) ?>"><?= htmlspecialchars($rotuloTipo) ?></option><?php endforeach; ?></select></div>
-                                <div class="col-md-8"><label class="form-label" for="obrigacaoTitulo">Título</label><input type="text" class="form-control" name="titulo" id="obrigacaoTitulo" maxlength="150" placeholder="Preenchido automaticamente pelo tipo"></div>
-                                <div class="col-md-4"><label class="form-label" for="obrigacaoCompetencia">Competência</label><input type="text" class="form-control" name="competencia" id="obrigacaoCompetencia" maxlength="20" placeholder="Ex.: 2026"></div>
-                                <div class="col-md-4"><label class="form-label" for="obrigacaoVencimento">Vencimento</label><input type="date" class="form-control" name="vencimento" id="obrigacaoVencimento" required>
-                                    <div class="invalid-feedback">Informe o vencimento.</div>
-                                </div>
-                                <div class="col-md-4"><label class="form-label" for="obrigacaoValor">Valor</label>
-                                    <div class="input-group"><span class="input-group-text">R$</span><input type="text" inputmode="decimal" class="form-control campo-moeda" name="valor" id="obrigacaoValor" value="0,00"></div>
-                                </div>
-                                <div class="col-md-4"><label class="form-label" for="obrigacaoSituacao">Situação</label><select class="form-select campo-situacao-pagamento" name="situacao" id="obrigacaoSituacao" data-alvo="#grupoObrigacaoPago">
-                                        <option value="pendente">Pendente</option>
-                                        <option value="pago">Pago</option>
-                                        <option value="dispensado">Dispensado</option>
-                                    </select></div>
-                                <div class="col-md-4 d-none" id="grupoObrigacaoPago"><label class="form-label" for="obrigacaoPagoEm">Pago em</label><input type="date" class="form-control" name="pago_em" id="obrigacaoPagoEm">
-                                    <div class="invalid-feedback">Informe a data do pagamento.</div>
-                                </div>
-                                <div class="col-md-8"><label class="form-label" for="obrigacaoReferencia">Número ou referência do documento</label><input type="text" class="form-control" name="referencia" id="obrigacaoReferencia" maxlength="120"></div>
-                                <div class="col-12"><label class="form-label" for="obrigacaoObservacoes">Observações</label><textarea class="form-control" name="observacoes" id="obrigacaoObservacoes" rows="3"></textarea></div>
-                            </div>
-                        </div>
-                        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Salvar obrigação</button></div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <div class="modal fade" id="modalMulta" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
-                <div class="modal-content">
-                    <form method="post" id="formMulta" class="frota-form" novalidate>
-                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(frotaToken()) ?>"><input type="hidden" name="acao" value="salvar_multa"><input type="hidden" name="aba" value="multas"><input type="hidden" name="id" id="multaId">
-                        <div class="modal-header">
-                            <h5 class="modal-title" id="modalMultaTitulo">Nova multa</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="row g-3">
-                                <div class="col-md-7"><label class="form-label" for="multaVeiculo">Veículo</label><select class="form-select" name="veiculo_id" id="multaVeiculo" required>
-                                        <option value="">Selecione</option><?php foreach ($todosVeiculos as $veiculoOpcao): ?><option value="<?= (int)$veiculoOpcao['id'] ?>"><?= htmlspecialchars(frotaPlacaFormatada((string)$veiculoOpcao['placa']) . ' · ' . $veiculoOpcao['marca'] . ' ' . $veiculoOpcao['modelo']) ?></option><?php endforeach; ?>
-                                    </select>
-                                    <div class="invalid-feedback">Selecione o veículo.</div>
-                                </div>
-                                <div class="col-md-5"><label class="form-label" for="multaAuto">Auto de infração</label><input type="text" class="form-control" name="auto_infracao" id="multaAuto" maxlength="80"></div>
-                                <div class="col-md-8"><label class="form-label" for="multaDescricao">Descrição da infração</label><input type="text" class="form-control" name="descricao" id="multaDescricao" maxlength="255" required>
-                                    <div class="invalid-feedback">Informe a descrição da infração.</div>
-                                </div>
-                                <div class="col-md-4"><label class="form-label" for="multaData">Data da infração</label><input type="date" class="form-control" name="data_infracao" id="multaData" required>
-                                    <div class="invalid-feedback">Informe a data da infração.</div>
-                                </div>
-                                <div class="col-md-6"><label class="form-label" for="multaMotorista">Motorista responsável</label><input type="text" class="form-control" name="motorista" id="multaMotorista" maxlength="150"></div>
-                                <div class="col-md-3"><label class="form-label" for="multaVencimento">Vencimento</label><input type="date" class="form-control" name="vencimento" id="multaVencimento"></div>
-                                <div class="col-md-3"><label class="form-label" for="multaPontos">Pontos</label><input type="number" class="form-control" name="pontos" id="multaPontos" min="0" max="99" value="0"></div>
-                                <div class="col-md-4"><label class="form-label" for="multaValor">Valor</label>
-                                    <div class="input-group"><span class="input-group-text">R$</span><input type="text" inputmode="decimal" class="form-control campo-moeda" name="valor" id="multaValor" value="0,00"></div>
-                                </div>
-                                <div class="col-md-4"><label class="form-label" for="multaSituacao">Situação</label><select class="form-select campo-situacao-pagamento" name="situacao" id="multaSituacao" data-alvo="#grupoMultaPago">
-                                        <option value="pendente">Pendente</option>
-                                        <option value="paga">Paga</option>
-                                        <option value="recorrida">Recorrida</option>
-                                        <option value="cancelada">Cancelada</option>
-                                    </select></div>
-                                <div class="col-md-4 d-none" id="grupoMultaPago"><label class="form-label" for="multaPagoEm">Pago em</label><input type="date" class="form-control" name="pago_em" id="multaPagoEm">
-                                    <div class="invalid-feedback">Informe a data do pagamento.</div>
-                                </div>
-                                <div class="col-12"><label class="form-label" for="multaObservacoes">Observações</label><textarea class="form-control" name="observacoes" id="multaObservacoes" rows="3"></textarea></div>
-                            </div>
-                        </div>
-                        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Salvar multa</button></div>
                     </form>
                 </div>
             </div>

@@ -63,21 +63,26 @@ if (usuarioPode('pendencias')) {
 if (usuarioPode('frota')) {
     try {
         $estruturaFrota = logiTabelaExiste($pdo, 'frota_veiculos')
-            && logiTabelaExiste($pdo, 'frota_obrigacoes')
-            && logiTabelaExiste($pdo, 'frota_multas');
+            && logiTabelaExiste($pdo, 'frota_controles_anuais');
 
         if ($estruturaFrota) {
             $empresaIdFrota = max(1, (int)(empresaAtivaId($pdo) ?? 1));
             $stmtFrota = $pdo->prepare("
                 SELECT
-                    (SELECT COUNT(*) FROM frota_veiculos WHERE empresa_id = ? AND situacao = 'ativo') AS veiculos,
-                    (
-                        (SELECT COUNT(*) FROM frota_obrigacoes WHERE empresa_id = ? AND situacao = 'pendente' AND vencimento <= DATE_ADD(CURDATE(), INTERVAL 30 DAY))
-                        +
-                        (SELECT COUNT(*) FROM frota_multas WHERE empresa_id = ? AND situacao = 'pendente' AND vencimento IS NOT NULL AND vencimento <= DATE_ADD(CURDATE(), INTERVAL 30 DAY))
-                    ) AS alertas
+                    COUNT(*) AS veiculos,
+                    COALESCE(SUM(
+                        (CASE WHEN COALESCE(c.documento_emitido, 0) = 0 THEN 1 ELSE 0 END)
+                        + (CASE WHEN COALESCE(c.boletos_enviados, 0) = 0 THEN 1 ELSE 0 END)
+                        + (CASE WHEN COALESCE(c.possui_multas, 0) = 1 THEN 1 ELSE 0 END)
+                    ), 0) AS alertas
+                FROM frota_veiculos v
+                LEFT JOIN frota_controles_anuais c
+                    ON c.empresa_id = v.empresa_id
+                    AND c.veiculo_id = v.id
+                    AND c.ano = YEAR(CURDATE())
+                WHERE v.empresa_id = ? AND v.situacao = 'ativo'
             ");
-            $stmtFrota->execute([$empresaIdFrota, $empresaIdFrota, $empresaIdFrota]);
+            $stmtFrota->execute([$empresaIdFrota]);
             $resumoFrota = array_map('intval', $stmtFrota->fetch(PDO::FETCH_ASSOC) ?: $resumoFrota);
 
             if ($resumoFrota['alertas'] > 0) {
@@ -85,8 +90,8 @@ if (usuarioPode('frota')) {
                     'icone' => 'bi-car-front',
                     'url' => 'frota.php',
                     'resolver_url' => 'frota.php',
-                    'titulo' => 'Frota com vencimentos para conferir',
-                    'texto' => 'Há documentos ou multas vencidos ou com vencimento nos próximos 30 dias.',
+                    'titulo' => 'Frota com pendências para conferir',
+                    'texto' => 'Há documento anual, envio de boletos ou multas pendentes.',
                     'quantidade' => $resumoFrota['alertas'],
                 ];
             }

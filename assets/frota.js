@@ -19,29 +19,6 @@
         }
     };
 
-    const moedaBrasileira = (valor) => {
-        const numero = Number.parseFloat(texto(valor).replace(',', '.'));
-        return Number.isFinite(numero)
-            ? numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-            : '0,00';
-    };
-
-    const atualizarCampoPagamento = (select) => {
-        const alvo = document.querySelector(select.dataset.alvo || '');
-        if (!alvo) return;
-
-        const pago = select.value === 'pago' || select.value === 'paga';
-        alvo.classList.toggle('d-none', !pago);
-        const campoData = alvo.querySelector('input[type="date"]');
-        if (campoData) {
-            campoData.required = pago;
-            if (!pago) {
-                campoData.value = '';
-                campoData.classList.remove('is-invalid');
-            }
-        }
-    };
-
     const prepararModal = (modalId, formId, tituloId, tituloNovo, evento) => {
         const modal = porId(modalId);
         const form = porId(formId);
@@ -54,7 +31,6 @@
             form.querySelectorAll('.is-invalid').forEach((campo) => campo.classList.remove('is-invalid'));
             const titulo = porId(tituloId);
             if (titulo) titulo.textContent = tituloNovo;
-            form.querySelectorAll('.campo-situacao-pagamento').forEach(atualizarCampoPagamento);
             if (typeof evento === 'function') evento(form);
         });
     };
@@ -62,19 +38,6 @@
     prepararModal('modalVeiculo', 'formVeiculo', 'modalVeiculoTitulo', 'Novo veículo', (form) => {
         const situacao = form.querySelector('#veiculoSituacao');
         if (situacao) situacao.value = 'ativo';
-    });
-
-    prepararModal('modalObrigacao', 'formObrigacao', 'modalObrigacaoTitulo', 'Nova obrigação', (form) => {
-        preencher('obrigacaoValor', '0,00');
-        const situacao = form.querySelector('#obrigacaoSituacao');
-        if (situacao) situacao.value = 'pendente';
-    });
-
-    prepararModal('modalMulta', 'formMulta', 'modalMultaTitulo', 'Nova multa', (form) => {
-        preencher('multaValor', '0,00');
-        preencher('multaPontos', '0');
-        const situacao = form.querySelector('#multaSituacao');
-        if (situacao) situacao.value = 'pendente';
     });
 
     document.querySelectorAll('.btn-editar-veiculo').forEach((botao) => {
@@ -96,73 +59,6 @@
         });
     });
 
-    document.querySelectorAll('.btn-editar-obrigacao').forEach((botao) => {
-        botao.addEventListener('click', () => {
-            const item = lerRegistro(botao);
-            porId('formObrigacao').querySelectorAll('.is-invalid').forEach((campo) => campo.classList.remove('is-invalid'));
-            porId('modalObrigacaoTitulo').textContent = 'Editar obrigação';
-            preencher('obrigacaoId', item.id);
-            preencher('obrigacaoVeiculo', item.veiculo_id);
-            preencher('obrigacaoTipo', item.tipo);
-            preencher('obrigacaoTitulo', item.titulo);
-            preencher('obrigacaoCompetencia', item.competencia);
-            preencher('obrigacaoVencimento', item.vencimento);
-            preencher('obrigacaoValor', moedaBrasileira(item.valor));
-            preencher('obrigacaoSituacao', item.situacao || 'pendente');
-            preencher('obrigacaoPagoEm', item.pago_em);
-            preencher('obrigacaoReferencia', item.referencia);
-            preencher('obrigacaoObservacoes', item.observacoes);
-            atualizarCampoPagamento(porId('obrigacaoSituacao'));
-            preencher('obrigacaoPagoEm', item.pago_em);
-        });
-    });
-
-    document.querySelectorAll('.btn-editar-multa').forEach((botao) => {
-        botao.addEventListener('click', () => {
-            const item = lerRegistro(botao);
-            porId('formMulta').querySelectorAll('.is-invalid').forEach((campo) => campo.classList.remove('is-invalid'));
-            porId('modalMultaTitulo').textContent = 'Editar multa';
-            preencher('multaId', item.id);
-            preencher('multaVeiculo', item.veiculo_id);
-            preencher('multaAuto', item.auto_infracao);
-            preencher('multaDescricao', item.descricao);
-            preencher('multaData', item.data_infracao);
-            preencher('multaMotorista', item.motorista);
-            preencher('multaVencimento', item.vencimento);
-            preencher('multaPontos', item.pontos || 0);
-            preencher('multaValor', moedaBrasileira(item.valor));
-            preencher('multaSituacao', item.situacao || 'pendente');
-            preencher('multaPagoEm', item.pago_em);
-            preencher('multaObservacoes', item.observacoes);
-            atualizarCampoPagamento(porId('multaSituacao'));
-            preencher('multaPagoEm', item.pago_em);
-        });
-    });
-
-    document.querySelectorAll('.campo-situacao-pagamento').forEach((select) => {
-        select.addEventListener('change', () => atualizarCampoPagamento(select));
-        atualizarCampoPagamento(select);
-    });
-
-    const tipoObrigacao = porId('obrigacaoTipo');
-    const tituloObrigacao = porId('obrigacaoTitulo');
-    if (tipoObrigacao && tituloObrigacao) {
-        const rotulos = {
-            ipva: 'IPVA',
-            licenciamento: 'Licenciamento / CRLV',
-            seguro: 'Seguro',
-            revisao: 'Revisão',
-            troca_oleo: 'Troca de óleo',
-            pneus: 'Pneus',
-            outro: ''
-        };
-        tipoObrigacao.addEventListener('change', () => {
-            if (tituloObrigacao.value.trim() === '' || Object.values(rotulos).includes(tituloObrigacao.value)) {
-                tituloObrigacao.value = rotulos[tipoObrigacao.value] || '';
-            }
-        });
-    }
-
     const placa = porId('veiculoPlaca');
     if (placa) {
         placa.addEventListener('input', () => {
@@ -180,18 +76,6 @@
             renavam.value = renavam.value.replace(/\D/g, '').slice(0, 11);
         });
     }
-
-    document.querySelectorAll('.campo-moeda').forEach((campo) => {
-        campo.addEventListener('blur', () => {
-            let valor = campo.value.replace(/[^\d,.-]/g, '');
-            if (valor.includes(',') && valor.includes('.')) {
-                valor = valor.replace(/\./g, '').replace(',', '.');
-            } else {
-                valor = valor.replace(',', '.');
-            }
-            campo.value = moedaBrasileira(valor);
-        });
-    });
 
     document.querySelectorAll('.frota-form').forEach((formulario) => {
         formulario.addEventListener('submit', (evento) => {
@@ -220,6 +104,83 @@
         });
     });
 
+    const atualizarLinhaObrigacoes = (linha) => {
+        const documento = linha.querySelector('.frota-switch-documento');
+        const boletos = linha.querySelector('.frota-switch-boletos');
+        const status = linha.querySelector('.frota-status-controle');
+        if (!documento || !boletos || !status) return;
+
+        const pendente = !documento.checked || !boletos.checked;
+        linha.classList.toggle('tem-pendencia', pendente);
+        documento.nextElementSibling.textContent = documento.checked ? 'Sim, concluído' : 'Não, pendente';
+        boletos.nextElementSibling.textContent = boletos.checked ? 'Sim, enviados' : 'Não, pendente';
+        status.textContent = pendente ? 'Com pendência' : 'Em dia';
+        status.classList.toggle('text-bg-danger', pendente);
+        status.classList.toggle('text-bg-success', !pendente);
+    };
+
+    const atualizarLinhaMultas = (linha) => {
+        const possui = linha.querySelector('.frota-switch-multas');
+        const quantidade = linha.querySelector('.frota-quantidade-multas');
+        const status = linha.querySelector('.frota-status-controle');
+        if (!possui || !quantidade || !status) return;
+
+        quantidade.disabled = !possui.checked;
+        quantidade.required = possui.checked;
+        possui.nextElementSibling.textContent = possui.checked ? 'Sim' : 'Não';
+
+        if (!possui.checked) {
+            quantidade.value = '0';
+            quantidade.classList.remove('is-invalid');
+            linha.classList.remove('tem-pendencia');
+            status.textContent = 'Sem multas';
+            status.classList.remove('text-bg-danger');
+            status.classList.add('text-bg-success');
+            return;
+        }
+
+        const total = Number.parseInt(quantidade.value, 10);
+        linha.classList.add('tem-pendencia');
+        status.textContent = Number.isFinite(total) && total > 0
+            ? `${total} ${total === 1 ? 'multa pendente' : 'multas pendentes'}`
+            : 'Informe a quantidade';
+        status.classList.add('text-bg-danger');
+        status.classList.remove('text-bg-success');
+    };
+
+    document.querySelectorAll('.frota-linha-controle[data-tipo-controle="obrigacoes"]').forEach((linha) => {
+        linha.querySelectorAll('.form-check-input').forEach((campo) => {
+            campo.addEventListener('change', () => atualizarLinhaObrigacoes(linha));
+        });
+        atualizarLinhaObrigacoes(linha);
+    });
+
+    document.querySelectorAll('.frota-linha-controle[data-tipo-controle="multas"]').forEach((linha) => {
+        const possui = linha.querySelector('.frota-switch-multas');
+        const quantidade = linha.querySelector('.frota-quantidade-multas');
+        possui?.addEventListener('change', () => {
+            const total = Number.parseInt(quantidade.value, 10);
+            if (possui.checked && (!Number.isFinite(total) || total < 1)) {
+                quantidade.value = '1';
+            }
+            atualizarLinhaMultas(linha);
+        });
+        quantidade?.addEventListener('input', () => atualizarLinhaMultas(linha));
+        atualizarLinhaMultas(linha);
+    });
+
+    document.querySelectorAll('.frota-form-multas').forEach((formulario) => {
+        formulario.addEventListener('submit', (evento) => {
+            const invalido = Array.from(formulario.querySelectorAll('.frota-quantidade-multas:not(:disabled)'))
+                .find((campo) => !campo.checkValidity() || Number.parseInt(campo.value, 10) < 1);
+            if (invalido) {
+                evento.preventDefault();
+                invalido.classList.add('is-invalid');
+                invalido.focus();
+            }
+        });
+    });
+
     document.querySelectorAll('.btn-excluir-registro').forEach((botao) => {
         botao.addEventListener('click', () => {
             preencher('excluirFrotaAcao', botao.dataset.acao);
@@ -227,7 +188,7 @@
             preencher('excluirFrotaId', botao.dataset.id);
             porId('excluirFrotaNome').textContent = botao.dataset.nome || 'este registro';
             porId('excluirFrotaAviso').textContent = botao.dataset.acao === 'excluir_veiculo'
-                ? 'As obrigações e multas vinculadas a este veículo também serão excluídas.'
+                ? 'O acompanhamento anual vinculado a este veículo também será excluído.'
                 : 'Esta ação não poderá ser desfeita.';
         });
     });
