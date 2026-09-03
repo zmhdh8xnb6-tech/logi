@@ -204,15 +204,24 @@
             preencher('excluirFrotaAba', botao.dataset.aba);
             preencher('excluirFrotaId', botao.dataset.id);
             porId('excluirFrotaNome').textContent = botao.dataset.nome || 'este registro';
-            porId('excluirFrotaAviso').textContent = botao.dataset.acao === 'excluir_veiculo'
-                ? 'O acompanhamento anual vinculado a este veículo também será excluído.'
-                : 'Esta ação não poderá ser desfeita.';
+            const avisosExclusao = {
+                excluir_veiculo: 'O acompanhamento anual e os documentos vinculados a este veículo também serão excluídos.',
+                excluir_documento_veiculo: 'Somente o arquivo deste ano será excluído. O veículo voltará a aparecer com documento pendente.',
+            };
+            porId('excluirFrotaAviso').textContent = avisosExclusao[botao.dataset.acao]
+                || 'Esta ação não poderá ser desfeita.';
         });
     });
 
     document.querySelectorAll('[title]').forEach((elemento) => {
         if (window.bootstrap && elemento.matches('button, a')) {
-            new bootstrap.Tooltip(elemento);
+            const tooltip = bootstrap.Tooltip.getOrCreateInstance(elemento, {
+                trigger: 'hover',
+                container: 'body',
+            });
+            elemento.addEventListener('click', () => tooltip.hide());
+            elemento.addEventListener('mouseleave', () => tooltip.hide());
+            elemento.addEventListener('blur', () => tooltip.hide());
         }
     });
 

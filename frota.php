@@ -357,6 +357,82 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($acao === 'excluir_documento_veiculo') {
+        $documentoId = (int)($_POST['id'] ?? 0);
+        $stmtDocumento = $pdo->prepare("
+            SELECT d.*, v.placa
+            FROM frota_documentos d
+            INNER JOIN frota_veiculos v
+                ON v.id = d.veiculo_id AND v.empresa_id = d.empresa_id
+            WHERE d.id = ? AND d.empresa_id = ?
+            LIMIT 1
+        ");
+        $stmtDocumento->execute([$documentoId, $empresaId]);
+        $documento = $stmtDocumento->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if (!$documento) {
+            frotaRedirecionar('Documento não encontrado nesta empresa.', 'danger', 'visao-geral', ['ano' => $anoControle]);
+        }
+
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare('DELETE FROM frota_documentos WHERE id = ? AND empresa_id = ?')
+                ->execute([$documentoId, $empresaId]);
+            $pdo->prepare("
+                UPDATE frota_controles_anuais
+                SET documento_emitido = 0, usuario_id = ?
+                WHERE empresa_id = ? AND veiculo_id = ? AND ano = ?
+            ")->execute([
+                $usuarioId,
+                $empresaId,
+                (int)$documento['veiculo_id'],
+                (int)$documento['ano'],
+            ]);
+
+            registrarAuditoria(
+                $pdo,
+                'Gestão da Frota',
+                'excluir_documento',
+                'veiculo',
+                (int)$documento['veiculo_id'],
+                'Excluiu o documento de ' . (int)$documento['ano'] . ' do veículo ' . frotaPlacaFormatada((string)$documento['placa']),
+                [
+                    'ano' => (int)$documento['ano'],
+                    'arquivo' => (string)$documento['nome_original'],
+                ],
+                null
+            );
+            $pdo->commit();
+
+            $arquivoRemovido = true;
+            $raizArmazenamento = realpath(__DIR__ . '/storage/frota');
+            $caminhoArquivo = realpath(__DIR__ . '/' . ltrim((string)$documento['caminho_arquivo'], '/'));
+            if (
+                $raizArmazenamento !== false
+                && $caminhoArquivo !== false
+                && str_starts_with($caminhoArquivo, $raizArmazenamento . DIRECTORY_SEPARATOR)
+                && is_file($caminhoArquivo)
+            ) {
+                $arquivoRemovido = @unlink($caminhoArquivo);
+            }
+
+            $mensagemExclusao = $arquivoRemovido
+                ? 'Documento excluído e controle anual marcado como pendente.'
+                : 'O registro foi excluído, mas o arquivo não pôde ser removido do servidor.';
+            frotaRedirecionar(
+                $mensagemExclusao,
+                $arquivoRemovido ? 'success' : 'warning',
+                'visao-geral',
+                ['ano' => (int)$documento['ano']]
+            );
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            frotaRedirecionar('Não foi possível excluir o documento do veículo.', 'danger', 'visao-geral', ['ano' => (int)$documento['ano']]);
+        }
+    }
+
     if (in_array($acao, ['salvar_controle_obrigacoes', 'salvar_controle_multas'], true)) {
         $veiculosInformados = array_values(array_unique(array_filter(
             array_map('intval', (array)($_POST['veiculos'] ?? [])),
@@ -729,6 +805,19 @@ $statusRotulo = static function (string $status): string {
                                             <td class="text-end frota-acoes">
                                                 <?php if ((int)($veiculo['documento_id'] ?? 0) > 0): ?>
                                                     <a href="frota_documento.php?id=<?= (int)$veiculo['documento_id'] ?>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success" title="Abrir documento de <?= $anoControle ?>"><i class="bi bi-file-earmark-check"></i></a>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-sm btn-outline-danger btn-excluir-registro"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalExcluirFrota"
+                                                        data-acao="excluir_documento_veiculo"
+                                                        data-aba="visao-geral"
+                                                        data-id="<?= (int)$veiculo['documento_id'] ?>"
+                                                        data-nome="<?= htmlspecialchars('o documento de ' . $anoControle . ' do veículo ' . frotaPlacaFormatada((string)$veiculo['placa']), ENT_QUOTES) ?>"
+                                                        title="Excluir somente o documento de <?= $anoControle ?>"
+                                                        aria-label="Excluir somente o documento de <?= $anoControle ?>">
+                                                        <i class="bi bi-file-earmark-x"></i>
+                                                    </button>
                                                 <?php endif; ?>
                                                 <button
                                                     type="button"
@@ -963,7 +1052,7 @@ $statusRotulo = static function (string $status): string {
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
                     <form method="post">
-                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(frotaToken()) ?>"><input type="hidden" name="acao" id="excluirFrotaAcao"><input type="hidden" name="aba" id="excluirFrotaAba"><input type="hidden" name="id" id="excluirFrotaId">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(frotaToken()) ?>"><input type="hidden" name="acao" id="excluirFrotaAcao"><input type="hidden" name="aba" id="excluirFrotaAba"><input type="hidden" name="ano" value="<?= $anoControle ?>"><input type="hidden" name="id" id="excluirFrotaId">
                         <div class="modal-header">
                             <h5 class="modal-title">Confirmar exclusão</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                         </div>
