@@ -59,10 +59,21 @@
     line-height: 1.1;
 }
 
-.metrica-veiculos { --metrica-cor: #0284c7; }
-.metrica-vencidos { --metrica-cor: #dc3545; }
-.metrica-proximos { --metrica-cor: #d97706; }
-.metrica-multas { --metrica-cor: #7c3aed; }
+.metrica-veiculos {
+    --metrica-cor: #0284c7;
+}
+
+.metrica-vencidos {
+    --metrica-cor: #dc3545;
+}
+
+.metrica-proximos {
+    --metrica-cor: #d97706;
+}
+
+.metrica-multas {
+    --metrica-cor: #7c3aed;
+}
 
 .frota-abas {
     display: flex;
@@ -145,7 +156,7 @@
 
 .frota-filtros {
     display: grid;
-    grid-template-columns: minmax(260px, 1fr) minmax(190px, 240px) auto;
+    grid-template-columns: minmax(260px, 1fr) 130px minmax(190px, 240px) auto;
     gap: 10px;
     padding: 18px 22px;
     background: #fff;
@@ -234,8 +245,25 @@
 }
 
 .frota-acoes {
-    min-width: 120px;
+    min-width: 172px;
     white-space: nowrap;
+}
+
+.frota-documento-ano {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    color: #334155;
+    background: #f1f5f9;
+    border: 1px solid #dce3ec;
+    border-radius: 6px;
+}
+
+.frota-documento-ano i {
+    color: #0d6efd;
+    font-size: 1.05rem;
 }
 
 .frota-acoes .btn {
@@ -338,7 +366,7 @@
     padding: 28px;
 }
 
-.frota-ativacao > i {
+.frota-ativacao>i {
     float: left;
     margin-right: 16px;
     color: #0d6efd;

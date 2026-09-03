@@ -59,6 +59,23 @@
         });
     });
 
+    document.querySelectorAll('.btn-documento-veiculo').forEach((botao) => {
+        botao.addEventListener('click', () => {
+            const formulario = porId('formDocumentoVeiculo');
+            const documentoAtual = porId('documentoVeiculoAtual');
+            formulario?.reset();
+            formulario?.querySelectorAll('.is-invalid').forEach((campo) => campo.classList.remove('is-invalid'));
+            preencher('documentoVeiculoId', botao.dataset.veiculoId);
+            porId('documentoVeiculoNome').textContent = botao.dataset.veiculoNome || 'Veículo';
+
+            if (documentoAtual) {
+                const nomeAtual = botao.dataset.documentoNome || '';
+                documentoAtual.textContent = nomeAtual ? `Arquivo atual: ${nomeAtual}` : '';
+                documentoAtual.classList.toggle('d-none', nomeAtual === '');
+            }
+        });
+    });
+
     const placa = porId('veiculoPlaca');
     if (placa) {
         placa.addEventListener('input', () => {

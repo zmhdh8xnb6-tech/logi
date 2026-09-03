@@ -14,7 +14,7 @@ $tipoMensagem = (string)($_GET['tipo'] ?? 'success');
 $tipoMensagem = in_array($tipoMensagem, ['success', 'warning', 'danger', 'info'], true)
     ? $tipoMensagem
     : 'success';
-$tabelasFrota = ['frota_veiculos', 'frota_controles_anuais'];
+$tabelasFrota = ['frota_veiculos', 'frota_controles_anuais', 'frota_documentos'];
 $estruturaDisponivel = true;
 
 foreach ($tabelasFrota as $tabelaFrota) {
@@ -190,8 +190,23 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
+            $stmtArquivos = $pdo->prepare('SELECT caminho_arquivo FROM frota_documentos WHERE veiculo_id = ? AND empresa_id = ?');
+            $stmtArquivos->execute([$id, $empresaId]);
+            $arquivosVeiculo = $stmtArquivos->fetchAll(PDO::FETCH_COLUMN);
             $pdo->prepare('DELETE FROM frota_veiculos WHERE id = ? AND empresa_id = ?')
                 ->execute([$id, $empresaId]);
+            $raizArmazenamento = realpath(__DIR__ . '/storage/frota');
+            foreach ($arquivosVeiculo as $arquivoVeiculo) {
+                $caminhoArquivo = realpath(__DIR__ . '/' . ltrim((string)$arquivoVeiculo, '/'));
+                if (
+                    $raizArmazenamento !== false
+                    && $caminhoArquivo !== false
+                    && str_starts_with($caminhoArquivo, $raizArmazenamento . DIRECTORY_SEPARATOR)
+                    && is_file($caminhoArquivo)
+                ) {
+                    @unlink($caminhoArquivo);
+                }
+            }
             registrarAuditoria(
                 $pdo,
                 'Gestão da Frota',
@@ -205,6 +220,140 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             frotaRedirecionar('Veículo e registros vinculados excluídos com sucesso.');
         } catch (Throwable $e) {
             frotaRedirecionar('Não foi possível excluir o veículo.', 'danger', 'visao-geral');
+        }
+    }
+
+    if ($acao === 'enviar_documento_veiculo') {
+        $veiculoId = (int)($_POST['veiculo_id'] ?? 0);
+        $veiculo = $buscarVeiculo($pdo, $empresaId, $veiculoId);
+        $arquivo = $_FILES['documento_veiculo'] ?? null;
+
+        if (!$veiculo) {
+            frotaRedirecionar('Veículo não encontrado nesta empresa.', 'danger', 'visao-geral', ['ano' => $anoControle]);
+        }
+
+        if (!is_array($arquivo) || (int)($arquivo['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $erroUpload = (int)($arquivo['error'] ?? UPLOAD_ERR_NO_FILE);
+            $mensagemUpload = match ($erroUpload) {
+                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'O arquivo ultrapassa o limite permitido de 10 MB.',
+                UPLOAD_ERR_NO_FILE => 'Escolha um documento para enviar.',
+                default => 'Não foi possível receber o documento. Tente novamente.',
+            };
+            frotaRedirecionar($mensagemUpload, 'danger', 'visao-geral', ['ano' => $anoControle]);
+        }
+
+        $caminhoTemporario = (string)($arquivo['tmp_name'] ?? '');
+        $tamanhoArquivo = (int)($arquivo['size'] ?? 0);
+        if (!is_uploaded_file($caminhoTemporario) || $tamanhoArquivo <= 0 || $tamanhoArquivo > 10 * 1024 * 1024) {
+            frotaRedirecionar('O documento deve possuir até 10 MB.', 'danger', 'visao-geral', ['ano' => $anoControle]);
+        }
+
+        $tipoMime = '';
+        if (function_exists('finfo_open')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $tipoMime = $finfo ? (string)finfo_file($finfo, $caminhoTemporario) : '';
+            if ($finfo) {
+                finfo_close($finfo);
+            }
+        } elseif (function_exists('mime_content_type')) {
+            $tipoMime = (string)mime_content_type($caminhoTemporario);
+        }
+        $extensoesPermitidas = [
+            'application/pdf' => 'pdf',
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+        ];
+        if (!isset($extensoesPermitidas[$tipoMime])) {
+            frotaRedirecionar('Envie o documento em PDF, JPG ou PNG.', 'danger', 'visao-geral', ['ano' => $anoControle]);
+        }
+
+        $nomeOriginal = frotaTexto(basename(str_replace(["\r", "\n"], '', (string)($arquivo['name'] ?? 'documento'))), 255);
+        if ($nomeOriginal === '') {
+            $nomeOriginal = 'documento.' . $extensoesPermitidas[$tipoMime];
+        }
+        $diretorioRelativo = 'storage/frota/' . $empresaId . '/' . $veiculoId . '/' . $anoControle;
+        $diretorioAbsoluto = __DIR__ . '/' . $diretorioRelativo;
+        if (!is_dir($diretorioAbsoluto) && !mkdir($diretorioAbsoluto, 0750, true) && !is_dir($diretorioAbsoluto)) {
+            frotaRedirecionar('Não foi possível preparar a pasta do documento.', 'danger', 'visao-geral', ['ano' => $anoControle]);
+        }
+
+        try {
+            $nomeArmazenado = bin2hex(random_bytes(18)) . '.' . $extensoesPermitidas[$tipoMime];
+            $caminhoRelativo = $diretorioRelativo . '/' . $nomeArmazenado;
+            $caminhoAbsoluto = __DIR__ . '/' . $caminhoRelativo;
+            if (!move_uploaded_file($caminhoTemporario, $caminhoAbsoluto)) {
+                throw new RuntimeException('Falha ao mover o arquivo enviado.');
+            }
+
+            $stmtAnterior = $pdo->prepare('SELECT caminho_arquivo FROM frota_documentos WHERE empresa_id = ? AND veiculo_id = ? AND ano = ?');
+            $stmtAnterior->execute([$empresaId, $veiculoId, $anoControle]);
+            $caminhoAnterior = (string)($stmtAnterior->fetchColumn() ?: '');
+
+            $pdo->beginTransaction();
+            $stmtDocumento = $pdo->prepare("
+                INSERT INTO frota_documentos (
+                    empresa_id, veiculo_id, ano, nome_original, caminho_arquivo,
+                    tipo_mime, tamanho_bytes, usuario_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    nome_original = VALUES(nome_original),
+                    caminho_arquivo = VALUES(caminho_arquivo),
+                    tipo_mime = VALUES(tipo_mime),
+                    tamanho_bytes = VALUES(tamanho_bytes),
+                    usuario_id = VALUES(usuario_id),
+                    enviado_em = CURRENT_TIMESTAMP
+            ");
+            $stmtDocumento->execute([
+                $empresaId,
+                $veiculoId,
+                $anoControle,
+                $nomeOriginal,
+                $caminhoRelativo,
+                $tipoMime,
+                $tamanhoArquivo,
+                $usuarioId,
+            ]);
+
+            $stmtControle = $pdo->prepare("
+                INSERT INTO frota_controles_anuais (empresa_id, veiculo_id, ano, documento_emitido, usuario_id)
+                VALUES (?, ?, ?, 1, ?)
+                ON DUPLICATE KEY UPDATE documento_emitido = 1, usuario_id = VALUES(usuario_id)
+            ");
+            $stmtControle->execute([$empresaId, $veiculoId, $anoControle, $usuarioId]);
+            $pdo->commit();
+
+            if ($caminhoAnterior !== '' && $caminhoAnterior !== $caminhoRelativo) {
+                $raizArmazenamento = realpath(__DIR__ . '/storage/frota');
+                $arquivoAnterior = realpath(__DIR__ . '/' . ltrim($caminhoAnterior, '/'));
+                if (
+                    $raizArmazenamento !== false
+                    && $arquivoAnterior !== false
+                    && str_starts_with($arquivoAnterior, $raizArmazenamento . DIRECTORY_SEPARATOR)
+                    && is_file($arquivoAnterior)
+                ) {
+                    @unlink($arquivoAnterior);
+                }
+            }
+
+            registrarAuditoria(
+                $pdo,
+                'Gestão da Frota',
+                'enviar_documento',
+                'veiculo',
+                $veiculoId,
+                'Anexou o documento de ' . $anoControle . ' do veículo ' . frotaPlacaFormatada((string)$veiculo['placa']),
+                null,
+                ['ano' => $anoControle, 'arquivo' => $nomeOriginal, 'tipo' => $tipoMime]
+            );
+            frotaRedirecionar('Documento anexado e veículo marcado como concluído.', 'success', 'visao-geral', ['ano' => $anoControle]);
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            if (!empty($caminhoAbsoluto) && is_file($caminhoAbsoluto)) {
+                @unlink($caminhoAbsoluto);
+            }
+            frotaRedirecionar('Não foi possível salvar o documento do veículo.', 'danger', 'visao-geral', ['ano' => $anoControle]);
         }
     }
 
@@ -353,14 +502,19 @@ if ($estruturaDisponivel) {
             COALESCE(c.documento_emitido, 0) AS documento_emitido,
             COALESCE(c.boletos_enviados, 0) AS boletos_enviados,
             COALESCE(c.possui_multas, 0) AS possui_multas,
-            COALESCE(c.quantidade_multas, 0) AS quantidade_multas
+            COALESCE(c.quantidade_multas, 0) AS quantidade_multas,
+            d.id AS documento_id,
+            d.nome_original AS documento_nome,
+            d.enviado_em AS documento_enviado_em
         FROM frota_veiculos v
         LEFT JOIN frota_controles_anuais c
             ON c.empresa_id = v.empresa_id AND c.veiculo_id = v.id AND c.ano = ?
+        LEFT JOIN frota_documentos d
+            ON d.empresa_id = v.empresa_id AND d.veiculo_id = v.id AND d.ano = ?
         WHERE {$filtroVeiculos}
         ORDER BY FIELD(v.situacao, 'ativo', 'manutencao', 'inativo', 'vendido'), v.modelo, v.placa
     ");
-    $stmtVeiculos->execute(array_merge([$anoControle], $parametrosVeiculos));
+    $stmtVeiculos->execute(array_merge([$anoControle, $anoControle], $parametrosVeiculos));
     $veiculos = $stmtVeiculos->fetchAll(PDO::FETCH_ASSOC);
 
     $stmtControles = $pdo->prepare("
@@ -369,14 +523,19 @@ if ($estruturaDisponivel) {
             COALESCE(c.boletos_enviados, 0) AS boletos_enviados,
             COALESCE(c.possui_multas, 0) AS possui_multas,
             COALESCE(c.quantidade_multas, 0) AS quantidade_multas,
-            c.atualizado_em
+            c.atualizado_em,
+            d.id AS documento_id,
+            d.nome_original AS documento_nome,
+            d.enviado_em AS documento_enviado_em
         FROM frota_veiculos v
         LEFT JOIN frota_controles_anuais c
             ON c.empresa_id = v.empresa_id AND c.veiculo_id = v.id AND c.ano = ?
+        LEFT JOIN frota_documentos d
+            ON d.empresa_id = v.empresa_id AND d.veiculo_id = v.id AND d.ano = ?
         WHERE v.empresa_id = ? AND v.situacao <> 'vendido'
         ORDER BY FIELD(v.situacao, 'ativo', 'manutencao', 'inativo'), v.modelo, v.placa
     ");
-    $stmtControles->execute([$anoControle, $empresaId]);
+    $stmtControles->execute([$anoControle, $anoControle, $empresaId]);
     $controles = $stmtControles->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -501,11 +660,15 @@ $statusRotulo = static function (string $status): string {
                     <section class="frota-painel">
                         <form method="get" class="frota-filtros">
                             <input type="hidden" name="aba" value="visao-geral">
-                            <input type="hidden" name="ano" value="<?= $anoControle ?>">
                             <div class="frota-busca">
                                 <i class="bi bi-search"></i>
                                 <input type="search" class="form-control" name="busca" value="<?= htmlspecialchars($busca) ?>" placeholder="Buscar placa, modelo, RENAVAM ou responsável...">
                             </div>
+                            <select name="ano" class="form-select" aria-label="Ano dos documentos">
+                                <?php for ($anoOpcao = $anoAtual + 1; $anoOpcao >= $anoAtual - 5; $anoOpcao--): ?>
+                                    <option value="<?= $anoOpcao ?>" <?= $anoOpcao === $anoControle ? 'selected' : '' ?>>Ano <?= $anoOpcao ?></option>
+                                <?php endfor; ?>
+                            </select>
                             <select name="situacao_veiculo" class="form-select" aria-label="Filtrar situação">
                                 <option value="todos">Todas as situações</option>
                                 <?php foreach ($situacoesVeiculo as $situacaoOpcao): ?>
@@ -564,6 +727,20 @@ $statusRotulo = static function (string $status): string {
                                                 <?php endif; ?>
                                             </td>
                                             <td class="text-end frota-acoes">
+                                                <?php if ((int)($veiculo['documento_id'] ?? 0) > 0): ?>
+                                                    <a href="frota_documento.php?id=<?= (int)$veiculo['documento_id'] ?>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success" title="Abrir documento de <?= $anoControle ?>"><i class="bi bi-file-earmark-check"></i></a>
+                                                <?php endif; ?>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-sm btn-outline-secondary btn-documento-veiculo"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#modalDocumentoVeiculo"
+                                                    data-veiculo-id="<?= (int)$veiculo['id'] ?>"
+                                                    data-veiculo-nome="<?= htmlspecialchars(frotaPlacaFormatada((string)$veiculo['placa']) . ' · ' . $veiculo['marca'] . ' ' . $veiculo['modelo'], ENT_QUOTES) ?>"
+                                                    data-documento-nome="<?= htmlspecialchars((string)($veiculo['documento_nome'] ?? ''), ENT_QUOTES) ?>"
+                                                    title="<?= (int)($veiculo['documento_id'] ?? 0) > 0 ? 'Substituir documento de ' . $anoControle : 'Anexar documento de ' . $anoControle ?>">
+                                                    <i class="bi bi-paperclip"></i>
+                                                </button>
                                                 <button type="button" class="btn btn-sm btn-outline-primary btn-editar-veiculo" data-bs-toggle="modal" data-bs-target="#modalVeiculo" data-registro="<?= $dadosVeiculo ?>" title="Editar veículo"><i class="bi bi-pencil"></i></button>
                                                 <button type="button" class="btn btn-sm btn-outline-danger btn-excluir-registro" data-bs-toggle="modal" data-bs-target="#modalExcluirFrota" data-acao="excluir_veiculo" data-aba="visao-geral" data-id="<?= (int)$veiculo['id'] ?>" data-nome="<?= htmlspecialchars(frotaPlacaFormatada((string)$veiculo['placa']), ENT_QUOTES) ?>" title="Excluir veículo"><i class="bi bi-trash"></i></button>
                                             </td>
@@ -743,6 +920,40 @@ $statusRotulo = static function (string $status): string {
                             </div>
                         </div>
                         <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Salvar veículo</button></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="modalDocumentoVeiculo" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form method="post" enctype="multipart/form-data" id="formDocumentoVeiculo" class="frota-form" novalidate>
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(frotaToken()) ?>">
+                        <input type="hidden" name="acao" value="enviar_documento_veiculo">
+                        <input type="hidden" name="aba" value="visao-geral">
+                        <input type="hidden" name="ano" value="<?= $anoControle ?>">
+                        <input type="hidden" name="veiculo_id" id="documentoVeiculoId">
+                        <input type="hidden" name="MAX_FILE_SIZE" value="10485760">
+                        <div class="modal-header">
+                            <div>
+                                <h5 class="modal-title">Documento do veículo</h5>
+                                <p class="text-muted mb-0" id="documentoVeiculoNome"></p>
+                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="frota-documento-ano"><i class="bi bi-calendar3"></i><span>Documento de <strong><?= $anoControle ?></strong></span></div>
+                            <div class="alert alert-info py-2 d-none" id="documentoVeiculoAtual"></div>
+                            <label class="form-label" for="documentoVeiculoArquivo">Arquivo</label>
+                            <input type="file" class="form-control" name="documento_veiculo" id="documentoVeiculoArquivo" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" required>
+                            <div class="invalid-feedback">Escolha um arquivo PDF, JPG ou PNG.</div>
+                            <small class="text-muted d-block mt-2">Tamanho máximo: 10 MB.</small>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-upload"></i> Salvar documento</button>
+                        </div>
                     </form>
                 </div>
             </div>
