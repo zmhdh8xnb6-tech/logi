@@ -45,13 +45,86 @@ $tipoMime = in_array($documento['tipo_mime'], $tiposPermitidos, true)
     : 'application/octet-stream';
 $nomeOriginal = basename(str_replace(["\r", "\n", '"'], '', (string)$documento['nome_original']));
 $nomeAscii = preg_replace('/[^A-Za-z0-9._ -]/', '_', $nomeOriginal) ?: 'documento';
+$tamanhoArquivo = filesize($caminhoArquivo);
+
+if ($tamanhoArquivo === false || $tamanhoArquivo <= 0) {
+    http_response_code(404);
+    exit('O arquivo deste documento está vazio ou indisponível.');
+}
+
+$inicio = 0;
+$fim = $tamanhoArquivo - 1;
+$range = trim((string)($_SERVER['HTTP_RANGE'] ?? ''));
+
+if ($range !== '') {
+    if (preg_match('/^bytes=(\d*)-(\d*)$/', $range, $partes) !== 1) {
+        header('Content-Range: bytes */' . $tamanhoArquivo);
+        http_response_code(416);
+        exit;
+    }
+
+    if ($partes[1] === '' && $partes[2] !== '') {
+        $quantidadeFinal = (int)$partes[2];
+        if ($quantidadeFinal <= 0) {
+            header('Content-Range: bytes */' . $tamanhoArquivo);
+            http_response_code(416);
+            exit;
+        }
+        $inicio = max(0, $tamanhoArquivo - $quantidadeFinal);
+    } else {
+        $inicio = (int)$partes[1];
+        if ($partes[2] !== '') {
+            $fim = min((int)$partes[2], $tamanhoArquivo - 1);
+        }
+    }
+
+    if ($inicio < 0 || $inicio >= $tamanhoArquivo || $fim < $inicio) {
+        header('Content-Range: bytes */' . $tamanhoArquivo);
+        http_response_code(416);
+        exit;
+    }
+
+    http_response_code(206);
+    header('Content-Range: bytes ' . $inicio . '-' . $fim . '/' . $tamanhoArquivo);
+}
+
+$bytesParaEnviar = $fim - $inicio + 1;
+
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
+while (ob_get_level() > 0) {
+    ob_end_clean();
+}
+
+@ini_set('zlib.output_compression', '0');
 
 header('Content-Type: ' . $tipoMime);
-header('Content-Length: ' . filesize($caminhoArquivo));
+header('Content-Length: ' . $bytesParaEnviar);
 header('Content-Disposition: inline; filename="' . $nomeAscii . '"; filename*=UTF-8\'\'' . rawurlencode($nomeOriginal));
+header('Accept-Ranges: bytes');
 header('X-Content-Type-Options: nosniff');
-header('Content-Security-Policy: sandbox');
 header('Cache-Control: private, no-store, max-age=0');
 
-readfile($caminhoArquivo);
+$arquivo = fopen($caminhoArquivo, 'rb');
+if ($arquivo === false) {
+    http_response_code(500);
+    exit('Não foi possível abrir o documento.');
+}
+
+fseek($arquivo, $inicio);
+$restante = $bytesParaEnviar;
+
+while ($restante > 0 && !feof($arquivo) && connection_status() === CONNECTION_NORMAL) {
+    $bloco = fread($arquivo, min(8192, $restante));
+    if ($bloco === false || $bloco === '') {
+        break;
+    }
+    echo $bloco;
+    $restante -= strlen($bloco);
+    flush();
+}
+
+fclose($arquivo);
 exit;
