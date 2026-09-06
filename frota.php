@@ -14,7 +14,7 @@ $tipoMensagem = (string)($_GET['tipo'] ?? 'success');
 $tipoMensagem = in_array($tipoMensagem, ['success', 'warning', 'danger', 'info'], true)
     ? $tipoMensagem
     : 'success';
-$tabelasFrota = ['frota_veiculos', 'frota_controles_anuais', 'frota_documentos'];
+$tabelasFrota = ['frota_veiculos', 'frota_controles_anuais', 'frota_documentos', 'frota_multas_vencimentos'];
 $estruturaDisponivel = true;
 
 foreach ($tabelasFrota as $tabelaFrota) {
@@ -482,6 +482,10 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $possuiMultas = (array)($_POST['possui_multas'] ?? []);
                 $quantidades = (array)($_POST['quantidade_multas'] ?? []);
+                $vencimentosInformados = (array)($_POST['multas_vencimentos'] ?? []);
+                $stmtLerPrazos = $pdo->prepare('SELECT numero, COALESCE(referencia, \'\') AS referencia, COALESCE(vencimento, \'\') AS vencimento FROM frota_multas_vencimentos WHERE empresa_id = ? AND veiculo_id = ? AND ano = ? FOR UPDATE');
+                $stmtLimparPrazos = $pdo->prepare('DELETE FROM frota_multas_vencimentos WHERE empresa_id = ? AND veiculo_id = ? AND ano = ?');
+                $stmtSalvarPrazo = $pdo->prepare('INSERT INTO frota_multas_vencimentos (empresa_id, veiculo_id, ano, numero, referencia, vencimento) VALUES (?, ?, ?, ?, ?, ?)');
                 $stmtSalvar = $pdo->prepare("
                     INSERT INTO frota_controles_anuais (
                         empresa_id, veiculo_id, ano, possui_multas, quantidade_multas, usuario_id
@@ -494,11 +498,30 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 foreach ($veiculosPermitidos as $veiculoId) {
                     $temMulta = isset($possuiMultas[$veiculoId]);
-                    $quantidade = $temMulta ? max(0, min(9999, (int)($quantidades[$veiculoId] ?? 0))) : 0;
-                    if ($temMulta && $quantidade < 1) {
+                    $quantidade = $temMulta ? filter_var($quantidades[$veiculoId] ?? null, FILTER_VALIDATE_INT) : 0;
+                    if ($temMulta && ($quantidade === false || $quantidade < 1 || $quantidade > 9999)) {
                         throw new InvalidArgumentException('Informe a quantidade de multas dos veículos marcados com multa.');
                     }
+                    $stmtLerPrazos->execute([$empresaId, $veiculoId, $anoControle]);
+                    $prazosAnteriores = $stmtLerPrazos->fetchAll(PDO::FETCH_ASSOC);
+                    if (array_key_exists($veiculoId, $vencimentosInformados)) {
+                        if (!is_string($vencimentosInformados[$veiculoId])) {
+                            throw new InvalidArgumentException('A lista de vencimentos está inválida.');
+                        }
+                        $prazos = frotaMultasVencimentosNormalizar($vencimentosInformados[$veiculoId], (int)$quantidade);
+                    } else {
+                        $prazos = $prazosAnteriores;
+                        foreach ($prazos as $prazo) {
+                            if ((int)$prazo['numero'] > $quantidade) {
+                                throw new InvalidArgumentException('Há vencimentos cadastrados para esta quantidade. Remova as multas pela opção Vencimentos antes de reduzir.');
+                            }
+                        }
+                    }
                     $stmtSalvar->execute([$empresaId, $veiculoId, $anoControle, $temMulta ? 1 : 0, $quantidade, $usuarioId]);
+                    $stmtLimparPrazos->execute([$empresaId, $veiculoId, $anoControle]);
+                    foreach ($prazos as $prazo) {
+                        $stmtSalvarPrazo->execute([$empresaId, $veiculoId, $anoControle, $prazo['numero'], $prazo['referencia'] !== '' ? $prazo['referencia'] : null, $prazo['vencimento'] !== '' ? $prazo['vencimento'] : null]);
+                    }
                 }
                 $descricaoAuditoria = "Atualizou o acompanhamento de multas da frota de {$anoControle}";
             }
@@ -531,6 +554,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $veiculos = [];
 $controles = [];
+$vencimentosPorVeiculo = [];
 $resumo = [
     'veiculos_ativos' => 0,
     'documentos_pendentes' => 0,
@@ -613,6 +637,17 @@ if ($estruturaDisponivel) {
     ");
     $stmtControles->execute([$anoControle, $anoControle, $empresaId]);
     $controles = $stmtControles->fetchAll(PDO::FETCH_ASSOC);
+    if ($aba === 'multas') {
+        $stmtPrazos = $pdo->prepare('SELECT veiculo_id, numero, referencia, vencimento FROM frota_multas_vencimentos WHERE empresa_id = ? AND ano = ? ORDER BY veiculo_id, numero');
+        $stmtPrazos->execute([$empresaId, $anoControle]);
+        foreach ($stmtPrazos->fetchAll(PDO::FETCH_ASSOC) as $prazo) {
+            $vencimentosPorVeiculo[(int)$prazo['veiculo_id']][] = [
+                'numero' => (int)$prazo['numero'],
+                'referencia' => (string)($prazo['referencia'] ?? ''),
+                'vencimento' => (string)($prazo['vencimento'] ?? ''),
+            ];
+        }
+    }
 }
 
 $statusClasse = static function (string $status): string {
@@ -913,7 +948,7 @@ $statusRotulo = static function (string $status): string {
                         <div class="frota-painel-titulo">
                             <div>
                                 <h5>Controle de multas</h5>
-                                <p>Informe se o veículo possui multas e a quantidade existente.</p>
+                                <p>Multas e vencimentos por veículo.</p>
                             </div>
                             <form method="get" class="frota-seletor-ano">
                                 <input type="hidden" name="aba" value="multas">
@@ -925,7 +960,7 @@ $statusRotulo = static function (string $status): string {
                                 </select>
                             </form>
                         </div>
-                        <form method="post" class="frota-acompanhamento-form frota-form-multas" novalidate>
+                        <form method="post" id="formControleMultas" class="frota-acompanhamento-form frota-form-multas" data-hoje="<?= date('Y-m-d') ?>" data-limite="<?= date('Y-m-d', strtotime('+30 days')) ?>" novalidate>
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(frotaToken()) ?>">
                             <input type="hidden" name="acao" value="salvar_controle_multas">
                             <input type="hidden" name="aba" value="multas">
@@ -938,17 +973,19 @@ $statusRotulo = static function (string $status): string {
                                             <th>Tem multas?</th>
                                             <th>Quantidade</th>
                                             <th>Status</th>
+                                            <th>Vencimentos</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <?php if ($controles === []): ?><tr>
-                                                <td colspan="4" class="frota-vazio">Nenhum veículo disponível para acompanhamento.</td>
+                                                <td colspan="5" class="frota-vazio">Nenhum veículo disponível para acompanhamento.</td>
                                             </tr><?php endif; ?>
                                         <?php foreach ($controles as $controle): ?>
                                             <?php $temMulta = (int)$controle['possui_multas'] === 1; ?>
-                                            <tr class="frota-linha-controle <?= $temMulta ? 'tem-pendencia' : '' ?>" data-tipo-controle="multas">
+                                            <tr class="frota-linha-controle <?= $temMulta ? 'tem-pendencia' : '' ?>" data-tipo-controle="multas" data-veiculo-nome="<?= htmlspecialchars(frotaPlacaFormatada((string)$controle['placa']) . ' · ' . $controle['marca'] . ' ' . $controle['modelo'], ENT_QUOTES) ?>">
                                                 <td>
                                                     <input type="hidden" name="veiculos[]" value="<?= (int)$controle['id'] ?>">
+                                                    <input type="hidden" class="frota-multas-vencimentos" name="multas_vencimentos[<?= (int)$controle['id'] ?>]" value="<?= htmlspecialchars(json_encode($vencimentosPorVeiculo[(int)$controle['id']] ?? [], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>">
                                                     <span class="frota-placa frota-placa-menor"><?= htmlspecialchars(frotaPlacaFormatada((string)$controle['placa'])) ?></span>
                                                     <strong><?= htmlspecialchars($controle['marca'] . ' ' . $controle['modelo']) ?></strong>
                                                 </td>
@@ -958,8 +995,14 @@ $statusRotulo = static function (string $status): string {
                                                         <label class="form-check-label" for="multas<?= (int)$controle['id'] ?>"><?= $temMulta ? 'Sim' : 'Não' ?></label>
                                                     </div>
                                                 </td>
-                                                <td><input type="number" class="form-control frota-quantidade-multas" name="quantidade_multas[<?= (int)$controle['id'] ?>]" min="1" max="9999" value="<?= $temMulta ? max(1, (int)$controle['quantidade_multas']) : 0 ?>" <?= $temMulta ? '' : 'disabled' ?> aria-label="Quantidade de multas"></td>
+                                                <td><input type="number" class="form-control frota-quantidade-multas" name="quantidade_multas[<?= (int)$controle['id'] ?>]" min="1" max="9999" value="<?= $temMulta ? max(1, (int)$controle['quantidade_multas']) : 0 ?>" <?= $temMulta ? '' : 'disabled' ?> aria-label="Quantidade de multas">
+                                                    <div class="invalid-feedback frota-erro-quantidade">Informe de 1 a 9999 multas.</div>
+                                                </td>
                                                 <td><span class="badge frota-status-controle <?= $temMulta ? 'text-bg-danger' : 'text-bg-success' ?>"><?= $temMulta ? ((int)$controle['quantidade_multas'] . ' multa' . ((int)$controle['quantidade_multas'] === 1 ? '' : 's') . ' pendente' . ((int)$controle['quantidade_multas'] === 1 ? '' : 's')) : 'Sem multas' ?></span></td>
+                                                <td class="frota-prazos-celula">
+                                                    <div class="frota-resumo-vencimentos mb-2" aria-live="polite"></div>
+                                                    <button type="button" class="btn btn-sm btn-outline-primary btn-prazos-multas" data-bs-toggle="modal" data-bs-target="#modalVencimentosMultas"><i class="bi bi-calendar3" aria-hidden="true"></i> Vencimentos</button>
+                                                </td>
                                             </tr>
                                         <?php endforeach; ?>
                                     </tbody>
@@ -974,6 +1017,69 @@ $statusRotulo = static function (string $status): string {
     </main>
 
     <?php if ($estruturaDisponivel): ?>
+        <?php if ($aba === 'multas'): ?>
+            <div class="modal fade" id="modalVencimentosMultas" tabindex="-1" aria-labelledby="tituloVencimentosMultas" aria-hidden="true">
+                <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <div>
+                                <h5 class="modal-title" id="tituloVencimentosMultas">Vencimentos das multas</h5>
+                                <p class="text-muted mb-0" id="veiculoVencimentosMultas"></p><small class="text-muted">Exercício <?= $anoControle ?></small>
+                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="frota-prazos-toolbar">
+                                <select id="filtroVencimentosMultas" class="form-select" aria-label="Filtrar vencimentos">
+                                    <option value="todos">Todas as multas</option>
+                                    <option value="vencida">Vencidas</option>
+                                    <option value="proxima">Vencem em até 30 dias</option>
+                                    <option value="sem-data">Sem vencimento</option>
+                                </select>
+                                <button type="button" class="btn btn-outline-primary" id="adicionarVencimentoMulta"><i class="bi bi-plus-lg" aria-hidden="true"></i> Adicionar multa</button>
+                            </div>
+                            <div class="alert alert-danger d-none mt-3" role="alert" id="erroVencimentosMultas"></div>
+                            <table class="table align-middle frota-prazos-tabela">
+                                <thead>
+                                    <tr>
+                                        <th>Multa</th>
+                                        <th>Identificação <small class="text-muted">(opcional)</small></th>
+                                        <th>Vencimento</th>
+                                        <th>Situação</th>
+                                        <th><span class="visually-hidden">Ações</span></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="itensVencimentosMultas"></tbody>
+                            </table>
+                        </div>
+                        <div class="frota-prazos-paginacao px-3 py-2 border-top">
+                            <span id="paginaVencimentosMultas" aria-live="polite"></span>
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-outline-secondary" id="paginaAnteriorMultas" title="Página anterior" aria-label="Página anterior"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
+                                <button type="button" class="btn btn-outline-secondary" id="paginaSeguinteMultas" title="Próxima página" aria-label="Próxima página"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="button" class="btn btn-primary" id="salvarVencimentosMultas"><i class="bi bi-check-lg" aria-hidden="true"></i> Salvar acompanhamento</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <template id="modeloVencimentoMulta">
+                <tr>
+                    <td class="frota-prazo-numero"></td>
+                    <td data-label="Identificação"><input type="text" class="form-control frota-prazo-referencia" maxlength="120" placeholder="Auto de infração ou descrição">
+                        <div class="invalid-feedback">Use até 120 caracteres.</div>
+                    </td>
+                    <td data-label="Vencimento"><input type="date" class="form-control frota-prazo-data" min="1900-01-01" max="9999-12-31">
+                        <div class="invalid-feedback">Informe uma data válida.</div>
+                    </td>
+                    <td><span class="badge frota-prazo-status"></span></td>
+                    <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger frota-remover-prazo"><i class="bi bi-trash" aria-hidden="true"></i></button></td>
+                </tr>
+            </template>
+        <?php endif; ?>
         <div class="modal fade" id="modalVeiculo" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
                 <div class="modal-content">

@@ -68,6 +68,48 @@ function frotaDataValida(string $data, bool $obrigatoria = true): bool
     return $objeto !== false && $objeto->format('Y-m-d') === $data;
 }
 
+function frotaMultasVencimentosNormalizar(string $json, int $quantidade): array
+{
+    try {
+        $itens = json_decode($json, true, 32, JSON_THROW_ON_ERROR);
+    } catch (JsonException $e) {
+        throw new InvalidArgumentException('Os vencimentos das multas estão inválidos. Abra Vencimentos e tente novamente.');
+    }
+    if (!is_array($itens) || array_values($itens) !== $itens || count($itens) > 9999) {
+        throw new InvalidArgumentException('A lista de vencimentos das multas está inválida.');
+    }
+
+    $resultado = [];
+    foreach ($itens as $item) {
+        if (
+            !is_array($item) || !is_int($item['numero'] ?? null)
+            || !is_string($item['referencia'] ?? null) || !is_string($item['vencimento'] ?? null)
+        ) {
+            throw new InvalidArgumentException('Revise os dados de cada multa.');
+        }
+        $numero = $item['numero'];
+        if ($numero < 1 || $numero > $quantidade || isset($resultado[$numero])) {
+            throw new InvalidArgumentException('A quantidade não corresponde às multas cadastradas. Ajuste a lista em Vencimentos.');
+        }
+        $referencia = trim($item['referencia']);
+        $tamanho = function_exists('mb_strlen') ? mb_strlen($referencia) : strlen($referencia);
+        $vencimento = trim($item['vencimento']);
+        if ($tamanho > 120) {
+            throw new InvalidArgumentException('A identificação da multa deve ter até 120 caracteres.');
+        }
+        if (
+            !frotaDataValida($vencimento, false)
+            || ($vencimento !== '' && ($vencimento < '1900-01-01' || $vencimento > '9999-12-31'))
+        ) {
+            throw new InvalidArgumentException('Informe uma data de vencimento válida para a multa ' . $numero . '.');
+        }
+        $resultado[$numero] = ['numero' => $numero, 'referencia' => $referencia, 'vencimento' => $vencimento];
+    }
+    ksort($resultado);
+    // Datas desconhecidas continuam em branco; não criamos vencimentos pela quantidade.
+    return array_values(array_filter($resultado, static fn(array $item): bool => $item['referencia'] !== '' || $item['vencimento'] !== ''));
+}
+
 function frotaValorEntrada(string $valor): float
 {
     $valor = trim($valor);

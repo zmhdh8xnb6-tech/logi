@@ -450,6 +450,151 @@
     box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
 }
 
+.frota-prazos-celula {
+    min-width: 220px;
+}
+
+.frota-resumo-vencimentos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.frota-resumo-vencimentos small {
+    flex-basis: 100%;
+}
+
+.frota-erro-quantidade {
+    max-width: 240px;
+    white-space: normal;
+}
+
+#modalVencimentosMultas .modal-header,
+#modalVencimentosMultas .modal-footer {
+    flex-shrink: 0;
+}
+
+#veiculoVencimentosMultas {
+    overflow-wrap: anywhere;
+}
+
+.frota-prazos-toolbar,
+.frota-prazos-paginacao {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.frota-prazos-toolbar .form-select {
+    width: auto;
+    max-width: 100%;
+}
+
+.frota-prazos-tabela {
+    width: 100%;
+    table-layout: fixed;
+    margin: 18px 0;
+}
+
+.frota-prazos-tabela th:first-child {
+    width: 65px;
+}
+
+.frota-prazos-tabela th:nth-child(3) {
+    width: 180px;
+}
+
+.frota-prazos-tabela th:nth-child(4) {
+    width: 140px;
+}
+
+.frota-prazos-tabela th:last-child {
+    width: 50px;
+}
+
+.frota-prazos-tabela th {
+    font-size: 0.85rem;
+}
+
+.frota-prazos-tabela .form-control {
+    min-width: 0;
+    width: 100%;
+}
+
+.frota-prazos-paginacao {
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.frota-prazos-paginacao .btn {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+}
+
+.frota-prazos-tabela .btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+}
+
+#modalVencimentosMultas .is-invalid,
+.frota-form-multas .is-invalid {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+}
+
+@media (max-width: 767px) {
+    .frota-prazos-tabela thead {
+        display: none;
+    }
+
+    .frota-prazos-tabela,
+    .frota-prazos-tabela tbody {
+        display: block;
+    }
+
+    .frota-prazos-tabela tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        padding: 12px 0;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .frota-prazos-tabela td {
+        border: 0;
+        min-width: 0;
+        padding: 5px;
+    }
+
+    .frota-prazos-tabela td[data-label] {
+        grid-column: 1 / -1;
+    }
+
+    .frota-prazos-tabela td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 5px;
+        font-size: 0.8rem;
+        color: #475569;
+    }
+
+    .frota-prazos-tabela td:last-child {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .frota-prazos-toolbar>* {
+        flex: 1 1 100%;
+    }
+
+    #modalVencimentosMultas .modal-footer .btn {
+        flex: 1 1 auto;
+    }
+}
+
 @media (max-width: 1280px) {
     .frota-resumo {
         grid-template-columns: repeat(2, minmax(160px, 1fr));
