@@ -100,7 +100,7 @@
 }
 
 .app-sidebar.collapsed {
-    width: 80px;
+    width: 72px;
 }
 
 .app-sidebar.collapsed .sidebar-logo img {
@@ -114,9 +114,9 @@
     transition-delay: 0s;
 }
 
-.app-sidebar.collapsed ~ .app-main {
-    margin-left: 82px;
-    width: calc(100% - 82px);
+.app-sidebar.collapsed~.app-main {
+    margin-left: 74px;
+    width: calc(100% - 74px);
 }
 
 .app-sidebar {
@@ -144,7 +144,7 @@
     cursor: pointer;
 }
 
-.sidebar-notification-link.has-pending > i {
+.sidebar-notification-link.has-pending>i {
     color: #fbbf24;
 }
 
@@ -236,7 +236,7 @@
     gap: 12px;
 }
 
-.notification-toast > i {
+.notification-toast>i {
     color: #d97706;
     font-size: 1.35rem;
 }
@@ -252,13 +252,13 @@
     font-size: .84rem;
 }
 
-.notification-toast > a {
+.notification-toast>a {
     color: #166534;
     font-weight: 700;
     text-decoration: none;
 }
 
-.notification-toast > button {
+.notification-toast>button {
     position: absolute;
     top: 8px;
     right: 8px;
@@ -292,14 +292,14 @@
 }
 
 .app-sidebar {
-    width: 260px;
+    width: 240px;
     height: 100vh;
     min-height: 100vh;
     background: linear-gradient(180deg,
             #0f172a 0%,
             #1e293b 100%);
     border-right: 1px solid rgba(255, 255, 255, .08);
-    padding: 24px 16px;
+    padding: 24px 12px;
     display: flex;
     flex-direction: column;
     position: fixed;
@@ -333,11 +333,12 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
-    border-radius: 12px;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 10px;
     color: rgba(255, 255, 255, .75);
     text-decoration: none;
+    font-size: .95rem;
     font-weight: 500;
     transition: background-color 0.2s ease, color 0.2s ease;
 }
@@ -386,8 +387,8 @@
 }
 
 .app-main {
-    margin-left: 260px;
-    width: calc(100% - 260px);
+    margin-left: 240px;
+    width: calc(100% - 240px);
     min-width: 0;
     min-height: 100vh;
     padding: 40px;
@@ -498,7 +499,7 @@
         width: auto;
     }
 
-    .app-sidebar.collapsed ~ .app-main {
+    .app-sidebar.collapsed~.app-main {
         margin-left: 0;
         width: 100%;
     }

@@ -109,6 +109,19 @@ if (usuarioPode('frota')) {
     <?php include 'includes/head.php'; ?>
     <title>Logi - Início</title>
     <link rel="stylesheet" href="<?= assetUrl('assets/home.css') ?>">
+    <script>
+        if ('scrollRestoration' in window.history) {
+            window.history.scrollRestoration = 'manual';
+        }
+
+        window.addEventListener('pageshow', function() {
+            window.scrollTo({
+                top: 0,
+                left: 0,
+                behavior: 'auto'
+            });
+        });
+    </script>
 </head>
 
 <body class="app-layout">
@@ -121,67 +134,16 @@ if (usuarioPode('frota')) {
 
         <div class="container-fluid">
 
-            <div class="mb-4">
-                <h3>Bem-vindo ao sistema Logi 👋</h3>
-                <p class="text-muted">Escolha o serviço que deseja acessar</p>
+            <header class="home-cabecalho">
+                <h3>Visão geral</h3>
+                <p class="text-muted">Acesse os módulos e acompanhe os avisos da <?= htmlspecialchars(empresaAtivaNome($pdo)) ?>.</p>
+            </header>
+
+            <div class="home-secao-cabecalho">
+                <h4>Acessos rápidos</h4>
             </div>
 
-            <?php if ($avisosSistema): ?>
-                <section class="avisos-home mb-4" id="avisosHome" data-total="<?= count($avisosSistema) ?>">
-                    <div class="avisos-home-cabecalho">
-                        <div>
-                            <h5 class="mb-1">
-                                <i class="bi bi-bell"></i>
-                                <span id="avisosHomeQuantidade"><?= count($avisosSistema) ?></span>
-                                <span id="avisosHomeRotulo">aviso<?= count($avisosSistema) === 1 ? '' : 's' ?> importante<?= count($avisosSistema) === 1 ? '' : 's' ?></span>
-                            </h5>
-                            <p class="mb-0">Rotinas que precisam de atenção antes de seguir o mês.</p>
-                        </div>
-                        <button
-                            class="btn btn-sm btn-outline-warning avisos-home-toggle"
-                            type="button"
-                            data-bs-toggle="collapse"
-                            data-bs-target="#avisosHomeDetalhes"
-                            aria-expanded="false"
-                            aria-controls="avisosHomeDetalhes">
-                            Ver detalhes
-                        </button>
-                    </div>
-
-                    <div class="collapse" id="avisosHomeDetalhes">
-                        <div class="avisos-home-lista">
-                            <?php foreach ($avisosSistema as $aviso): ?>
-                                <div class="aviso-home-item">
-                                    <i class="bi <?= htmlspecialchars($aviso['icone'] ?? 'bi-bell') ?>"></i>
-                                    <a href="<?= htmlspecialchars($aviso['url']) ?>" class="aviso-home-dados">
-                                        <strong><?= htmlspecialchars($aviso['titulo']) ?></strong>
-                                        <small><?= htmlspecialchars($aviso['texto']) ?></small>
-                                    </a>
-                                    <span class="badge bg-warning text-dark">
-                                        <?= (int)($aviso['quantidade'] ?? 1) ?>
-                                    </span>
-                                    <?php if (!empty($aviso['resolver_modal'])): ?>
-                                        <button
-                                            type="button"
-                                            class="btn btn-sm btn-outline-success aviso-home-resolver"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#modalResolverAvisoHome"
-                                            data-aviso="<?= htmlspecialchars(json_encode($aviso['resolver_modal'], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>">
-                                            <i class="bi bi-check2-circle"></i> Resolver
-                                        </button>
-                                    <?php else: ?>
-                                        <a href="<?= htmlspecialchars($aviso['resolver_url'] ?? $aviso['url']) ?>" class="btn btn-sm btn-outline-success aviso-home-resolver">
-                                            <i class="bi bi-check2-circle"></i> Resolver
-                                        </a>
-                                    <?php endif; ?>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                </section>
-            <?php endif; ?>
-
-            <div class="row g-4">
+            <div class="home-servicos-grid">
 
                 <?php if (usuarioPode('tarefas')): ?>
                     <div class="col-md-4">
@@ -379,6 +341,61 @@ if (usuarioPode('frota')) {
 
             </div>
 
+            <?php if ($avisosSistema): ?>
+                <section class="avisos-home" id="avisosHome" data-total="<?= count($avisosSistema) ?>">
+                    <div class="avisos-home-cabecalho">
+                        <div>
+                            <h5 class="mb-1">
+                                <i class="bi bi-bell"></i>
+                                <span id="avisosHomeQuantidade"><?= count($avisosSistema) ?></span>
+                                <span id="avisosHomeRotulo">aviso<?= count($avisosSistema) === 1 ? '' : 's' ?> importante<?= count($avisosSistema) === 1 ? '' : 's' ?></span>
+                            </h5>
+                            <p class="mb-0">Rotinas que precisam de atenção antes de seguir o mês.</p>
+                        </div>
+                        <button
+                            class="btn btn-sm btn-outline-warning avisos-home-toggle"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#avisosHomeDetalhes"
+                            aria-expanded="false"
+                            aria-controls="avisosHomeDetalhes">
+                            Ver detalhes
+                        </button>
+                    </div>
+
+                    <div class="collapse" id="avisosHomeDetalhes">
+                        <div class="avisos-home-lista">
+                            <?php foreach ($avisosSistema as $aviso): ?>
+                                <div class="aviso-home-item">
+                                    <i class="bi <?= htmlspecialchars($aviso['icone'] ?? 'bi-bell') ?>"></i>
+                                    <a href="<?= htmlspecialchars($aviso['url']) ?>" class="aviso-home-dados">
+                                        <strong><?= htmlspecialchars($aviso['titulo']) ?></strong>
+                                        <small><?= htmlspecialchars($aviso['texto']) ?></small>
+                                    </a>
+                                    <span class="badge bg-warning text-dark">
+                                        <?= (int)($aviso['quantidade'] ?? 1) ?>
+                                    </span>
+                                    <?php if (!empty($aviso['resolver_modal'])): ?>
+                                        <button
+                                            type="button"
+                                            class="btn btn-sm btn-outline-success aviso-home-resolver"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#modalResolverAvisoHome"
+                                            data-aviso="<?= htmlspecialchars(json_encode($aviso['resolver_modal'], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>">
+                                            <i class="bi bi-check2-circle"></i> Resolver
+                                        </button>
+                                    <?php else: ?>
+                                        <a href="<?= htmlspecialchars($aviso['resolver_url'] ?? $aviso['url']) ?>" class="btn btn-sm btn-outline-success aviso-home-resolver">
+                                            <i class="bi bi-check2-circle"></i> Resolver
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </section>
+            <?php endif; ?>
+
         </div>
 
     </main>
@@ -445,7 +462,37 @@ if (usuarioPode('frota')) {
                 const formResolverAviso = document.getElementById('formResolverAvisoHome');
                 const erroResolverAviso = document.getElementById('modalAvisoHomeErro');
                 const btnSalvarAvisoHome = document.getElementById('btnSalvarAvisoHome');
+                const secaoAvisos = document.getElementById('avisosHome');
+                const detalhesAvisos = document.getElementById('avisosHomeDetalhes');
+                const botaoDetalhesAvisos = document.querySelector('.avisos-home-toggle');
                 let botaoAvisoAtual = null;
+
+                detalhesAvisos?.addEventListener('shown.bs.collapse', function() {
+                    if (botaoDetalhesAvisos) botaoDetalhesAvisos.textContent = 'Ocultar detalhes';
+                    secaoAvisos?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                });
+                detalhesAvisos?.addEventListener('hidden.bs.collapse', function() {
+                    if (botaoDetalhesAvisos) botaoDetalhesAvisos.textContent = 'Ver detalhes';
+                    window.scrollTo({
+                        top: 0,
+                        left: 0,
+                        behavior: 'smooth'
+                    });
+                });
+
+                document.querySelectorAll('.card-servico').forEach(function(card) {
+                    const titulo = card.querySelector('h5')?.textContent.trim() || '';
+                    const descricao = card.querySelector('p')?.textContent.replace(/\s+/g, ' ').trim() || '';
+                    const dica = [titulo, descricao].filter(Boolean).join(' — ');
+
+                    if (dica) {
+                        card.setAttribute('title', dica);
+                        card.setAttribute('aria-label', dica);
+                    }
+                });
 
                 if (modalResolverAviso && formResolverAviso) {
                     modalResolverAviso.addEventListener('show.bs.modal', function(evento) {

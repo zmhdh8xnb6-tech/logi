@@ -4,6 +4,51 @@
     const porId = (id) => document.getElementById(id);
     const texto = (valor) => valor === null || valor === undefined ? '' : String(valor);
 
+    const chaveRolagem = `logi:frota:rolagem:${window.location.pathname}`;
+    const salvarRolagem = () => {
+        try {
+            window.sessionStorage.setItem(chaveRolagem, JSON.stringify({
+                posicao: window.scrollY,
+                salvoEm: Date.now(),
+            }));
+        } catch (erro) {
+            // O navegador pode bloquear o sessionStorage em modos de privacidade.
+        }
+    };
+    const restaurarRolagem = () => {
+        let estado = null;
+
+        try {
+            estado = JSON.parse(window.sessionStorage.getItem(chaveRolagem) || 'null');
+            window.sessionStorage.removeItem(chaveRolagem);
+        } catch (erro) {
+            return;
+        }
+
+        const posicao = Number(estado?.posicao);
+        const recente = Number.isFinite(estado?.salvoEm) && Date.now() - estado.salvoEm < 120000;
+        if (!Number.isFinite(posicao) || posicao < 0 || !recente) return;
+
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => window.scrollTo({ top: posicao, left: 0, behavior: 'auto' }));
+        });
+    };
+
+    if ('scrollRestoration' in window.history) {
+        window.history.scrollRestoration = 'manual';
+    }
+    restaurarRolagem();
+
+    document.addEventListener('submit', (evento) => {
+        if (!evento.defaultPrevented) salvarRolagem();
+    });
+    document.addEventListener('change', (evento) => {
+        const campo = evento.target;
+        if (campo instanceof HTMLSelectElement && campo.closest('.frota-seletor-ano')) {
+            salvarRolagem();
+        }
+    }, true);
+
     const lerRegistro = (botao) => {
         try {
             return JSON.parse(botao.dataset.registro || '{}');
@@ -284,8 +329,14 @@
             primeiro?.focus();
             return !primeiro;
         };
-        const renderizar = () => {
+        const limparLinhas = () => {
+            corpo.querySelectorAll('.frota-prazo-data').forEach((campo) => {
+                campo._flatpickr?.destroy();
+            });
             corpo.replaceChildren();
+        };
+        const renderizar = () => {
+            limparLinhas();
             const numeros = Array.from({ length: edicao.total }, (_, indice) => indice + 1)
                 .filter((numero) => edicao.filtro === 'todos' || situacaoPrazo(edicao.dados.get(numero)?.vencimento).chave === edicao.filtro);
             const paginas = Math.max(1, Math.ceil(numeros.length / porPagina));
@@ -301,10 +352,26 @@
                 data.value = item?.vencimento || '';
                 referencia.setAttribute('aria-label', `Identificação da multa ${numero}`);
                 data.setAttribute('aria-label', `Vencimento da multa ${numero}`);
-                linha.querySelectorAll('input').forEach((campo) => campo.addEventListener('input', () => {
-                    campo.classList.remove('is-invalid');
-                    guardarLinha(linha);
-                }));
+                data.addEventListener('click', () => {
+                    if (data._flatpickr) {
+                        data._flatpickr.open();
+                        return;
+                    }
+
+                    try {
+                        data.showPicker?.();
+                    } catch (erro) {
+                        data.focus();
+                    }
+                });
+                linha.querySelectorAll('input').forEach((campo) => {
+                    const atualizarCampo = () => {
+                        campo.classList.remove('is-invalid');
+                        guardarLinha(linha);
+                    };
+                    campo.addEventListener('input', atualizarCampo);
+                    campo.addEventListener('change', atualizarCampo);
+                });
                 const remover = linha.querySelector('.frota-remover-prazo');
                 remover.setAttribute('aria-label', `Remover multa ${numero}`);
                 remover.title = `Remover multa ${numero}`;
@@ -322,6 +389,7 @@
                 });
                 guardarLinha(linha);
                 corpo.appendChild(linha);
+                window.inicializarCalendarios?.(linha);
             });
             if (numeros.length === 0) {
                 const linha = corpo.insertRow();
@@ -383,7 +451,7 @@
             modalPrazos.addEventListener('hidden.bs.modal', () => formMultas.requestSubmit(), { once: true });
             bootstrap.Modal.getInstance(modalPrazos).hide();
         });
-        modalPrazos.addEventListener('hidden.bs.modal', () => { edicao = null; corpo.replaceChildren(); });
+        modalPrazos.addEventListener('hidden.bs.modal', () => { edicao = null; limparLinhas(); });
     }
 
     document.querySelectorAll('.btn-excluir-registro').forEach((botao) => {

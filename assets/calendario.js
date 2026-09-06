@@ -142,6 +142,10 @@
         botao.title = 'Abrir calendário';
         botao.innerHTML = '<i class="bi bi-calendar3"></i>';
 
+        botao.addEventListener('pointerdown', function (evento) {
+            evento.preventDefault();
+        });
+
         botao.addEventListener('click', function (evento) {
             evento.preventDefault();
             evento.stopPropagation();
@@ -150,8 +154,11 @@
                 return;
             }
 
-            input.focus();
             instancia.open();
+
+            if (instancia.altInput) {
+                instancia.altInput.focus({ preventScroll: true });
+            }
         });
 
         wrapper.appendChild(botao);
@@ -202,7 +209,17 @@
             'input[type="month"]:not([data-calendario-nativo]):not([data-no-flatpickr])'
         ].join(',');
 
-        raiz.querySelectorAll(seletor).forEach(function (campo) {
+        const campos = [];
+        if (raiz.matches && raiz.matches(seletor)) {
+            campos.push(raiz);
+        }
+        if (raiz.querySelectorAll) {
+            raiz.querySelectorAll(seletor).forEach(function (campo) {
+                campos.push(campo);
+            });
+        }
+
+        campos.forEach(function (campo) {
             if (campo._flatpickr || campo.dataset.calendarioAplicado === '1') {
                 return;
             }
@@ -308,5 +325,19 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         iniciarCalendarios(document);
+
+        if (!document.body || !window.MutationObserver) {
+            return;
+        }
+
+        new MutationObserver(function (mutacoes) {
+            mutacoes.forEach(function (mutacao) {
+                mutacao.addedNodes.forEach(function (no) {
+                    if (no.nodeType === Node.ELEMENT_NODE) {
+                        iniciarCalendarios(no);
+                    }
+                });
+            });
+        }).observe(document.body, { childList: true, subtree: true });
     });
 })();
