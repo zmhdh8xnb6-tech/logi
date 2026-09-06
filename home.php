@@ -135,8 +135,10 @@ if (usuarioPode('frota')) {
         <div class="container-fluid">
 
             <header class="home-cabecalho">
-                <h3>Visão geral</h3>
-                <p class="text-muted">Acesse os módulos e acompanhe os avisos da <?= htmlspecialchars(empresaAtivaNome($pdo)) ?>.</p>
+                <img
+                    src="<?= assetUrl('assets/images/logo.svg') ?>"
+                    class="home-marca"
+                    alt="Logi">
             </header>
 
             <div class="home-secao-cabecalho">

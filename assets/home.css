@@ -18,17 +18,20 @@
 }
 
 .home-cabecalho {
+    display: flex;
+    align-items: center;
+    min-height: 46px;
     margin-bottom: 24px;
 }
 
-.home-cabecalho h3,
-.home-cabecalho p,
 .home-secao-cabecalho h4 {
     margin-bottom: 0;
 }
 
-.home-cabecalho p {
-    margin-top: 4px;
+.home-marca {
+    display: block;
+    width: 150px;
+    height: auto;
 }
 
 .home-secao-cabecalho {
