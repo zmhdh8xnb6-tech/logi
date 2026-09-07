@@ -553,6 +553,182 @@ function consultarJsonExterno(string $url, array $headers = [], int $timeout = 1
     return is_array($dados) ? $dados : [];
 }
 
+function consultarJsonExternosEmParalelo(array $urls, int $timeout = 12): array
+{
+    if ($urls === []) {
+        return [];
+    }
+
+    if (!function_exists('curl_multi_init')) {
+        $respostas = [];
+
+        foreach ($urls as $chave => $url) {
+            $respostas[$chave] = consultarJsonExterno($url, [], $timeout);
+        }
+
+        return $respostas;
+    }
+
+    $multi = curl_multi_init();
+    $handles = [];
+
+    foreach ($urls as $chave => $url) {
+        $curl = curl_init($url);
+        curl_setopt_array($curl, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            CURLOPT_USERAGENT => 'Logi/1.0',
+        ]);
+        curl_multi_add_handle($multi, $curl);
+        $handles[$chave] = $curl;
+    }
+
+    do {
+        $resultado = curl_multi_exec($multi, $executando);
+
+        if ($resultado !== CURLM_OK) {
+            break;
+        }
+
+        if ($executando > 0 && curl_multi_select($multi, 1.0) === -1) {
+            usleep(100000);
+        }
+    } while ($executando > 0);
+
+    $respostas = [];
+
+    foreach ($handles as $chave => $curl) {
+        $conteudo = curl_multi_getcontent($curl);
+        $status = (int)curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        $dados = $conteudo !== false ? json_decode($conteudo, true) : null;
+        $respostas[$chave] = $status >= 200 && $status < 300 && is_array($dados) ? $dados : [];
+        curl_multi_remove_handle($multi, $curl);
+        curl_close($curl);
+    }
+
+    curl_multi_close($multi);
+
+    return $respostas;
+}
+
+function dadosCnpjPossuemQsa(array $dados): bool
+{
+    return (array_key_exists('qsa', $dados) && is_array($dados['qsa']))
+        || (array_key_exists('socios', $dados) && is_array($dados['socios']));
+}
+
+function timestampAtualizacaoCnpj(array $dados, bool $somenteQsa = false): int
+{
+    $datas = [
+        $dados['ultima_atualizacao'] ?? null,
+        $dados['atualizado_em'] ?? null,
+    ];
+
+    if (!$somenteQsa && isset($dados['estabelecimento']) && is_array($dados['estabelecimento'])) {
+        $datas[] = $dados['estabelecimento']['ultima_atualizacao'] ?? null;
+        $datas[] = $dados['estabelecimento']['atualizado_em'] ?? null;
+    }
+
+    if ($somenteQsa) {
+        $lista = isset($dados['qsa']) && is_array($dados['qsa'])
+            ? $dados['qsa']
+            : (isset($dados['socios']) && is_array($dados['socios']) ? $dados['socios'] : []);
+
+        foreach ($lista as $socio) {
+            if (!is_array($socio)) {
+                continue;
+            }
+
+            $datas[] = $socio['ultima_atualizacao'] ?? null;
+            $datas[] = $socio['atualizado_em'] ?? null;
+        }
+    }
+
+    $maisRecente = 0;
+
+    foreach ($datas as $data) {
+        if (!is_string($data) || trim($data) === '') {
+            continue;
+        }
+
+        $timestamp = strtotime($data);
+
+        if ($timestamp !== false) {
+            $maisRecente = max($maisRecente, $timestamp);
+        }
+    }
+
+    return $maisRecente;
+}
+
+function selecionarFonteCnpj(array $fontes, bool $exigirQsa = false): array
+{
+    $selecionada = ['fonte' => '', 'dados' => [], 'timestamp' => 0];
+
+    foreach ($fontes as $fonte => $dados) {
+        if (!dadosCnpjConsultaOk($dados) || ($exigirQsa && !dadosCnpjPossuemQsa($dados))) {
+            continue;
+        }
+
+        $timestamp = timestampAtualizacaoCnpj($dados, $exigirQsa);
+
+        if ($selecionada['dados'] === [] || $timestamp > $selecionada['timestamp']) {
+            $selecionada = [
+                'fonte' => $fonte,
+                'dados' => $dados,
+                'timestamp' => $timestamp,
+            ];
+        }
+    }
+
+    return $selecionada;
+}
+
+function consultarFontesPublicasCnpj(string $cnpj): array
+{
+    $respostas = consultarJsonExternosEmParalelo([
+        'CNPJ.ws' => 'https://publica.cnpj.ws/cnpj/' . $cnpj,
+        'ReceitaWS Pública' => 'https://receitaws.com.br/v1/cnpj/' . $cnpj,
+        'BrasilAPI' => 'https://brasilapi.com.br/api/cnpj/v1/' . $cnpj,
+    ]);
+
+    return array_filter($respostas, 'dadosCnpjConsultaOk');
+}
+
+function assinaturaQsaCnpj(array $dados): string
+{
+    if (!dadosCnpjPossuemQsa($dados)) {
+        return '';
+    }
+
+    $nomes = array_map(
+        static fn(array $socio): string => strtoupper(trim((string)($socio['nome'] ?? ''))),
+        normalizarSociosCnpj($dados, [])
+    );
+    sort($nomes, SORT_STRING);
+
+    return json_encode($nomes, JSON_UNESCAPED_UNICODE) ?: '[]';
+}
+
+function fontesCnpjDivergemNoQsa(array $fontes): bool
+{
+    $assinaturas = [];
+
+    foreach ($fontes as $dados) {
+        $assinatura = assinaturaQsaCnpj($dados);
+
+        if ($assinatura !== '') {
+            $assinaturas[$assinatura] = true;
+        }
+    }
+
+    return count($assinaturas) > 1;
+}
+
 function consultarCnpjReceitaWsComercial(string $cnpj): array
 {
     $token = trim((string)(defined('RECEITAWS_TOKEN') ? RECEITAWS_TOKEN : ''));
@@ -743,31 +919,35 @@ if ($action === 'consultar_cnpj') {
     }
 
     $dadosReceitaWs = consultarCnpjReceitaWsComercial($cnpj);
-    $dadosCnpjWs = $dadosReceitaWs === [] ? consultarCnpjWs($cnpj) : [];
-    $dadosReceitaWsPublica = ($dadosReceitaWs === [] && $dadosCnpjWs === []) ? consultarCnpjReceitaWsPublica($cnpj) : [];
-    $dadosBrasilApi = ($dadosReceitaWs === [] && $dadosCnpjWs === [] && $dadosReceitaWsPublica === []) ? consultarCnpjPublico($cnpj) : [];
+    $fontes = $dadosReceitaWs !== []
+        ? ['ReceitaWS Comercial' => $dadosReceitaWs]
+        : [];
 
-    if ($dadosReceitaWs !== []) {
-        $dados = $dadosReceitaWs;
-        $dadosComplementares = $dadosCnpjWs !== [] ? $dadosCnpjWs : ($dadosReceitaWsPublica !== [] ? $dadosReceitaWsPublica : $dadosBrasilApi);
-        $fonte = 'ReceitaWS Comercial';
-    } elseif ($dadosCnpjWs !== []) {
-        $dados = $dadosCnpjWs;
-        $dadosComplementares = $dadosReceitaWsPublica !== [] ? $dadosReceitaWsPublica : $dadosBrasilApi;
-        $fonte = 'CNPJ.ws';
-    } elseif ($dadosReceitaWsPublica !== []) {
-        $dados = $dadosReceitaWsPublica;
-        $dadosComplementares = $dadosBrasilApi;
-        $fonte = 'ReceitaWS Pública';
-    } else {
-        $dados = $dadosBrasilApi;
-        $dadosComplementares = [];
-        $fonte = 'BrasilAPI';
+    if ($dadosReceitaWs === [] || !dadosCnpjPossuemQsa($dadosReceitaWs)) {
+        $fontes = array_merge($fontes, consultarFontesPublicasCnpj($cnpj));
     }
+
+    $selecaoPrincipal = selecionarFonteCnpj($fontes);
+    $selecaoQsa = selecionarFonteCnpj($fontes, true);
+    $dados = $selecaoPrincipal['dados'];
+    $fonte = $selecaoPrincipal['fonte'];
 
     if ($dados === []) {
         echo json_encode(['ok' => false, 'mensagem' => 'CNPJ não encontrado.']);
         exit;
+    }
+
+    $dadosQsa = $selecaoQsa['dados'] !== [] ? $selecaoQsa['dados'] : $dados;
+    $fonteQsa = $selecaoQsa['fonte'] !== '' ? $selecaoQsa['fonte'] : $fonte;
+    $dadosComplementares = $dadosQsa !== $dados ? $dadosQsa : [];
+
+    if ($dadosComplementares === []) {
+        foreach ($fontes as $fonteAlternativa => $dadosAlternativos) {
+            if ($fonteAlternativa !== $fonte && $dadosAlternativos !== []) {
+                $dadosComplementares = $dadosAlternativos;
+                break;
+            }
+        }
     }
 
     $estabelecimento = is_array($dados['estabelecimento'] ?? null)
@@ -806,15 +986,9 @@ if ($action === 'consultar_cnpj') {
         $cep = preg_replace('/\D/', '', primeiroValorCnpjComEstabelecimento($dadosComplementares, $estabelecimentoComplementar, ['cep']));
     }
 
-    $ultimaAtualizacao = primeiroValorCnpj($dados, ['ultima_atualizacao']);
-    $socios = normalizarSociosCnpj($dados, $dadosComplementares);
-    $fonteQsa = (isset($dados['qsa']) && is_array($dados['qsa'])) || (isset($dados['socios']) && is_array($dados['socios']))
-        ? $fonte
-        : (
-            (isset($dadosComplementares['socios']) && is_array($dadosComplementares['socios']))
-            ? 'CNPJ.ws'
-            : ((isset($dadosComplementares['qsa']) && is_array($dadosComplementares['qsa'])) ? 'ReceitaWS Pública/BrasilAPI' : $fonte)
-        );
+    $ultimaAtualizacaoTimestamp = timestampAtualizacaoCnpj($dados);
+    $ultimaAtualizacaoQsaTimestamp = timestampAtualizacaoCnpj($dadosQsa, true);
+    $socios = normalizarSociosCnpj($dadosQsa, []);
 
     echo json_encode([
         'ok' => true,
@@ -834,7 +1008,9 @@ if ($action === 'consultar_cnpj') {
             'socios' => $socios,
             'fonte' => $fonte,
             'fonte_qsa' => $fonteQsa,
-            'ultima_atualizacao' => $ultimaAtualizacao,
+            'ultima_atualizacao' => $ultimaAtualizacaoTimestamp > 0 ? date('Y-m-d', $ultimaAtualizacaoTimestamp) : '',
+            'ultima_atualizacao_qsa' => $ultimaAtualizacaoQsaTimestamp > 0 ? date('Y-m-d', $ultimaAtualizacaoQsaTimestamp) : '',
+            'qsa_divergente' => fontesCnpjDivergemNoQsa($fontes),
         ],
     ]);
     exit;

@@ -36,6 +36,7 @@ $ocultarCamposCertificado = $clienteContabilAtual !== 1
 $formatarDataQsa = $formatarDataQsa ?? static function ($data): string {
     return !empty($data) ? date('d/m/Y', strtotime($data)) : '-';
 };
+$qsaJsonInicial = json_encode(array_values($sociosCliente), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
 if (
     empty($alvarasGoiasCliente)
@@ -61,7 +62,7 @@ if (
 }
 ?>
 
-<input type="hidden" name="qsa_json" id="qsa_json" value="">
+<input type="hidden" name="qsa_json" id="qsa_json" value="<?= htmlspecialchars($qsaJsonInicial ?: '[]', ENT_QUOTES, 'UTF-8') ?>">
 <input type="hidden" id="ocultar_servicos_acompanhados" value="<?= $ocultarServicosAcompanhados ? '1' : '0' ?>">
 
 <!-- DADOS PRINCIPAIS -->
@@ -674,7 +675,7 @@ if (
         </div>
 
         <button type="button" class="btn btn-outline-primary btn-sm" id="btnAtualizarQsaReceita">
-            <i class="bi bi-arrow-clockwise"></i> Atualizar pela Receita
+            <i class="bi bi-arrow-clockwise"></i> Consultar QSA novamente
         </button>
     </div>
 
@@ -686,15 +687,26 @@ if (
                     <th>Qualificação</th>
                     <th>Documento</th>
                     <th>Entrada</th>
+                    <th class="text-end">Ações</th>
                 </tr>
             </thead>
             <tbody id="qsaClienteTabelaCorpo">
-                <?php foreach ($sociosCliente as $socioCliente): ?>
+                <?php foreach ($sociosCliente as $indiceSocio => $socioCliente): ?>
                     <tr>
                         <td><?= htmlspecialchars($socioCliente['nome'] ?? '') ?></td>
                         <td><?= htmlspecialchars(trim((string)($socioCliente['qualificacao'] ?? '')) !== '' ? $socioCliente['qualificacao'] : '-') ?></td>
                         <td><?= htmlspecialchars(trim((string)($socioCliente['documento'] ?? '')) !== '' ? $socioCliente['documento'] : '-') ?></td>
                         <td><?= htmlspecialchars($formatarDataQsa($socioCliente['entrada_sociedade'] ?? null)) ?></td>
+                        <td class="text-end">
+                            <button
+                                type="button"
+                                class="btn btn-outline-danger btn-sm btn-remover-socio-qsa"
+                                data-qsa-index="<?= (int)$indiceSocio ?>"
+                                title="Remover sócio do QSA"
+                                aria-label="Remover <?= htmlspecialchars($socioCliente['nome'] ?? 'sócio') ?> do QSA">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>

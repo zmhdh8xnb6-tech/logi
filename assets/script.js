@@ -273,6 +273,30 @@ $(document).ready(function () {
         atualizarQsaPelaReceita();
     });
 
+    $(document).on('click', '.btn-remover-socio-qsa', function () {
+        let socios = [];
+
+        try {
+            socios = JSON.parse($('#qsa_json').val() || '[]');
+        } catch (erro) {
+            socios = [];
+        }
+
+        const indice = Number($(this).data('qsa-index'));
+
+        if (!Array.isArray(socios) || !Number.isInteger(indice) || !socios[indice]) {
+            return;
+        }
+
+        socios.splice(indice, 1);
+        $('#qsa_json').val(JSON.stringify(socios));
+        renderizarQsaCliente(socios);
+        $('#qsaClienteStatus')
+            .removeClass('text-muted text-danger text-success')
+            .addClass('text-warning')
+            .text('Sócio removido manualmente. Clique em Salvar para gravar o QSA conferido.');
+    });
+
     $('#documento').on('input', function () {
         documentoDuplicado = false;
         ultimaConsultaDocumento = '';
@@ -1200,7 +1224,15 @@ function textoFonteCnpj(dados) {
     }
 
     if (dados.ultima_atualizacao) {
-        partes.push(`Atualizado em ${formatarDataBr(String(dados.ultima_atualizacao).slice(0, 10))}`);
+        partes.push(`Cadastro atualizado em ${formatarDataBr(String(dados.ultima_atualizacao).slice(0, 10))}`);
+    }
+
+    if (dados.ultima_atualizacao_qsa) {
+        partes.push(`QSA atualizado em ${formatarDataBr(String(dados.ultima_atualizacao_qsa).slice(0, 10))}`);
+    }
+
+    if (dados.qsa_divergente) {
+        partes.push('Atenção: as fontes consultadas divergem no QSA');
     }
 
     return partes.join(' | ');
@@ -1224,13 +1256,23 @@ function renderizarQsaCliente(socios) {
         return;
     }
 
-    listaSocios.forEach(function (socio) {
+    listaSocios.forEach(function (socio, indice) {
         tabelaCorpo.append(`
             <tr>
                 <td>${escapeHtml(socio.nome || '')}</td>
                 <td>${escapeHtml(socio.qualificacao || '-')}</td>
                 <td>${escapeHtml(socio.documento || '-')}</td>
                 <td>${escapeHtml(formatarDataBr(socio.entrada_sociedade))}</td>
+                <td class="text-end">
+                    <button
+                        type="button"
+                        class="btn btn-outline-danger btn-sm btn-remover-socio-qsa"
+                        data-qsa-index="${indice}"
+                        title="Remover sócio do QSA"
+                        aria-label="Remover ${escapeHtml(socio.nome || 'sócio')} do QSA">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
             </tr>
         `);
     });
@@ -1274,8 +1316,8 @@ function atualizarQsaPelaReceita() {
             renderizarQsaCliente(sociosEncontrados);
 
             status
-                .removeClass('text-muted text-danger')
-                .addClass('text-success')
+                .removeClass('text-muted text-danger text-success text-warning')
+                .addClass(resposta.dados.qsa_divergente ? 'text-warning' : 'text-success')
                 .text(
                     (
                         sociosEncontrados.length
@@ -1293,7 +1335,7 @@ function atualizarQsaPelaReceita() {
         .always(function () {
             botao
                 .prop('disabled', false)
-                .html('<i class="bi bi-arrow-clockwise"></i> Atualizar pela Receita');
+                .html('<i class="bi bi-arrow-clockwise"></i> Consultar QSA novamente');
         });
 }
 
