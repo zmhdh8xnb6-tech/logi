@@ -1,5 +1,6 @@
 <?php
 require 'config.php';
+require_once __DIR__ . '/includes/frota_funcoes.php';
 
 exigirPermissao('frota');
 
@@ -16,7 +17,7 @@ $stmt = $pdo->prepare("
     FROM frota_documentos d
     INNER JOIN frota_veiculos v
         ON v.id = d.veiculo_id AND v.empresa_id = d.empresa_id
-    WHERE d.id = ? AND d.empresa_id = ?
+    WHERE d.id = ? AND d.empresa_id = ?æ₢₢
     LIMIT 1
 ");
 $stmt->execute([$documentoId, $empresaId]);
@@ -27,14 +28,8 @@ if (!$documento) {
     exit('Documento não encontrado.');
 }
 
-$raizArmazenamento = realpath(__DIR__ . '/storage/frota');
-$caminhoArquivo = realpath(__DIR__ . '/' . ltrim((string)$documento['caminho_arquivo'], '/'));
-if (
-    $raizArmazenamento === false
-    || $caminhoArquivo === false
-    || !str_starts_with($caminhoArquivo, $raizArmazenamento . DIRECTORY_SEPARATOR)
-    || !is_file($caminhoArquivo)
-) {
+$caminhoArquivo = frotaDocumentoCaminhoAbsoluto((string)$documento['caminho_arquivo']);
+if ($caminhoArquivo === null) {
     http_response_code(404);
     exit('O arquivo deste documento não está disponível.');
 }

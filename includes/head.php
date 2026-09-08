@@ -28,6 +28,7 @@ if (!function_exists('assetUrl')) {
 <link rel="stylesheet" href="<?= assetUrl('assets/style.css') ?>">
 <link rel="stylesheet" href="<?= assetUrl('assets/sidebar.css') ?>">
 <link rel="stylesheet" href="<?= assetUrl('assets/calendario.css') ?>">
+<link rel="stylesheet" href="<?= assetUrl('assets/layout.css') ?>">
 
 <script src="<?= assetUrl('assets/sidebar.js') ?>" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr" defer></script>

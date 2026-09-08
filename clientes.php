@@ -17,26 +17,51 @@ if (strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0) {
     <title>Clientes</title>
 </head>
 
-<body class="app-layout">
+<body class="app-layout clientes-page">
 
     <?php include 'includes/sidebar.php'; ?>
 
     <main class="app-main">
         <div class="container-fluid">
 
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+            <div class="logi-page-header">
                 <div>
                     <h3 class="mb-1">Clientes</h3>
                     <p class="text-muted mb-0">Cadastro e gerenciamento de clientes</p>
                 </div>
 
-                <div class="d-flex gap-2">
-                    <a href="clientes_devolvidos.php" class="btn btn-outline-warning">
-                        <i class="bi bi-archive"></i> Devolvidos
-                    </a>
-                    <a href="servicos_avulsos.php" class="btn btn-outline-secondary">
-                        <i class="bi bi-briefcase"></i> Serviços Avulsos
-                    </a>
+                <div class="logi-page-actions">
+                    <div class="dropdown">
+                        <button
+                            type="button"
+                            class="btn btn-outline-secondary logi-icon-button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                            aria-label="Mais opções"
+                            title="Mais opções">
+                            <i class="bi bi-three-dots"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <a href="clientes_devolvidos.php" class="dropdown-item">
+                                    <i class="bi bi-archive"></i> Clientes devolvidos
+                                </a>
+                            </li>
+                            <li>
+                                <a href="servicos_avulsos.php" class="dropdown-item">
+                                    <i class="bi bi-briefcase"></i> Serviços avulsos
+                                </a>
+                            </li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item" id="btnImprimirClientes">
+                                    <i class="bi bi-printer"></i> Imprimir lista
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
                     <a href="clientes_importar.php" class="btn btn-outline-success">
                         <i class="bi bi-file-earmark-spreadsheet"></i> Importar
                     </a>
@@ -47,41 +72,30 @@ if (strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0) {
             </div>
 
             <div class="clientes-box">
-                <div class="row g-2 mb-3">
-                    <div class="col-md-4">
+                <div class="clientes-toolbar">
+                    <div class="clientes-busca">
+                        <i class="bi bi-search" aria-hidden="true"></i>
                         <input
-                            type="text"
+                            type="search"
                             id="buscaCliente"
                             class="form-control"
                             placeholder="Buscar por código, nome, CPF/CNPJ ou e-mail...">
                     </div>
 
-                    <div class="col-md-2">
-                        <select id="filtroUf" class="form-select">
-                            <option value="">Todas as UFs</option>
-                            <option value="DF">DF</option>
-                            <option value="GO">GO</option>
-                        </select>
-                    </div>
+                    <select id="filtroUf" class="form-select" aria-label="Filtrar por estado">
+                        <option value="">Todas as UFs</option>
+                        <option value="DF">DF</option>
+                        <option value="GO">GO</option>
+                    </select>
 
-                    <div class="col-md-3 d-flex align-items-center">
-                        <span class="text-muted small" id="totalClientesResumo">Total: 0 clientes</span>
-                    </div>
+                    <select id="limiteClientes" class="form-select" aria-label="Quantidade por página">
+                        <option value="15">Mostrar 15</option>
+                        <option value="30">Mostrar 30</option>
+                        <option value="60">Mostrar 60</option>
+                        <option value="90">Mostrar 90</option>
+                    </select>
 
-                    <div class="col-md-3 text-md-end">
-                        <button type="button" class="btn btn-outline-secondary" id="btnImprimirClientes">
-                            <i class="bi bi-printer"></i> Imprimir lista
-                        </button>
-                    </div>
-
-                    <div class="col-md-12 col-lg-2" id="grupoLimiteClientes">
-                        <select id="limiteClientes" class="form-select">
-                            <option value="15">Mostrar 15</option>
-                            <option value="30">Mostrar 30</option>
-                            <option value="60">Mostrar 60</option>
-                            <option value="90">Mostrar 90</option>
-                        </select>
-                    </div>
+                    <span class="clientes-result-count" id="totalClientesResumo">Nenhum cliente</span>
                 </div>
 
                 <div class="table-responsive">
@@ -96,7 +110,7 @@ if (strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0) {
                                 <th>UF</th>
                                 <th>Telefone</th>
                                 <th>E-mail</th>
-                                <th class="text-end">Ações</th>
+                                <th><span class="visually-hidden">Abrir</span></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -114,6 +128,53 @@ if (strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0) {
 
         </div>
     </main>
+
+    <aside
+        class="offcanvas offcanvas-end clientes-detalhes"
+        tabindex="-1"
+        id="painelCliente"
+        data-bs-backdrop="false"
+        data-bs-scroll="true"
+        aria-labelledby="painelClienteTitulo">
+        <div class="offcanvas-header">
+            <div>
+                <h5 class="offcanvas-title" id="painelClienteTitulo">Cliente</h5>
+                <p class="clientes-detalhes-subtitulo" id="painelClienteSubtitulo"></p>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Fechar"></button>
+        </div>
+        <div class="offcanvas-body">
+            <div class="clientes-detalhes-status">
+                <span>Situação do cadastro</span>
+                <span class="badge bg-success" id="painelClienteSituacao">Ativo</span>
+            </div>
+
+            <section class="clientes-detalhes-secao" aria-labelledby="painelClienteDadosTitulo">
+                <h6 id="painelClienteDadosTitulo">Dados principais</h6>
+                <div class="clientes-detalhes-grade">
+                    <div class="clientes-detalhes-campo"><span>Nome fantasia</span><strong id="painelClienteFantasia">-</strong></div>
+                    <div class="clientes-detalhes-campo"><span>Tributação</span><strong id="painelClienteTributacao">-</strong></div>
+                    <div class="clientes-detalhes-campo"><span>Cidade / UF</span><strong id="painelClienteCidade">-</strong></div>
+                    <div class="clientes-detalhes-campo"><span>Telefone</span><strong id="painelClienteTelefone">-</strong></div>
+                    <div class="clientes-detalhes-campo"><span>E-mail</span><strong id="painelClienteEmail">-</strong></div>
+                    <div class="clientes-detalhes-campo"><span>Inscrição estadual</span><strong id="painelClienteInscricao">-</strong></div>
+                </div>
+            </section>
+
+            <section class="clientes-detalhes-secao" aria-labelledby="painelClienteAcompanhamentosTitulo">
+                <h6 id="painelClienteAcompanhamentosTitulo">Acompanhamentos</h6>
+                <div class="clientes-acompanhamentos" id="painelClienteAcompanhamentos"></div>
+            </section>
+        </div>
+        <div class="offcanvas-footer">
+            <a href="#" class="btn btn-outline-primary" id="painelClienteEditar">
+                <i class="bi bi-pencil"></i> Editar
+            </a>
+            <a href="#" class="btn btn-primary" id="painelClienteAbrir">
+                Ver cadastro completo <i class="bi bi-arrow-right"></i>
+            </a>
+        </div>
+    </aside>
 
     <?php include 'includes/modal_aviso.php'; ?>
 

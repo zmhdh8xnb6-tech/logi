@@ -4,6 +4,8 @@ require_once __DIR__ . '/includes/frota_funcoes.php';
 
 exigirPermissao('frota');
 
+frotaMigrarArmazenamentoLegado();
+
 $empresaId = max(1, (int)(empresaAtivaId($pdo) ?? 1));
 $usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
 $abasPermitidas = ['visao-geral', 'obrigacoes', 'multas'];
@@ -195,15 +197,9 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $arquivosVeiculo = $stmtArquivos->fetchAll(PDO::FETCH_COLUMN);
             $pdo->prepare('DELETE FROM frota_veiculos WHERE id = ? AND empresa_id = ?')
                 ->execute([$id, $empresaId]);
-            $raizArmazenamento = realpath(__DIR__ . '/storage/frota');
             foreach ($arquivosVeiculo as $arquivoVeiculo) {
-                $caminhoArquivo = realpath(__DIR__ . '/' . ltrim((string)$arquivoVeiculo, '/'));
-                if (
-                    $raizArmazenamento !== false
-                    && $caminhoArquivo !== false
-                    && str_starts_with($caminhoArquivo, $raizArmazenamento . DIRECTORY_SEPARATOR)
-                    && is_file($caminhoArquivo)
-                ) {
+                $caminhoArquivo = frotaDocumentoCaminhoAbsoluto((string)$arquivoVeiculo);
+                if ($caminhoArquivo !== null) {
                     @unlink($caminhoArquivo);
                 }
             }
@@ -271,16 +267,15 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($nomeOriginal === '') {
             $nomeOriginal = 'documento.' . $extensoesPermitidas[$tipoMime];
         }
-        $diretorioRelativo = 'storage/frota/' . $empresaId . '/' . $veiculoId . '/' . $anoControle;
-        $diretorioAbsoluto = __DIR__ . '/' . $diretorioRelativo;
-        if (!is_dir($diretorioAbsoluto) && !mkdir($diretorioAbsoluto, 0750, true) && !is_dir($diretorioAbsoluto)) {
-            frotaRedirecionar('Não foi possível preparar a pasta do documento.', 'danger', 'visao-geral', ['ano' => $anoControle]);
+        $diretorioDocumento = frotaDocumentoPrepararDiretorio($empresaId, $veiculoId, $anoControle);
+        if ($diretorioDocumento === null) {
+            frotaRedirecionar('Não foi possível acessar a pasta persistente dos documentos. Confira a permissão de logi_storage.', 'danger', 'visao-geral', ['ano' => $anoControle]);
         }
 
         try {
             $nomeArmazenado = bin2hex(random_bytes(18)) . '.' . $extensoesPermitidas[$tipoMime];
-            $caminhoRelativo = $diretorioRelativo . '/' . $nomeArmazenado;
-            $caminhoAbsoluto = __DIR__ . '/' . $caminhoRelativo;
+            $caminhoRelativo = $diretorioDocumento['relativo'] . '/' . $nomeArmazenado;
+            $caminhoAbsoluto = $diretorioDocumento['absoluto'] . DIRECTORY_SEPARATOR . $nomeArmazenado;
             if (!move_uploaded_file($caminhoTemporario, $caminhoAbsoluto)) {
                 throw new RuntimeException('Falha ao mover o arquivo enviado.');
             }
@@ -323,14 +318,8 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->commit();
 
             if ($caminhoAnterior !== '' && $caminhoAnterior !== $caminhoRelativo) {
-                $raizArmazenamento = realpath(__DIR__ . '/storage/frota');
-                $arquivoAnterior = realpath(__DIR__ . '/' . ltrim($caminhoAnterior, '/'));
-                if (
-                    $raizArmazenamento !== false
-                    && $arquivoAnterior !== false
-                    && str_starts_with($arquivoAnterior, $raizArmazenamento . DIRECTORY_SEPARATOR)
-                    && is_file($arquivoAnterior)
-                ) {
+                $arquivoAnterior = frotaDocumentoCaminhoAbsoluto($caminhoAnterior);
+                if ($arquivoAnterior !== null) {
                     @unlink($arquivoAnterior);
                 }
             }
@@ -405,14 +394,8 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->commit();
 
             $arquivoRemovido = true;
-            $raizArmazenamento = realpath(__DIR__ . '/storage/frota');
-            $caminhoArquivo = realpath(__DIR__ . '/' . ltrim((string)$documento['caminho_arquivo'], '/'));
-            if (
-                $raizArmazenamento !== false
-                && $caminhoArquivo !== false
-                && str_starts_with($caminhoArquivo, $raizArmazenamento . DIRECTORY_SEPARATOR)
-                && is_file($caminhoArquivo)
-            ) {
+            $caminhoArquivo = frotaDocumentoCaminhoAbsoluto((string)$documento['caminho_arquivo']);
+            if ($caminhoArquivo !== null) {
                 $arquivoRemovido = @unlink($caminhoArquivo);
             }
 

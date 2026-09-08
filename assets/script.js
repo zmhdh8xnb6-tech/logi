@@ -7,6 +7,7 @@ let dadosCnpjEncontrado = null;
 let requisicaoClientes = null;
 let timerBuscaClientes = null;
 let sequenciaRequisicaoClientes = 0;
+let clientesPaginaAtual = new Map();
 let clienteParaExcluir = null;
 let clienteUfParaExcluir = '';
 let clienteExigeContadorRetirado = true;
@@ -719,11 +720,12 @@ function carregarClientes(page = 1) {
         const clientes = Array.isArray(res) ? res : (res.data || []);
         const totalClientes = Number(res.total || clientes.length || 0);
 
-        $('#totalClientesResumo').text(
-            'Total: ' + totalClientes + ' ' + (totalClientes === 1 ? 'cliente' : 'clientes')
-        );
+        $('#totalClientesResumo').text(clientes.length === 0
+            ? 'Nenhum cliente'
+            : 'Mostrando ' + clientes.length + ' de ' + totalClientes);
 
         if (clientes.length === 0) {
+            clientesPaginaAtual.clear();
             $('#clientesTable tbody').html(`
                 <tr>
                     <td colspan="9" class="text-center text-muted py-4">
@@ -733,29 +735,30 @@ function carregarClientes(page = 1) {
             `);
 
             $('#paginacao').html('');
-            $('#grupoLimiteClientes').addClass('d-none');
             return;
         }
+
+        clientesPaginaAtual = new Map(clientes.map(cliente => [String(cliente.id), cliente]));
 
         clientes.forEach(cliente => {
             linhas += `
 <tr class="linha-cliente"
     data-busca="${escapeHtml(`${cliente.codigo} ${cliente.documento} ${cliente.nome} ${cliente.nome_fantasia} ${cliente.email}`).toLowerCase()}"
     data-uf="${escapeHtml(cliente.uf)}"
-    data-url="cliente.php?id=${cliente.id}"
+    data-cliente-id="${cliente.id}"
     role="button"
     tabindex="0">
 
     <td>${escapeHtml(cliente.codigo)}</td>
-    <td class="coluna-documento-cliente">${escapeHtml(cliente.documento)}</td>
-    <td>${escapeHtml(cliente.nome)}</td>
-    <td>${escapeHtml(cliente.nome_fantasia)}</td>
-    <td>${escapeHtml(cliente.cidade)}</td>
-    <td>${escapeHtml(cliente.uf)}</td>
-    <td>${escapeHtml(cliente.telefone)}</td>
-    <td>${escapeHtml(cliente.email)}</td>
-    <td class="text-end text-muted">
-        <i class="bi bi-chevron-right"></i>
+    <td title="${escapeHtml(cliente.documento || '-')}">${escapeHtml(cliente.documento || '-')}</td>
+    <td title="${escapeHtml(cliente.nome || '-')}">${escapeHtml(cliente.nome || '-')}</td>
+    <td title="${escapeHtml(cliente.nome_fantasia || '-')}">${escapeHtml(cliente.nome_fantasia || '-')}</td>
+    <td title="${escapeHtml(cliente.cidade || '-')}">${escapeHtml(cliente.cidade || '-')}</td>
+    <td>${escapeHtml(cliente.uf || '-')}</td>
+    <td title="${escapeHtml(cliente.telefone || '-')}">${escapeHtml(cliente.telefone || '-')}</td>
+    <td title="${escapeHtml(cliente.email || '-')}">${escapeHtml(cliente.email || '-')}</td>
+    <td class="text-end">
+        <span class="clientes-row-action" aria-hidden="true"><i class="bi bi-chevron-right"></i></span>
     </td>
 </tr>
 `;
@@ -778,11 +781,8 @@ function renderizarPaginacao(total, pagina, limite) {
 
     if (totalPaginas <= 1) {
         $('#paginacao').html('');
-        $('#grupoLimiteClientes').addClass('d-none');
         return;
     }
-
-    $('#grupoLimiteClientes').removeClass('d-none');
 
     html += `<nav><ul class="pagination justify-content-center mt-3">`;
 
@@ -1551,16 +1551,98 @@ if (clienteModalEl) {
     });
 }
 
-$(document).on('pointerdown', '#clientesTable tbody tr.linha-cliente', function (evento) {
-    if (evento.button !== 0) {
+function clientePainelValor(valor) {
+    const texto = String(valor || '').trim();
+    return texto || 'Não informado';
+}
+
+function clientePainelData(valor) {
+    const partes = String(valor || '').slice(0, 10).split('-');
+    return partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : '';
+}
+
+function clientePainelRotulo(valor) {
+    const rotulos = {
+        possui: 'Possui',
+        nao_possui: 'Não possui',
+        nao_precisa_momento: 'Não precisa no momento',
+        cadastrado: 'Cadastrado',
+        nao_cadastrado: 'Não cadastrado',
+        goias: 'Goiás',
+        simples_nacional: 'Simples Nacional',
+        lucro_presumido: 'Lucro Presumido',
+        lucro_real: 'Lucro Real',
+        mei: 'Microempreendedor Individual',
+        sim: 'Ativo',
+        nao: 'Não',
+        ativo: 'Ativo',
+        em_baixa: 'Em baixa',
+        devolvido: 'Devolvido',
+        baixado: 'Baixado'
+    };
+    return rotulos[String(valor || '')] || clientePainelValor(valor);
+}
+
+function clientePainelAcompanhamento(icone, titulo, situacao, vencimento = '') {
+    const data = clientePainelData(vencimento);
+    const complemento = data ? `${clientePainelRotulo(situacao)} · ${data}` : clientePainelRotulo(situacao);
+    return `
+        <div class="cliente-acompanhamento">
+            <i class="bi ${icone}" aria-hidden="true"></i>
+            <div><strong>${escapeHtml(titulo)}</strong><small>${escapeHtml(complemento)}</small></div>
+        </div>
+    `;
+}
+
+function abrirPainelCliente(clienteId, linha) {
+    const clienteIdNormalizado = String(clienteId);
+    const cliente = clientesPaginaAtual.get(clienteIdNormalizado);
+    const painel = document.getElementById('painelCliente');
+    if (!cliente || !painel || !window.bootstrap) {
         return;
     }
 
-    const url = $(this).data('url');
+    const offcanvas = bootstrap.Offcanvas.getOrCreateInstance(painel);
 
-    if (url) {
-        window.location.href = url;
+    if (painel.classList.contains('show') && painel.dataset.clienteId === clienteIdNormalizado) {
+        offcanvas.hide();
+        return;
     }
+
+    $('#clientesTable tbody tr.linha-cliente').removeClass('is-selected');
+    $(linha).addClass('is-selected');
+    painel.dataset.clienteId = clienteIdNormalizado;
+
+    $('#painelClienteTitulo').text(clientePainelValor(cliente.nome));
+    $('#painelClienteSubtitulo').text(
+        [cliente.codigo ? `Cliente ${cliente.codigo}` : '', cliente.documento || ''].filter(Boolean).join(' · ')
+    );
+    $('#painelClienteFantasia').text(clientePainelValor(cliente.nome_fantasia));
+    $('#painelClienteTributacao').text(clientePainelRotulo(cliente.tributacao));
+    $('#painelClienteCidade').text([cliente.cidade, cliente.uf].filter(Boolean).join(' / ') || 'Não informado');
+    $('#painelClienteTelefone').text(clientePainelValor(cliente.telefone));
+    $('#painelClienteEmail').text(clientePainelValor(cliente.email));
+    $('#painelClienteInscricao').text(clientePainelValor(cliente.inscricao_estadual));
+
+    const situacao = String(cliente.situacao_cliente || 'ativo');
+    $('#painelClienteSituacao')
+        .text(clientePainelRotulo(situacao))
+        .attr('class', `badge ${situacao === 'ativo' ? 'bg-success' : (situacao === 'em_baixa' ? 'bg-warning text-dark' : 'bg-secondary')}`);
+
+    $('#painelClienteAcompanhamentos').html([
+        clientePainelAcompanhamento('bi-patch-check', 'Certificado digital', cliente.certificado_status, cliente.vencimento_certificado),
+        clientePainelAcompanhamento('bi-key', 'Procuração Receita Federal', cliente.procuracao_receita_federal, cliente.vencimento_procuracao_receita_federal),
+        clientePainelAcompanhamento('bi-building-check', 'Alvará', cliente.alvara),
+        clientePainelAcompanhamento('bi-bank', 'Parcelamentos', cliente.possui_parcelamento)
+    ].join(''));
+
+    $('#painelClienteEditar').attr('href', `cliente_editar.php?id=${encodeURIComponent(cliente.id)}`);
+    $('#painelClienteAbrir').attr('href', `cliente.php?id=${encodeURIComponent(cliente.id)}`);
+    offcanvas.show();
+}
+
+$(document).on('click', '#clientesTable tbody tr.linha-cliente', function () {
+    abrirPainelCliente($(this).data('cliente-id'), this);
 });
 
 $(document).on('keydown', '#clientesTable tbody tr.linha-cliente', function (evento) {
@@ -1569,11 +1651,12 @@ $(document).on('keydown', '#clientesTable tbody tr.linha-cliente', function (eve
     }
 
     evento.preventDefault();
-    const url = $(this).data('url');
+    abrirPainelCliente($(this).data('cliente-id'), this);
+});
 
-    if (url) {
-        window.location.href = url;
-    }
+document.getElementById('painelCliente')?.addEventListener('hidden.bs.offcanvas', function () {
+    $('#clientesTable tbody tr.linha-cliente').removeClass('is-selected');
+    delete this.dataset.clienteId;
 });
 
 function filtrarClientesNaTela() {

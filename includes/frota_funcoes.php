@@ -187,3 +187,159 @@ function frotaSituacaoVeiculo(string $situacao): string
 
     return $situacoes[$situacao] ?? 'Ativo';
 }
+
+function frotaArmazenamentoRaiz(bool $criar = false): ?string
+{
+    $configurado = defined('LOGI_STORAGE_PATH')
+        ? (string)constant('LOGI_STORAGE_PATH')
+        : (string)(getenv('LOGI_STORAGE_PATH') ?: '');
+    $caminho = trim($configurado);
+
+    if ($caminho === '') {
+        // Em produção, o projeto fica em public_html e esta pasta fica fora dele.
+        $caminho = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'logi_storage';
+    } elseif (!str_starts_with($caminho, DIRECTORY_SEPARATOR)) {
+        $caminho = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . $caminho;
+    }
+
+    if ($criar && !is_dir($caminho) && !@mkdir($caminho, 0750, true) && !is_dir($caminho)) {
+        return null;
+    }
+
+    $raiz = realpath($caminho);
+    return $raiz !== false && is_dir($raiz)
+        ? rtrim($raiz, DIRECTORY_SEPARATOR)
+        : null;
+}
+
+function frotaDocumentoCaminhoLogico(string $caminho): ?string
+{
+    $caminho = ltrim(str_replace('\\', '/', trim($caminho)), '/');
+    if (str_starts_with($caminho, 'storage/')) {
+        $caminho = substr($caminho, strlen('storage/'));
+    }
+
+    return preg_match('#^frota/[1-9]\d*/[1-9]\d*/\d{4}/[a-f0-9]{36}\.(?:pdf|jpg|png)$#i', $caminho) === 1
+        ? $caminho
+        : null;
+}
+
+function frotaDocumentoPrepararDiretorio(int $empresaId, int $veiculoId, int $ano): ?array
+{
+    if ($empresaId <= 0 || $veiculoId <= 0 || $ano < 1900 || $ano > 9999) {
+        return null;
+    }
+
+    $raiz = frotaArmazenamentoRaiz(true);
+    if ($raiz === null || !is_writable($raiz)) {
+        return null;
+    }
+
+    $relativo = 'frota/' . $empresaId . '/' . $veiculoId . '/' . $ano;
+    $absoluto = $raiz . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativo);
+    if (!is_dir($absoluto) && !@mkdir($absoluto, 0750, true) && !is_dir($absoluto)) {
+        return null;
+    }
+
+    return ['relativo' => $relativo, 'absoluto' => $absoluto];
+}
+
+function frotaDocumentoCaminhoAbsoluto(string $caminho): ?string
+{
+    $logico = frotaDocumentoCaminhoLogico($caminho);
+    if ($logico === null) {
+        return null;
+    }
+
+    $raiz = frotaArmazenamentoRaiz();
+    if ($raiz !== null) {
+        $candidato = realpath($raiz . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $logico));
+        if (
+            $candidato !== false
+            && str_starts_with($candidato, $raiz . DIRECTORY_SEPARATOR)
+            && is_file($candidato)
+        ) {
+            return $candidato;
+        }
+    }
+
+    // Compatibilidade com documentos enviados antes da pasta persistente.
+    $raizLegada = realpath(dirname(__DIR__) . '/storage/frota');
+    $sufixo = substr($logico, strlen('frota/'));
+    if ($raizLegada !== false && $sufixo !== false) {
+        $candidatoLegado = realpath($raizLegada . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $sufixo));
+        if (
+            $candidatoLegado !== false
+            && str_starts_with($candidatoLegado, $raizLegada . DIRECTORY_SEPARATOR)
+            && is_file($candidatoLegado)
+        ) {
+            return $candidatoLegado;
+        }
+    }
+
+    return null;
+}
+
+function frotaMigrarArmazenamentoLegado(): array
+{
+    $resultado = ['migrados' => 0, 'falhas' => 0];
+    $raizDestino = frotaArmazenamentoRaiz(true);
+    $raizLegada = realpath(dirname(__DIR__) . '/storage/frota');
+
+    if ($raizDestino === null || $raizLegada === false || !is_dir($raizLegada)) {
+        return $resultado;
+    }
+
+    $destinoFrota = $raizDestino . DIRECTORY_SEPARATOR . 'frota';
+    if (realpath($destinoFrota) === $raizLegada) {
+        return $resultado;
+    }
+
+    $arquivos = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($raizLegada, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::LEAVES_ONLY
+    );
+
+    foreach ($arquivos as $arquivo) {
+        if (!$arquivo->isFile() || in_array($arquivo->getFilename(), ['.gitkeep', '.DS_Store'], true)) {
+            continue;
+        }
+
+        $sufixo = ltrim(substr($arquivo->getPathname(), strlen($raizLegada)), DIRECTORY_SEPARATOR);
+        $logico = 'frota/' . str_replace(DIRECTORY_SEPARATOR, '/', $sufixo);
+        if (frotaDocumentoCaminhoLogico($logico) === null) {
+            $resultado['falhas']++;
+            continue;
+        }
+
+        $destino = $raizDestino . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $logico);
+        $diretorio = dirname($destino);
+        if (!is_dir($diretorio) && !@mkdir($diretorio, 0750, true) && !is_dir($diretorio)) {
+            $resultado['falhas']++;
+            continue;
+        }
+
+        if (is_file($destino)) {
+            if (filesize($destino) === $arquivo->getSize() && @unlink($arquivo->getPathname())) {
+                $resultado['migrados']++;
+            } else {
+                $resultado['falhas']++;
+            }
+            continue;
+        }
+
+        if (@rename($arquivo->getPathname(), $destino)) {
+            $resultado['migrados']++;
+            continue;
+        }
+
+        if (@copy($arquivo->getPathname(), $destino) && @unlink($arquivo->getPathname())) {
+            $resultado['migrados']++;
+        } else {
+            @unlink($destino);
+            $resultado['falhas']++;
+        }
+    }
+
+    return $resultado;
+}
