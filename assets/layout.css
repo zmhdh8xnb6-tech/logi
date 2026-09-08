@@ -9,11 +9,17 @@
     --logi-primary: #1368f5;
     --logi-radius: 8px;
     --logi-shadow: 0 4px 14px rgba(15, 23, 42, .045);
+    --logi-font: Arial, Helvetica, sans-serif;
 }
 
 body.app-layout {
     background: #eef2f7;
     color: var(--logi-text);
+    font-family: var(--logi-font);
+}
+
+body.app-layout :is(button, input, select, textarea, table) {
+    font-family: var(--logi-font);
 }
 
 body.app-layout .logi-page-header,
@@ -171,7 +177,8 @@ body.app-layout .table:is(.legalizacao-tabela,
     .ponto-folhas-salvas-tabela)>tbody>tr>td {
     padding: 10px 12px;
     border-color: var(--logi-border-soft);
-    font-size: .86rem;
+    font-size: .8rem;
+    font-weight: 400;
     line-height: 1.3;
     vertical-align: middle;
 }
@@ -382,7 +389,6 @@ body.clientes-page #clientesTable tbody tr.is-selected td {
 
 body.clientes-page #clientesTable td:nth-child(3) {
     color: var(--logi-text);
-    font-weight: 650;
 }
 
 .clientes-row-action {
@@ -482,6 +488,10 @@ body.clientes-page #paginacao .pagination {
 
 .clientes-detalhes-campo {
     min-width: 0;
+}
+
+.clientes-detalhes-campo-largo {
+    grid-column: 1 / -1;
 }
 
 .clientes-detalhes-campo span,

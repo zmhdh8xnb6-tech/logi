@@ -158,12 +158,20 @@ if (strcasecmp(trim(empresaAtivaNome($pdo)), 'MAXWELL') === 0) {
                     <div class="clientes-detalhes-campo"><span>Telefone</span><strong id="painelClienteTelefone">-</strong></div>
                     <div class="clientes-detalhes-campo"><span>E-mail</span><strong id="painelClienteEmail">-</strong></div>
                     <div class="clientes-detalhes-campo"><span>Inscrição estadual</span><strong id="painelClienteInscricao">-</strong></div>
+                    <div class="clientes-detalhes-campo"><span>NIRE</span><strong id="painelClienteNire">-</strong></div>
+                    <div class="clientes-detalhes-campo"><span>CEP</span><strong id="painelClienteCep">-</strong></div>
+                    <div class="clientes-detalhes-campo clientes-detalhes-campo-largo"><span>Endereço</span><strong id="painelClienteEndereco">-</strong></div>
                 </div>
             </section>
 
             <section class="clientes-detalhes-secao" aria-labelledby="painelClienteAcompanhamentosTitulo">
                 <h6 id="painelClienteAcompanhamentosTitulo">Acompanhamentos</h6>
                 <div class="clientes-acompanhamentos" id="painelClienteAcompanhamentos"></div>
+            </section>
+
+            <section class="clientes-detalhes-secao" aria-labelledby="painelClienteProcuracoesTitulo">
+                <h6 id="painelClienteProcuracoesTitulo">Procurações</h6>
+                <div class="clientes-acompanhamentos" id="painelClienteProcuracoes"></div>
             </section>
         </div>
         <div class="offcanvas-footer">

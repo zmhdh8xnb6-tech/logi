@@ -1594,6 +1594,12 @@ function clientePainelAcompanhamento(icone, titulo, situacao, vencimento = '') {
     `;
 }
 
+function clientePainelEndereco(cliente) {
+    const primeiraLinha = [cliente.endereco, cliente.numero_endereco].filter(Boolean).join(', ');
+    const segundaLinha = [cliente.complemento, cliente.bairro].filter(Boolean).join(' - ');
+    return [primeiraLinha, segundaLinha].filter(Boolean).join(' - ') || 'Não informado';
+}
+
 function abrirPainelCliente(clienteId, linha) {
     const clienteIdNormalizado = String(clienteId);
     const cliente = clientesPaginaAtual.get(clienteIdNormalizado);
@@ -1623,17 +1629,35 @@ function abrirPainelCliente(clienteId, linha) {
     $('#painelClienteTelefone').text(clientePainelValor(cliente.telefone));
     $('#painelClienteEmail').text(clientePainelValor(cliente.email));
     $('#painelClienteInscricao').text(clientePainelValor(cliente.inscricao_estadual));
+    $('#painelClienteNire').text(clientePainelValor(cliente.nire));
+    $('#painelClienteCep').text(clientePainelValor(cliente.cep));
+    $('#painelClienteEndereco').text(clientePainelEndereco(cliente));
 
     const situacao = String(cliente.situacao_cliente || 'ativo');
     $('#painelClienteSituacao')
         .text(clientePainelRotulo(situacao))
         .attr('class', `badge ${situacao === 'ativo' ? 'bg-success' : (situacao === 'em_baixa' ? 'bg-warning text-dark' : 'bg-secondary')}`);
 
+    const certificadoStatus = cliente.certificado_status
+        || (cliente.vencimento_certificado ? 'possui' : 'nao_possui');
+
     $('#painelClienteAcompanhamentos').html([
-        clientePainelAcompanhamento('bi-patch-check', 'Certificado digital', cliente.certificado_status, cliente.vencimento_certificado),
-        clientePainelAcompanhamento('bi-key', 'Procuração Receita Federal', cliente.procuracao_receita_federal, cliente.vencimento_procuracao_receita_federal),
+        clientePainelAcompanhamento('bi-patch-check', 'Certificado digital', certificadoStatus, cliente.vencimento_certificado),
+        clientePainelAcompanhamento('bi-building', 'Cadastro DF Legal', cliente.cadastro_df_legal),
         clientePainelAcompanhamento('bi-building-check', 'Alvará', cliente.alvara),
-        clientePainelAcompanhamento('bi-bank', 'Parcelamentos', cliente.possui_parcelamento)
+        clientePainelAcompanhamento('bi-person-badge', 'Contador', cliente.contador),
+        clientePainelAcompanhamento('bi-clipboard-check', 'Cadastro CRF', cliente.cadastro_crf),
+        clientePainelAcompanhamento('bi-bank', 'Parcelamentos', cliente.possui_parcelamento),
+        clientePainelAcompanhamento('bi-file-earmark-text', 'Contrato de prestação de serviços', cliente.contrato_prestacao_servicos)
+    ].join(''));
+
+    $('#painelClienteProcuracoes').html([
+        clientePainelAcompanhamento('bi-key', 'Receita Federal', cliente.procuracao_receita_federal, cliente.vencimento_procuracao_receita_federal),
+        clientePainelAcompanhamento('bi-key', 'Conectividade', cliente.procuracao_conectividade, cliente.vencimento_procuracao_conectividade),
+        clientePainelAcompanhamento('bi-key', 'Empregador Web', cliente.procuracao_empregador_web),
+        clientePainelAcompanhamento('bi-key', 'FGTS', cliente.procuracao_fgts, cliente.vencimento_procuracao_fgts),
+        clientePainelAcompanhamento('bi-key', 'Particular', cliente.procuracao_particular),
+        clientePainelAcompanhamento('bi-key', 'SEFAZ', cliente.procuracao_sefaz)
     ].join(''));
 
     $('#painelClienteEditar').attr('href', `cliente_editar.php?id=${encodeURIComponent(cliente.id)}`);
