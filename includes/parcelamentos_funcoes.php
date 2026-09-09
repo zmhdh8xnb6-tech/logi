@@ -369,16 +369,11 @@ function buscarParcelamentosPendentesLiquidacao(
           AND p.cancelado_em IS NULL
           AND p.parcelas_total > 0
           AND p.parcelas_atrasadas = 0
-          AND (
-              p.parcelas_emitidas >= p.parcelas_total
-              OR (
-                  p.data_primeira_parcela IS NOT NULL
-                  AND PERIOD_DIFF(
-                      EXTRACT(YEAR_MONTH FROM CURDATE()),
-                      EXTRACT(YEAR_MONTH FROM p.data_primeira_parcela)
-                  ) + 1 >= p.parcelas_total
-              )
-          )
+          AND p.data_primeira_parcela IS NOT NULL
+          AND PERIOD_DIFF(
+              EXTRACT(YEAR_MONTH FROM CURDATE()),
+              EXTRACT(YEAR_MONTH FROM p.data_primeira_parcela)
+          ) >= p.parcelas_total
           {$filtroIds}
         ORDER BY CAST(c.codigo AS UNSIGNED), c.nome, p.id
         {$sufixoBloqueio}
@@ -514,7 +509,7 @@ function paginarParcelamentosPorOrgao(
     bool $cancelados = false,
     bool $liquidados = false
 ): array {
-    $porPagina = 15;
+    $porPagina = parcelamentosPorPaginaSelecionado();
     $busca = trim((string)($_GET['busca'] ?? ''));
     $total = contarParcelamentosPorOrgao($pdo, $orgao, $cancelados, $liquidados, $busca);
     $totalPaginas = max(1, (int)ceil($total / $porPagina));
@@ -539,10 +534,17 @@ function paginarParcelamentosPorOrgao(
     ];
 }
 
+function parcelamentosPorPaginaSelecionado(): int
+{
+    $porPagina = (int)($_GET['por_pagina'] ?? 15);
+    return in_array($porPagina, [15, 30, 60, 90], true) ? $porPagina : 15;
+}
+
 function renderizarBuscaParcelamentos(string $busca, int $total): void
 {
+    $porPagina = parcelamentosPorPaginaSelecionado();
 ?>
-    <form method="get" class="row g-2 mb-3 busca-parcelamentos align-items-center">
+    <form method="get" class="row g-2 mb-3 busca-parcelamentos align-items-center" data-busca-parcelamentos>
         <div class="col-md-6 col-lg-5">
             <div class="input-group">
                 <span class="input-group-text"><i class="bi bi-search"></i></span>
@@ -552,18 +554,51 @@ function renderizarBuscaParcelamentos(string $busca, int $total): void
                     name="busca"
                     value="<?= htmlspecialchars($busca) ?>"
                     placeholder="Buscar por código, cliente, número ou status...">
-                <button type="submit" class="btn btn-outline-primary">Buscar</button>
             </div>
+        </div>
+        <div class="col-auto">
+            <select class="form-select" name="por_pagina" aria-label="Quantidade de parcelamentos por página">
+                <?php foreach ([15, 30, 60, 90] as $quantidade): ?>
+                    <option value="<?= $quantidade ?>" <?= $porPagina === $quantidade ? 'selected' : '' ?>>
+                        Mostrar <?= $quantidade ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
         </div>
         <?php if ($busca !== ''): ?>
             <div class="col-auto">
-                <a href="?" class="btn btn-outline-secondary">Limpar</a>
+                <a href="?<?= htmlspecialchars(http_build_query(['por_pagina' => $porPagina])) ?>" class="btn btn-outline-secondary">Limpar</a>
             </div>
         <?php endif; ?>
         <div class="col text-md-end text-muted small">
-            <?= $total ?> registro<?= $total === 1 ? '' : 's' ?> · 15 por página
+            <?= $total ?> registro<?= $total === 1 ? '' : 's' ?>
         </div>
     </form>
+    <script>
+        (function() {
+            document.querySelectorAll('[data-busca-parcelamentos]').forEach(function(formulario) {
+                if (formulario.dataset.buscaInicializada === '1') {
+                    return;
+                }
+
+                formulario.dataset.buscaInicializada = '1';
+
+                const busca = formulario.querySelector('input[name="busca"]');
+                const limite = formulario.querySelector('select[name="por_pagina"]');
+
+                busca?.addEventListener('input', function() {
+                    clearTimeout(formulario._buscaTimeout);
+                    formulario._buscaTimeout = setTimeout(function() {
+                        formulario.requestSubmit();
+                    }, 400);
+                });
+
+                limite?.addEventListener('change', function() {
+                    formulario.requestSubmit();
+                });
+            });
+        })();
+    </script>
 <?php
 }
 
@@ -573,8 +608,12 @@ function renderizarPaginacaoParcelamentos(int $pagina, int $totalPaginas, string
         return;
     }
 
-    $criarUrl = static function (int $destino) use ($busca): string {
-        $parametros = ['pagina' => $destino];
+    $porPagina = parcelamentosPorPaginaSelecionado();
+    $criarUrl = static function (int $destino) use ($busca, $porPagina): string {
+        $parametros = [
+            'pagina' => $destino,
+            'por_pagina' => $porPagina,
+        ];
         if ($busca !== '') {
             $parametros['busca'] = $busca;
         }
