@@ -370,15 +370,13 @@ function buscarParcelamentosPendentesLiquidacao(
           AND p.parcelas_total > 0
           AND p.parcelas_atrasadas = 0
           AND (
-              (p.data_primeira_parcela IS NULL AND p.parcelas_emitidas >= p.parcelas_total)
+              p.parcelas_emitidas >= p.parcelas_total
               OR (
                   p.data_primeira_parcela IS NOT NULL
-                  AND CURDATE() >= p.data_primeira_parcela
-                  AND TIMESTAMPDIFF(
-                      MONTH,
-                      p.data_primeira_parcela,
-                      CURDATE()
-                  ) + 1 > p.parcelas_total
+                  AND PERIOD_DIFF(
+                      EXTRACT(YEAR_MONTH FROM CURDATE()),
+                      EXTRACT(YEAR_MONTH FROM p.data_primeira_parcela)
+                  ) + 1 >= p.parcelas_total
               )
           )
           {$filtroIds}
@@ -1222,14 +1220,12 @@ function renderizarModalDetalhesParcelamento(): void
                     parcelamentosPaginaAtual = 1;
                     renderizarParcelamentosPaginados();
                 });
-                if (filtradas.length <= parcelamentosPorPagina) {
-
-                    return;
-
-                }
-
 
                 paginacaoParcelamentos.appendChild(seletorLimite);
+
+                if (filtradas.length <= parcelamentosPorPagina) {
+                    return;
+                }
 
                 const nav = document.createElement('nav');
                 const lista = document.createElement('ul');
