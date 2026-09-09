@@ -214,12 +214,25 @@ function frotaArmazenamentoRaiz(bool $criar = false): ?string
 
 function frotaDocumentoCaminhoLogico(string $caminho): ?string
 {
-    $caminho = ltrim(str_replace('\\', '/', trim($caminho)), '/');
-    if (str_starts_with($caminho, 'storage/')) {
-        $caminho = substr($caminho, strlen('storage/'));
+    $caminho = str_replace('\\', '/', trim($caminho));
+    $caminho = preg_replace('#^(?:\./)+#', '', $caminho) ?? $caminho;
+
+    foreach (['/logi_storage/frota/', '/storage/frota/'] as $marcador) {
+        $posicao = strripos('/' . ltrim($caminho, '/'), $marcador);
+        if ($posicao !== false) {
+            $caminho = 'frota/' . substr('/' . ltrim($caminho, '/'), $posicao + strlen($marcador));
+            break;
+        }
     }
 
-    return preg_match('#^frota/[1-9]\d*/[1-9]\d*/\d{4}/[a-f0-9]{36}\.(?:pdf|jpg|png)$#i', $caminho) === 1
+    $caminho = ltrim($caminho, '/');
+    if (str_starts_with($caminho, 'storage/')) {
+        $caminho = substr($caminho, strlen('storage/'));
+    } elseif (str_starts_with($caminho, 'logi_storage/')) {
+        $caminho = substr($caminho, strlen('logi_storage/'));
+    }
+
+    return preg_match('#^frota/[1-9]\d*/[1-9]\d*/\d{4}/[a-z0-9][a-z0-9._-]{0,127}\.(?:pdf|jpe?g|png)$#i', $caminho) === 1
         ? $caminho
         : null;
 }
@@ -251,29 +264,27 @@ function frotaDocumentoCaminhoAbsoluto(string $caminho): ?string
         return null;
     }
 
-    $raiz = frotaArmazenamentoRaiz();
-    if ($raiz !== null) {
+    $raizes = [];
+    $raizPersistente = frotaArmazenamentoRaiz();
+    if ($raizPersistente !== null) {
+        $raizes[] = $raizPersistente;
+    }
+
+    // Compatibilidade com documentos enviados quando o storage ainda ficava no projeto.
+    $raizLegada = realpath(dirname(__DIR__) . '/storage');
+    if ($raizLegada !== false && !in_array($raizLegada, $raizes, true)) {
+        $raizes[] = rtrim($raizLegada, DIRECTORY_SEPARATOR);
+    }
+
+    foreach ($raizes as $raiz) {
         $candidato = realpath($raiz . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $logico));
         if (
             $candidato !== false
             && str_starts_with($candidato, $raiz . DIRECTORY_SEPARATOR)
             && is_file($candidato)
+            && is_readable($candidato)
         ) {
             return $candidato;
-        }
-    }
-
-    // Compatibilidade com documentos enviados antes da pasta persistente.
-    $raizLegada = realpath(dirname(__DIR__) . '/storage/frota');
-    $sufixo = substr($logico, strlen('frota/'));
-    if ($raizLegada !== false && $sufixo !== false) {
-        $candidatoLegado = realpath($raizLegada . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $sufixo));
-        if (
-            $candidatoLegado !== false
-            && str_starts_with($candidatoLegado, $raizLegada . DIRECTORY_SEPARATOR)
-            && is_file($candidatoLegado)
-        ) {
-            return $candidatoLegado;
         }
     }
 

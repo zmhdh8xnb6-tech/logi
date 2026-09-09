@@ -632,13 +632,10 @@ if ($tabelaAntivirusExiste) {
 
             paginacaoAntivirus.innerHTML = '';
 
-            if (filtradas.length <= antivirusPorPagina) {
-                return;
-            }
-
             const seletorLimite = document.createElement('div');
-            seletorLimite.className = 'd-flex justify-content-end mb-2';
+            seletorLimite.className = 'd-flex justify-content-between align-items-center gap-2 mb-2';
             seletorLimite.innerHTML = `
+                <span class="text-muted small">${filtradas.length} registro${filtradas.length === 1 ? '' : 's'}</span>
                 <select class="form-select form-select-sm w-auto" aria-label="Itens por página">
                     <option value="15">Mostrar 15</option>
                     <option value="30">Mostrar 30</option>
@@ -655,6 +652,10 @@ if ($tabelaAntivirusExiste) {
                 renderizarAntivirus();
             });
             paginacaoAntivirus.appendChild(seletorLimite);
+
+            if (filtradas.length <= antivirusPorPagina) {
+                return;
+            }
 
             const nav = document.createElement('nav');
             const lista = document.createElement('ul');
@@ -705,7 +706,7 @@ if ($tabelaAntivirusExiste) {
             atualizarVencimentoAntivirus();
         }
 
-        function atualizarVencimentoAntivirus() {
+        function atualizarVencimentoAntivirus(focarData = false) {
             const status = document.getElementById('antivirusStatus');
             const vencimento = document.getElementById('antivirusVencimento');
 
@@ -718,11 +719,18 @@ if ($tabelaAntivirusExiste) {
             if (!precisaData) {
                 vencimento.value = '';
                 vencimento.classList.remove('is-invalid');
+            } else if (focarData) {
+                requestAnimationFrame(function() {
+                    const campoVisivel = vencimento._flatpickr?.altInput || vencimento;
+                    campoVisivel.focus();
+                });
             }
         }
 
         document.getElementById('btnNovoAntivirus')?.addEventListener('click', limparModalAntivirus);
-        document.getElementById('antivirusStatus')?.addEventListener('change', atualizarVencimentoAntivirus);
+        document.getElementById('antivirusStatus')?.addEventListener('change', function(evento) {
+            atualizarVencimentoAntivirus(evento.target.value === 'possui');
+        });
         buscaAntivirus?.addEventListener('input', function() {
             antivirusPaginaAtual = 1;
             renderizarAntivirus();

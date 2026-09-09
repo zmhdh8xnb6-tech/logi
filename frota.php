@@ -279,6 +279,18 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!move_uploaded_file($caminhoTemporario, $caminhoAbsoluto)) {
                 throw new RuntimeException('Falha ao mover o arquivo enviado.');
             }
+            @chmod($caminhoAbsoluto, 0640);
+            clearstatcache(true, $caminhoAbsoluto);
+            $tamanhoSalvo = filesize($caminhoAbsoluto);
+            if (
+                !is_file($caminhoAbsoluto)
+                || !is_readable($caminhoAbsoluto)
+                || $tamanhoSalvo === false
+                || $tamanhoSalvo !== $tamanhoArquivo
+                || frotaDocumentoCaminhoAbsoluto($caminhoRelativo) === null
+            ) {
+                throw new RuntimeException('O arquivo não pôde ser validado no armazenamento persistente.');
+            }
 
             $stmtAnterior = $pdo->prepare('SELECT caminho_arquivo FROM frota_documentos WHERE empresa_id = ? AND veiculo_id = ? AND ano = ?');
             $stmtAnterior->execute([$empresaId, $veiculoId, $anoControle]);
@@ -588,6 +600,7 @@ if ($estruturaDisponivel) {
             COALESCE(c.quantidade_multas, 0) AS quantidade_multas,
             d.id AS documento_id,
             d.nome_original AS documento_nome,
+            d.caminho_arquivo AS documento_caminho,
             d.enviado_em AS documento_enviado_em
         FROM frota_veiculos v
         LEFT JOIN frota_controles_anuais c
@@ -795,7 +808,14 @@ $statusRotulo = static function (string $status): string {
                                         </tr>
                                     <?php endif; ?>
                                     <?php foreach ($veiculos as $veiculo): ?>
-                                        <?php $dadosVeiculo = htmlspecialchars(json_encode($veiculo, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8'); ?>
+                                        <?php
+                                        $documentoIdVeiculo = (int)($veiculo['documento_id'] ?? 0);
+                                        $documentoDisponivel = $documentoIdVeiculo > 0
+                                            && frotaDocumentoCaminhoAbsoluto((string)($veiculo['documento_caminho'] ?? '')) !== null;
+                                        $dadosVeiculoEdicao = $veiculo;
+                                        unset($dadosVeiculoEdicao['documento_caminho']);
+                                        $dadosVeiculo = htmlspecialchars(json_encode($dadosVeiculoEdicao, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+                                        ?>
                                         <tr>
                                             <td><span class="frota-placa"><?= htmlspecialchars(frotaPlacaFormatada((string)$veiculo['placa'])) ?></span></td>
                                             <td>
@@ -821,8 +841,12 @@ $statusRotulo = static function (string $status): string {
                                                 <?php endif; ?>
                                             </td>
                                             <td class="text-end frota-acoes">
-                                                <?php if ((int)($veiculo['documento_id'] ?? 0) > 0): ?>
-                                                    <a href="frota_documento.php?id=<?= (int)$veiculo['documento_id'] ?>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success" title="Abrir documento de <?= $anoControle ?>"><i class="bi bi-file-earmark-check"></i></a>
+                                                <?php if ($documentoDisponivel): ?>
+                                                    <a href="frota_documento.php?id=<?= $documentoIdVeiculo ?>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success" title="Abrir documento de <?= $anoControle ?>"><i class="bi bi-file-earmark-check"></i></a>
+                                                <?php elseif ($documentoIdVeiculo > 0): ?>
+                                                    <span class="btn btn-sm btn-outline-danger disabled" title="Arquivo não encontrado no servidor. Anexe novamente." aria-label="Arquivo não encontrado no servidor"><i class="bi bi-file-earmark-x"></i></span>
+                                                <?php endif; ?>
+                                                <?php if ($documentoIdVeiculo > 0): ?>
                                                     <button
                                                         type="button"
                                                         class="btn btn-sm btn-outline-danger btn-excluir-registro"
@@ -830,7 +854,7 @@ $statusRotulo = static function (string $status): string {
                                                         data-bs-target="#modalExcluirFrota"
                                                         data-acao="excluir_documento_veiculo"
                                                         data-aba="visao-geral"
-                                                        data-id="<?= (int)$veiculo['documento_id'] ?>"
+                                                        data-id="<?= $documentoIdVeiculo ?>"
                                                         data-nome="<?= htmlspecialchars('o documento de ' . $anoControle . ' do veículo ' . frotaPlacaFormatada((string)$veiculo['placa']), ENT_QUOTES) ?>"
                                                         title="Excluir somente o documento de <?= $anoControle ?>"
                                                         aria-label="Excluir somente o documento de <?= $anoControle ?>">
@@ -845,7 +869,7 @@ $statusRotulo = static function (string $status): string {
                                                     data-veiculo-id="<?= (int)$veiculo['id'] ?>"
                                                     data-veiculo-nome="<?= htmlspecialchars(frotaPlacaFormatada((string)$veiculo['placa']) . ' · ' . $veiculo['marca'] . ' ' . $veiculo['modelo'], ENT_QUOTES) ?>"
                                                     data-documento-nome="<?= htmlspecialchars((string)($veiculo['documento_nome'] ?? ''), ENT_QUOTES) ?>"
-                                                    title="<?= (int)($veiculo['documento_id'] ?? 0) > 0 ? 'Substituir documento de ' . $anoControle : 'Anexar documento de ' . $anoControle ?>">
+                                                    title="<?= $documentoDisponivel ? 'Substituir documento de ' . $anoControle : 'Anexar documento de ' . $anoControle ?>">
                                                     <i class="bi bi-paperclip"></i>
                                                 </button>
                                                 <button type="button" class="btn btn-sm btn-outline-primary btn-editar-veiculo" data-bs-toggle="modal" data-bs-target="#modalVeiculo" data-registro="<?= $dadosVeiculo ?>" title="Editar veículo"><i class="bi bi-pencil"></i></button>

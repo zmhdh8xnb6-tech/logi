@@ -303,7 +303,7 @@ function renderizarScriptImpressaoParcelamentos(): void
             });
         });
     </script>
-    <?php
+<?php
 }
 
 function parcelamentosToken(): string
@@ -392,7 +392,10 @@ function buscarParcelamentosPorOrgao(
     PDO $pdo,
     string $orgao,
     bool $cancelados = false,
-    bool $liquidados = false
+    bool $liquidados = false,
+    string $busca = '',
+    ?int $limite = null,
+    int $offset = 0
 ): array {
     if (!$cancelados && !$liquidados) {
         $GLOBALS['parcelamentos_pendentes_liquidacao'] = buscarParcelamentosPendentesLiquidacao($pdo, $orgao);
@@ -412,6 +415,16 @@ function buscarParcelamentosPorOrgao(
             : 'p.cancelado_em IS NULL';
     }
 
+    $parametros = [$orgao];
+    $filtroBusca = parcelamentosFiltroBusca($busca, $parametros, $temLiquidadoEm);
+    $limiteSql = '';
+
+    if ($limite !== null) {
+        $limite = max(1, min(100, $limite));
+        $offset = max(0, $offset);
+        $limiteSql = " LIMIT {$limite} OFFSET {$offset}";
+    }
+
     $stmt = $pdo->prepare("
         SELECT
             p.*,
@@ -423,12 +436,179 @@ function buscarParcelamentosPorOrgao(
         WHERE p.orgao = ?
         AND {$filtroSituacao}
         " . empresaFiltro($pdo, 'clientes', 'c') . "
+        {$filtroBusca}
         ORDER BY CAST(c.codigo AS UNSIGNED) ASC, c.nome ASC, p.id DESC
+        {$limiteSql}
     ");
 
-    $stmt->execute([$orgao]);
+    $stmt->execute($parametros);
 
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function parcelamentosFiltroBusca(string $busca, array &$parametros, bool $temLiquidadoEm): string
+{
+    $busca = trim($busca);
+    if ($busca === '') {
+        return '';
+    }
+
+    $termo = '%' . $busca . '%';
+    $statusLiquidado = $temLiquidadoEm ? 'WHEN p.liquidado_em IS NOT NULL THEN \'Liquidado\'' : '';
+    $campos = [
+        'CAST(c.codigo AS CHAR) LIKE ?',
+        'c.nome LIKE ?',
+        'c.documento LIKE ?',
+        'CAST(p.numero_parcelamento AS CHAR) LIKE ?',
+        'p.forma_envio LIKE ?',
+        "CASE
+            WHEN p.cancelado_em IS NOT NULL THEN 'Cancelado'
+            {$statusLiquidado}
+            WHEN p.parcelas_atrasadas > 0 THEN 'Atrasado'
+            ELSE 'Em dia'
+        END LIKE ?",
+    ];
+
+    array_push($parametros, $termo, $termo, $termo, $termo, $termo, $termo);
+    return 'AND (' . implode(' OR ', $campos) . ')';
+}
+
+function contarParcelamentosPorOrgao(
+    PDO $pdo,
+    string $orgao,
+    bool $cancelados = false,
+    bool $liquidados = false,
+    string $busca = ''
+): int {
+    $temLiquidadoEm = parcelamentosTemColuna($pdo, 'liquidado_em');
+
+    if ($liquidados) {
+        $filtroSituacao = $temLiquidadoEm ? 'p.liquidado_em IS NOT NULL' : '1 = 0';
+    } elseif ($cancelados) {
+        $filtroSituacao = 'p.cancelado_em IS NOT NULL';
+    } else {
+        $filtroSituacao = $temLiquidadoEm
+            ? 'p.cancelado_em IS NULL AND p.liquidado_em IS NULL'
+            : 'p.cancelado_em IS NULL';
+    }
+
+    $parametros = [$orgao];
+    $filtroBusca = parcelamentosFiltroBusca($busca, $parametros, $temLiquidadoEm);
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM parcelamentos p
+        INNER JOIN clientes c ON c.id = p.cliente_id
+        WHERE p.orgao = ?
+          AND {$filtroSituacao}
+          " . empresaFiltro($pdo, 'clientes', 'c') . "
+          {$filtroBusca}
+    ");
+    $stmt->execute($parametros);
+
+    return (int)$stmt->fetchColumn();
+}
+
+function paginarParcelamentosPorOrgao(
+    PDO $pdo,
+    string $orgao,
+    bool $cancelados = false,
+    bool $liquidados = false
+): array {
+    $porPagina = 15;
+    $busca = trim((string)($_GET['busca'] ?? ''));
+    $total = contarParcelamentosPorOrgao($pdo, $orgao, $cancelados, $liquidados, $busca);
+    $totalPaginas = max(1, (int)ceil($total / $porPagina));
+    $pagina = min($totalPaginas, max(1, (int)($_GET['pagina'] ?? 1)));
+    $offset = ($pagina - 1) * $porPagina;
+
+    return [
+        'registros' => buscarParcelamentosPorOrgao(
+            $pdo,
+            $orgao,
+            $cancelados,
+            $liquidados,
+            $busca,
+            $porPagina,
+            $offset
+        ),
+        'busca' => $busca,
+        'pagina' => $pagina,
+        'por_pagina' => $porPagina,
+        'total' => $total,
+        'total_paginas' => $totalPaginas,
+    ];
+}
+
+function renderizarBuscaParcelamentos(string $busca, int $total): void
+{
+?>
+    <form method="get" class="row g-2 mb-3 busca-parcelamentos align-items-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input
+                    type="search"
+                    class="form-control"
+                    name="busca"
+                    value="<?= htmlspecialchars($busca) ?>"
+                    placeholder="Buscar por código, cliente, número ou status...">
+                <button type="submit" class="btn btn-outline-primary">Buscar</button>
+            </div>
+        </div>
+        <?php if ($busca !== ''): ?>
+            <div class="col-auto">
+                <a href="?" class="btn btn-outline-secondary">Limpar</a>
+            </div>
+        <?php endif; ?>
+        <div class="col text-md-end text-muted small">
+            <?= $total ?> registro<?= $total === 1 ? '' : 's' ?> · 15 por página
+        </div>
+    </form>
+<?php
+}
+
+function renderizarPaginacaoParcelamentos(int $pagina, int $totalPaginas, string $busca = ''): void
+{
+    if ($totalPaginas <= 1) {
+        return;
+    }
+
+    $criarUrl = static function (int $destino) use ($busca): string {
+        $parametros = ['pagina' => $destino];
+        if ($busca !== '') {
+            $parametros['busca'] = $busca;
+        }
+        return '?' . http_build_query($parametros);
+    };
+?>
+    <nav class="mt-3" aria-label="Paginação dos parcelamentos">
+        <ul class="pagination justify-content-center mb-0">
+            <li class="page-item <?= $pagina <= 1 ? 'disabled' : '' ?>">
+                <a class="page-link" href="<?= $pagina <= 1 ? '#' : htmlspecialchars($criarUrl($pagina - 1)) ?>">Anterior</a>
+            </li>
+            <?php
+            $ultima = 0;
+            for ($numero = 1; $numero <= $totalPaginas; $numero++):
+                if ($numero !== 1 && $numero !== $totalPaginas && abs($numero - $pagina) > 2) {
+                    continue;
+                }
+                if ($ultima > 0 && $numero - $ultima > 1):
+            ?>
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                <?php
+                endif;
+                $ultima = $numero;
+                ?>
+                <li class="page-item <?= $numero === $pagina ? 'active' : '' ?>">
+                    <a class="page-link" href="<?= htmlspecialchars($criarUrl($numero)) ?>"><?= $numero ?></a>
+                </li>
+            <?php endfor; ?>
+            <li class="page-item <?= $pagina >= $totalPaginas ? 'disabled' : '' ?>">
+                <a class="page-link" href="<?= $pagina >= $totalPaginas ? '#' : htmlspecialchars($criarUrl($pagina + 1)) ?>">Próxima</a>
+            </li>
+        </ul>
+    </nav>
+    <?php
 }
 
 function renderizarResultadoRevisaoLiquidacoes(): void
@@ -1065,50 +1245,15 @@ function renderizarModalDetalhesParcelamento(): void
                 });
             });
 
-            const busca = document.getElementById('buscaParcelamento');
             const linhasParcelamento = Array.from(document.querySelectorAll('.linha-parcelamento'));
-            let parcelamentosPorPagina = Number(localStorage.getItem('parcelamentosPorPagina') || 15);
-            parcelamentosPorPagina = [15, 30, 60, 90].includes(parcelamentosPorPagina) ? parcelamentosPorPagina : 15;
-            let parcelamentosPaginaAtual = 1;
             let impressaoParcelamentosAtiva = false;
-            let paginacaoParcelamentos = document.getElementById('paginacaoParcelamentos');
             const cabecalhoImpressaoParcelamentos = document.querySelector('.orgao-impressao');
             const textoOriginalCabecalhoImpressao = cabecalhoImpressaoParcelamentos ?
                 cabecalhoImpressaoParcelamentos.textContent.trim() :
                 '';
 
-            if (!paginacaoParcelamentos && linhasParcelamento.length > 0) {
-                const tabelaParcelamentos = document.querySelector('.parcelamento-box .table-responsive');
-
-                if (tabelaParcelamentos) {
-                    paginacaoParcelamentos = document.createElement('div');
-                    paginacaoParcelamentos.id = 'paginacaoParcelamentos';
-                    paginacaoParcelamentos.className = 'mt-3';
-                    tabelaParcelamentos.insertAdjacentElement('afterend', paginacaoParcelamentos);
-                }
-            }
-
-            function termoBuscaParcelamento() {
-                return busca ?
-                    busca.value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim() :
-                    '';
-            }
-
             function linhasParcelamentoFiltradas() {
-                const termo = termoBuscaParcelamento();
-
-                if (!termo) {
-                    return linhasParcelamento;
-                }
-
-                return linhasParcelamento.filter(function(linha) {
-                    const texto = linha.textContent
-                        .normalize('NFD')
-                        .replace(/[\u0300-\u036f]/g, '')
-                        .toLowerCase();
-
-                    return texto.includes(termo);
-                });
+                return linhasParcelamento;
             }
 
             function formatarDataHoraImpressao() {
@@ -1146,126 +1291,13 @@ function renderizarModalDetalhesParcelamento(): void
                 }
             }
 
-            function adicionarPaginaParcelamento(lista, rotulo, pagina, desabilitado, ativo) {
-                const item = document.createElement('li');
-                item.className = 'page-item' + (desabilitado ? ' disabled' : '') + (ativo ? ' active' : '');
-
-                const botao = document.createElement('button');
-                botao.type = 'button';
-                botao.className = 'page-link';
-                botao.textContent = rotulo;
-                botao.disabled = desabilitado;
-                botao.addEventListener('click', function() {
-                    parcelamentosPaginaAtual = pagina;
-                    renderizarParcelamentosPaginados();
-                });
-
-                item.appendChild(botao);
-                lista.appendChild(item);
-            }
-
             function renderizarParcelamentosPaginados() {
-                const filtradas = linhasParcelamentoFiltradas();
-
-                if (impressaoParcelamentosAtiva) {
-                    const linhasFiltradas = new Set(filtradas);
-
-                    linhasParcelamento.forEach(function(linha) {
-                        linha.classList.toggle('d-none', !linhasFiltradas.has(linha));
-                    });
-
-                    if (paginacaoParcelamentos) {
-                        paginacaoParcelamentos.innerHTML = '';
-                        paginacaoParcelamentos.classList.add('d-none');
-                    }
-
+                if (!impressaoParcelamentosAtiva) {
                     return;
                 }
-
-                const totalPaginas = Math.max(1, Math.ceil(filtradas.length / parcelamentosPorPagina));
-
-                if (parcelamentosPaginaAtual > totalPaginas) {
-                    parcelamentosPaginaAtual = totalPaginas;
-                }
-
-                const inicio = (parcelamentosPaginaAtual - 1) * parcelamentosPorPagina;
-                const visiveis = new Set(filtradas.slice(inicio, inicio + parcelamentosPorPagina));
 
                 linhasParcelamento.forEach(function(linha) {
-                    linha.classList.toggle('d-none', !visiveis.has(linha));
-                });
-
-                if (!paginacaoParcelamentos) {
-                    return;
-                }
-
-                paginacaoParcelamentos.innerHTML = '';
-                paginacaoParcelamentos.classList.remove('d-none');
-
-                const seletorLimite = document.createElement('div');
-                seletorLimite.className = 'd-flex justify-content-end mb-2';
-                seletorLimite.innerHTML = `
-                    <select class="form-select form-select-sm w-auto" aria-label="Itens por página">
-                        <option value="15">Mostrar 15</option>
-                        <option value="30">Mostrar 30</option>
-                        <option value="60">Mostrar 60</option>
-                        <option value="90">Mostrar 90</option>
-                    </select>
-                `;
-                const campoLimite = seletorLimite.querySelector('select');
-                campoLimite.value = String(parcelamentosPorPagina);
-                campoLimite.addEventListener('change', function() {
-                    parcelamentosPorPagina = Number(campoLimite.value);
-                    localStorage.setItem('parcelamentosPorPagina', String(parcelamentosPorPagina));
-                    parcelamentosPaginaAtual = 1;
-                    renderizarParcelamentosPaginados();
-                });
-
-                paginacaoParcelamentos.appendChild(seletorLimite);
-
-                if (filtradas.length <= parcelamentosPorPagina) {
-                    return;
-                }
-
-                const nav = document.createElement('nav');
-                const lista = document.createElement('ul');
-                lista.className = 'pagination justify-content-center mt-3';
-
-                adicionarPaginaParcelamento(lista, 'Anterior', Math.max(1, parcelamentosPaginaAtual - 1), parcelamentosPaginaAtual <= 1, false);
-
-                const paginasVisiveis = [];
-                let ultimaPagina = 0;
-
-                for (let pagina = 1; pagina <= totalPaginas; pagina++) {
-                    if (pagina === 1 || pagina === totalPaginas || Math.abs(pagina - parcelamentosPaginaAtual) <= 2) {
-                        if (ultimaPagina && pagina - ultimaPagina > 1) {
-                            paginasVisiveis.push('...');
-                        }
-
-                        paginasVisiveis.push(pagina);
-                        ultimaPagina = pagina;
-                    }
-                }
-
-                paginasVisiveis.forEach(function(pagina) {
-                    if (pagina === '...') {
-                        adicionarPaginaParcelamento(lista, '...', parcelamentosPaginaAtual, true, false);
-                        return;
-                    }
-
-                    adicionarPaginaParcelamento(lista, String(pagina), pagina, false, pagina === parcelamentosPaginaAtual);
-                });
-
-                adicionarPaginaParcelamento(lista, 'Próxima', Math.min(totalPaginas, parcelamentosPaginaAtual + 1), parcelamentosPaginaAtual >= totalPaginas, false);
-
-                nav.appendChild(lista);
-                paginacaoParcelamentos.appendChild(nav);
-            }
-
-            if (busca) {
-                busca.addEventListener('input', function() {
-                    parcelamentosPaginaAtual = 1;
-                    renderizarParcelamentosPaginados();
+                    linha.classList.remove('d-none');
                 });
             }
 

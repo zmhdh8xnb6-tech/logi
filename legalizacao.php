@@ -480,7 +480,11 @@ if ($tabelasDisponiveis) {
                                     $statusTexto = $processoVencido ? $prazoInfo['texto'] : legalizacaoTextoStatus($processo['status']);
                                     $checklistTotal = (int)($processo['checklist_total'] ?? 0);
                                 ?>
-                                    <tr>
+                                    <tr
+                                        class="legalizacao-processo-linha"
+                                        role="link"
+                                        tabindex="0"
+                                        data-href="legalizacao_processo.php?id=<?= (int)$processo['id'] ?>">
                                         <td>
                                             <strong><?= htmlspecialchars(($clienteCodigoExibicao ? $clienteCodigoExibicao . ' - ' : '') . $clienteNomeExibicao) ?></strong>
                                             <small><?= htmlspecialchars($clienteDocumentoExibicao ?: '-') ?></small>
@@ -809,6 +813,12 @@ if ($tabelasDisponiveis) {
             });
 
             document.addEventListener('click', function(evento) {
+                const linhaProcesso = evento.target?.closest?.('.legalizacao-processo-linha');
+                if (linhaProcesso && !evento.target.closest('a, button, input, select, textarea, label')) {
+                    window.location.href = linhaProcesso.dataset.href;
+                    return;
+                }
+
                 const link = evento.target?.closest?.('.legalizacao-abas a, .legalizacao-painel .pagination a.page-link');
 
                 if (!link || link.closest('.disabled')) {
@@ -817,6 +827,20 @@ if ($tabelasDisponiveis) {
 
                 evento.preventDefault();
                 atualizarListaLegalizacao(new URL(link.href));
+            });
+
+            document.addEventListener('keydown', function(evento) {
+                const linhaProcesso = evento.target?.closest?.('.legalizacao-processo-linha');
+                if (
+                    !linhaProcesso ||
+                    evento.target.closest('a, button, input, select, textarea, label') ||
+                    (evento.key !== 'Enter' && evento.key !== ' ')
+                ) {
+                    return;
+                }
+
+                evento.preventDefault();
+                window.location.href = linhaProcesso.dataset.href;
             });
 
             function normalizarBuscaClienteLegalizacao(texto) {

@@ -4,7 +4,12 @@ require 'includes/parcelamentos_funcoes.php';
 
 exigirPermissao('parcelamentos');
 
-$parcelamentos = buscarParcelamentosPorOrgao($pdo, 'Previdência Social e Tributos');
+$dadosPaginacao = paginarParcelamentosPorOrgao($pdo, 'Previdência Social e Tributos');
+$parcelamentos = $dadosPaginacao['registros'];
+$buscaParcelamentos = $dadosPaginacao['busca'];
+$paginaParcelamentos = $dadosPaginacao['pagina'];
+$totalParcelamentos = $dadosPaginacao['total'];
+$totalPaginasParcelamentos = $dadosPaginacao['total_paginas'];
 ?>
 
 <!DOCTYPE html>
@@ -66,6 +71,8 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'Previdência Social e Tribut
                 </div>
             <?php endif; ?>
 
+            <?php renderizarResultadoRevisaoLiquidacoes(); ?>
+
             <div class="parcelamento-box">
                 <div class="cabecalho-lista d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">Lista de Parcelamentos</h5>
@@ -82,11 +89,7 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'Previdência Social e Tribut
 
                 <div class="orgao-impressao">Órgão: Previdência Social e Tributos</div>
 
-                <div class="row mb-3 busca-parcelamentos">
-                    <div class="col-md-6">
-                        <input type="search" class="form-control" id="buscaParcelamento" placeholder="Buscar por código, cliente, número ou status...">
-                    </div>
-                </div>
+                <?php renderizarBuscaParcelamentos($buscaParcelamentos, $totalParcelamentos); ?>
 
                 <div class="table-responsive">
                     <table class="table align-middle">
@@ -109,13 +112,14 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, 'Previdência Social e Tribut
                         </tbody>
                     </table>
                 </div>
+                <?php renderizarPaginacaoParcelamentos($paginaParcelamentos, $totalPaginasParcelamentos, $buscaParcelamentos); ?>
             </div>
 
         </div>
 
     </main>
 
-    <?php renderizarAvisoLiquidacoesAutomaticas('Previdência Social e Tributos'); ?>
+    <?php renderizarRevisaoLiquidacoesPendentes('Previdência Social e Tributos'); ?>
     <?php renderizarModalQuitarParcelamento(); ?>
     <?php renderizarModalDetalhesParcelamento(); ?>
     <?php renderizarScriptImpressaoParcelamentos(); ?>

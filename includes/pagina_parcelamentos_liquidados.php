@@ -4,7 +4,12 @@ require 'includes/parcelamentos_funcoes.php';
 
 exigirPermissao('parcelamentos');
 
-$parcelamentos = buscarParcelamentosPorOrgao($pdo, $orgaoLiquidado, false, true);
+$dadosPaginacao = paginarParcelamentosPorOrgao($pdo, $orgaoLiquidado, false, true);
+$parcelamentos = $dadosPaginacao['registros'];
+$buscaParcelamentos = $dadosPaginacao['busca'];
+$paginaParcelamentos = $dadosPaginacao['pagina'];
+$totalParcelamentos = $dadosPaginacao['total'];
+$totalPaginasParcelamentos = $dadosPaginacao['total_paginas'];
 ?>
 
 <!DOCTYPE html>
@@ -51,11 +56,7 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, $orgaoLiquidado, false, true)
 
                 <div class="orgao-impressao">Órgão: <?= htmlspecialchars($orgaoLiquidado) ?> - Liquidados</div>
 
-                <div class="row mb-3 busca-parcelamentos">
-                    <div class="col-md-6">
-                        <input type="search" class="form-control" id="buscaParcelamento" placeholder="Buscar por código, cliente, número ou status...">
-                    </div>
-                </div>
+                <?php renderizarBuscaParcelamentos($buscaParcelamentos, $totalParcelamentos); ?>
 
                 <div class="table-responsive">
                     <table class="table align-middle">
@@ -77,6 +78,7 @@ $parcelamentos = buscarParcelamentosPorOrgao($pdo, $orgaoLiquidado, false, true)
                         </tbody>
                     </table>
                 </div>
+                <?php renderizarPaginacaoParcelamentos($paginaParcelamentos, $totalPaginasParcelamentos, $buscaParcelamentos); ?>
             </div>
 
         </div>

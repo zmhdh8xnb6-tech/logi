@@ -67,6 +67,25 @@
             <span>Início</span>
         </a>
 
+        <?php if (usuarioPode('clientes')): ?>
+            <a href="<?= $empresaSomenteServicoAvulsoSidebar ? 'servicos_avulsos.php' : 'clientes.php' ?>" class="sidebar-link" data-label="Clientes">
+                <i class="bi bi-people"></i>
+                <span>Clientes</span>
+            </a>
+
+            <a href="clientes_devolvidos.php" class="sidebar-link" data-label="Clientes Devolvidos">
+                <i class="bi bi-archive"></i>
+                <span>Clientes Devolvidos</span>
+            </a>
+
+            <?php if (!$empresaSomenteServicoAvulsoSidebar): ?>
+                <a href="servicos_avulsos.php" class="sidebar-link" data-label="Serviços Avulsos">
+                    <i class="bi bi-briefcase"></i>
+                    <span>Serviços Avulsos</span>
+                </a>
+            <?php endif; ?>
+        <?php endif; ?>
+
         <a href="ajuda.php" class="sidebar-link" data-label="Ajuda">
             <i class="bi bi-question-circle"></i>
             <span>Ajuda</span>
@@ -147,25 +166,6 @@
                 <i class="bi bi-folder2-open"></i>
                 <span>Paralisações</span>
             </a>
-        <?php endif; ?>
-
-        <?php if (usuarioPode('clientes')): ?>
-            <a href="<?= $empresaSomenteServicoAvulsoSidebar ? 'servicos_avulsos.php' : 'clientes.php' ?>" class="sidebar-link" data-label="Clientes">
-                <i class="bi bi-people"></i>
-                <span>Clientes</span>
-            </a>
-
-            <a href="clientes_devolvidos.php" class="sidebar-link" data-label="Clientes Devolvidos">
-                <i class="bi bi-archive"></i>
-                <span>Clientes Devolvidos</span>
-            </a>
-
-            <?php if (!$empresaSomenteServicoAvulsoSidebar): ?>
-                <a href="servicos_avulsos.php" class="sidebar-link" data-label="Serviços Avulsos">
-                    <i class="bi bi-briefcase"></i>
-                    <span>Serviços Avulsos</span>
-                </a>
-            <?php endif; ?>
         <?php endif; ?>
 
         <?php if (usuarioPode('outros_servicos')): ?>
