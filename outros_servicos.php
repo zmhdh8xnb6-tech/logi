@@ -36,6 +36,13 @@ exigirPermissao('outros_servicos');
                         <p>Controle vencimentos dos computadores</p>
                     </div>
                 </div>
+                <div class="col-md-4">
+                    <div class="card-servico card-permutas" onclick="location.href='permutas.php'">
+                        <div class="icon"><i class="bi bi-arrow-left-right"></i></div>
+                        <h5>Permutas DF Cartuchos</h5>
+                        <p>Retiradas mensais e envio ao financeiro</p>
+                    </div>
+                </div>
             </div>
         </div>
     </main>

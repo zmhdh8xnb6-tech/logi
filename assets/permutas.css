@@ -1,0 +1,292 @@
+.permutas-page .container-fluid {
+    padding-bottom: 40px;
+}
+
+.permutas-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.permutas-periodo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.permutas-periodo .calendario-campo,
+.permutas-periodo .form-control {
+    width: 210px;
+}
+
+.permutas-page .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+}
+
+.permutas-resumo {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    margin-bottom: 18px;
+    overflow: hidden;
+    border: 1px solid #dce3eb;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.permutas-resumo>div {
+    min-width: 0;
+    padding: 14px 16px;
+    border-right: 1px solid #e7ebf0;
+}
+
+.permutas-resumo>div:last-child {
+    border-right: 0;
+}
+
+.permutas-resumo span,
+.permutas-resumo strong {
+    display: block;
+}
+
+.permutas-resumo>div>span {
+    margin-bottom: 5px;
+    color: #697586;
+    font-size: .76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.permutas-resumo>div>strong {
+    overflow: hidden;
+    color: #172033;
+    font-size: 1rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.permutas-resumo .permutas-total-destaque {
+    color: #198754;
+}
+
+.permutas-lista,
+.permutas-historico {
+    overflow: hidden;
+    border: 1px solid #dce3eb;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.permutas-secao-titulo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #e7ebf0;
+}
+
+.permutas-secao-titulo h5,
+.permutas-secao-titulo p {
+    margin: 0;
+}
+
+.permutas-secao-titulo h5 {
+    color: #172033;
+    font-size: .98rem;
+}
+
+.permutas-secao-titulo p {
+    margin-top: 2px;
+    color: #697586;
+    font-size: .8rem;
+}
+
+.permutas-lista thead th {
+    padding: 11px 14px;
+    border-bottom-color: #dce3eb;
+    background: #f7f9fc;
+    color: #526174;
+    font-size: .75rem;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.permutas-lista tbody td {
+    padding: 11px 14px;
+    border-bottom-color: #edf0f4;
+}
+
+.permutas-lista tbody td small {
+    display: block;
+    margin-top: 2px;
+    color: #697586;
+}
+
+.permutas-lista tfoot td {
+    padding: 13px 14px;
+    border-top: 2px solid #b8dfc4;
+    background: #edf9f1;
+    color: #146c38;
+    font-weight: 800;
+}
+
+.permuta-total-previa {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 7px 11px;
+    border: 1px solid #b8dfc4;
+    border-radius: 6px;
+    background: #edf9f1;
+    color: #146c38;
+    font-weight: 800;
+}
+
+.permutas-competencias-lista,
+.permutas-envios-lista {
+    max-height: 330px;
+    overflow-y: auto;
+    padding: 6px 14px;
+}
+
+.permutas-competencia-item,
+.permutas-envio-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    min-height: 58px;
+    padding: 10px 4px;
+    border-bottom: 1px solid #edf0f4;
+    color: #172033;
+    text-decoration: none;
+}
+
+.permutas-competencia-item:last-child,
+.permutas-envio-item:last-child {
+    border-bottom: 0;
+}
+
+.permutas-competencia-item:hover,
+.permutas-competencia-item.ativo {
+    color: #0d6efd;
+    background: #f5f8ff;
+}
+
+.permutas-competencia-item span,
+.permutas-envio-item span {
+    min-width: 0;
+}
+
+.permutas-competencia-item small,
+.permutas-envio-item small {
+    display: block;
+    margin-top: 2px;
+    color: #697586;
+    font-size: .76rem;
+}
+
+.permutas-envio-item>i {
+    flex: 0 0 auto;
+    color: #198754;
+    font-size: 1.05rem;
+}
+
+.permutas-envio-item>span {
+    flex: 1;
+}
+
+.permutas-email-resumo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border: 1px solid #f0c9c9;
+    border-radius: 7px;
+    background: #fff7f7;
+}
+
+.permutas-email-resumo i {
+    margin-right: 6px;
+    color: #dc3545;
+}
+
+.permutas-instalacao {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 20px;
+    border: 1px solid #b9d3ff;
+    border-radius: 8px;
+    background: #f4f8ff;
+}
+
+.permutas-instalacao h5,
+.permutas-instalacao p {
+    margin: 0;
+}
+
+.permutas-instalacao p {
+    margin-top: 4px;
+    color: #5f6b7a;
+}
+
+.permutas-sql {
+    max-height: 430px;
+    overflow: auto;
+    padding: 16px;
+    border: 1px solid #dce3eb;
+    border-radius: 7px;
+    background: #172033;
+    color: #f8fafc;
+    white-space: pre-wrap;
+}
+
+@media (max-width: 1050px) {
+    .permutas-resumo>div {
+        min-width: 170px;
+    }
+}
+
+@media (max-width: 700px) {
+
+    .permutas-toolbar,
+    .permutas-instalacao {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .permutas-periodo,
+    .permutas-periodo form,
+    .permutas-periodo .calendario-campo,
+    .permutas-periodo .form-control {
+        flex: 1;
+        width: 100%;
+    }
+
+    .permutas-resumo {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .permutas-resumo>div {
+        border-top: 1px solid #e7ebf0;
+    }
+
+    .permutas-resumo>div:nth-child(-n + 2) {
+        border-top: 0;
+    }
+
+    .permutas-resumo>div:nth-child(even) {
+        border-right: 0;
+    }
+}

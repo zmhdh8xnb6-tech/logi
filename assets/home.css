@@ -221,6 +221,10 @@
     --card-accent: #0891b2;
 }
 
+.card-permutas {
+    --card-accent: #f97316;
+}
+
 .card-usuarios {
     --card-accent: #475569;
 }
