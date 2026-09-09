@@ -22,15 +22,18 @@
 }
 
 .permutas-anexo {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
     margin-bottom: 16px;
     padding: 12px 14px;
     border: 1px solid #dce3eb;
     border-radius: 8px;
     background: #fff;
+}
+
+.permutas-anexo-cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
 }
 
 .permutas-anexo.tem-anexo {
@@ -69,6 +72,62 @@
     font-size: .78rem;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.permutas-anexos-lista {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #dcebdd;
+}
+
+.permutas-anexo-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-height: 54px;
+    padding: 8px 10px;
+    border: 1px solid #dce3eb;
+    border-radius: 7px;
+    background: #fff;
+}
+
+.permutas-anexo-item>i {
+    color: #198754;
+    font-size: 1.2rem;
+}
+
+.permutas-anexo-item>span,
+.permutas-anexo-item strong,
+.permutas-anexo-item small {
+    display: block;
+    min-width: 0;
+}
+
+.permutas-anexo-item strong,
+.permutas-anexo-item small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.permutas-anexo-item strong {
+    color: #172033;
+    font-size: .84rem;
+}
+
+.permutas-anexo-item small {
+    margin-top: 2px;
+    color: #697586;
+    font-size: .72rem;
+}
+
+.permutas-anexo-acoes {
+    display: flex;
+    gap: 6px;
 }
 
 .permutas-page .btn-icon {
@@ -311,10 +370,14 @@
 @media (max-width: 700px) {
 
     .permutas-toolbar,
-    .permutas-anexo,
+    .permutas-anexo-cabecalho,
     .permutas-instalacao {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .permutas-anexos-lista {
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .permutas-periodo,

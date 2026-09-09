@@ -28,6 +28,9 @@ foreach ($tabelasPermutas as $tabelaPermuta) {
         break;
     }
 }
+$multiplosAnexosDisponiveis = $estruturaDisponivel
+    ? permutasHabilitarMultiplosAnexos($pdo)
+    : false;
 
 $sqlPermutas = (string)@file_get_contents(__DIR__ . '/sql/permutas.sql');
 $flash = $_SESSION['permutas_flash'] ?? null;
@@ -183,37 +186,23 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($acao === 'anexar_relatorio') {
-            $arquivo = $_FILES['relatorio_digitalizado'] ?? null;
+            if (!$multiplosAnexosDisponiveis) {
+                throw new RuntimeException('Não foi possível atualizar a estrutura para vários anexos. Entre como administrador e tente novamente.');
+            }
+
+            $arquivos = permutasNormalizarArquivosUpload(
+                $_FILES['relatorios_digitalizados'] ?? $_FILES['relatorio_digitalizado'] ?? null
+            );
             $competenciaRegistro = permutasBuscarCompetencia($pdo, $competencia, true);
 
             if (!$competenciaRegistro) {
                 throw new RuntimeException('Não foi possível abrir a competência selecionada.');
             }
-            if (!is_array($arquivo) || (int)($arquivo['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-                $erroUpload = (int)($arquivo['error'] ?? UPLOAD_ERR_NO_FILE);
-                $mensagemUpload = match ($erroUpload) {
-                    UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'O arquivo ultrapassa o limite permitido de 10 MB.',
-                    UPLOAD_ERR_NO_FILE => 'Escolha o relatório digitalizado.',
-                    default => 'Não foi possível receber o relatório. Tente novamente.',
-                };
-                throw new RuntimeException($mensagemUpload);
+            if ($arquivos === []) {
+                throw new RuntimeException('Escolha pelo menos um relatório digitalizado.');
             }
-
-            $caminhoTemporario = (string)($arquivo['tmp_name'] ?? '');
-            $tamanhoArquivo = (int)($arquivo['size'] ?? 0);
-            if (!is_uploaded_file($caminhoTemporario) || $tamanhoArquivo <= 0 || $tamanhoArquivo > 10 * 1024 * 1024) {
-                throw new RuntimeException('O relatório deve possuir até 10 MB.');
-            }
-
-            $tipoMime = '';
-            if (function_exists('finfo_open')) {
-                $finfo = finfo_open(FILEINFO_MIME_TYPE);
-                $tipoMime = $finfo ? (string)finfo_file($finfo, $caminhoTemporario) : '';
-                if ($finfo) {
-                    finfo_close($finfo);
-                }
-            } elseif (function_exists('mime_content_type')) {
-                $tipoMime = (string)mime_content_type($caminhoTemporario);
+            if (count($arquivos) > 10) {
+                throw new RuntimeException('Envie no máximo 10 arquivos por vez.');
             }
 
             $extensoesPermitidas = [
@@ -221,13 +210,50 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 'image/jpeg' => 'jpg',
                 'image/png' => 'png',
             ];
-            if (!isset($extensoesPermitidas[$tipoMime])) {
-                throw new RuntimeException('Envie o relatório em PDF, JPG ou PNG.');
-            }
+            $arquivosPreparados = [];
+            foreach ($arquivos as $indice => $arquivo) {
+                $erroUpload = (int)($arquivo['error'] ?? UPLOAD_ERR_NO_FILE);
+                if ($erroUpload !== UPLOAD_ERR_OK) {
+                    $mensagemUpload = match ($erroUpload) {
+                        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'O arquivo ' . ($indice + 1) . ' ultrapassa o limite permitido de 10 MB.',
+                        UPLOAD_ERR_NO_FILE => 'Escolha pelo menos um relatório digitalizado.',
+                        default => 'Não foi possível receber o arquivo ' . ($indice + 1) . '. Tente novamente.',
+                    };
+                    throw new RuntimeException($mensagemUpload);
+                }
 
-            $nomeOriginal = mb_substr(basename(str_replace(["\r", "\n"], '', (string)($arquivo['name'] ?? 'relatorio'))), 0, 255);
-            if ($nomeOriginal === '') {
-                $nomeOriginal = 'relatorio-digitalizado.' . $extensoesPermitidas[$tipoMime];
+                $caminhoTemporario = (string)($arquivo['tmp_name'] ?? '');
+                $tamanhoArquivo = (int)($arquivo['size'] ?? 0);
+                if (!is_uploaded_file($caminhoTemporario) || $tamanhoArquivo <= 0 || $tamanhoArquivo > 10 * 1024 * 1024) {
+                    throw new RuntimeException('Cada relatório deve possuir até 10 MB.');
+                }
+
+                $tipoMime = '';
+                if (function_exists('finfo_open')) {
+                    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                    $tipoMime = $finfo ? (string)finfo_file($finfo, $caminhoTemporario) : '';
+                    if ($finfo) {
+                        finfo_close($finfo);
+                    }
+                } elseif (function_exists('mime_content_type')) {
+                    $tipoMime = (string)mime_content_type($caminhoTemporario);
+                }
+                if (!isset($extensoesPermitidas[$tipoMime])) {
+                    throw new RuntimeException('O arquivo ' . ($indice + 1) . ' deve estar em PDF, JPG ou PNG.');
+                }
+
+                $nomeOriginal = mb_substr(basename(str_replace(["\r", "\n"], '', (string)($arquivo['name'] ?? 'relatorio'))), 0, 255);
+                if ($nomeOriginal === '') {
+                    $nomeOriginal = 'relatorio-digitalizado-' . ($indice + 1) . '.' . $extensoesPermitidas[$tipoMime];
+                }
+
+                $arquivosPreparados[] = [
+                    'temporario' => $caminhoTemporario,
+                    'tamanho' => $tamanhoArquivo,
+                    'tipo' => $tipoMime,
+                    'extensao' => $extensoesPermitidas[$tipoMime],
+                    'nome' => $nomeOriginal,
+                ];
             }
 
             $diretorio = permutasAnexoPrepararDiretorio($empresaId, (int)$competenciaRegistro['id']);
@@ -235,26 +261,33 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Não foi possível acessar uma pasta gravável. No teste local, confira storage; no servidor, confira logi_storage.');
             }
 
-            $anexoAnterior = permutasBuscarAnexo($pdo, (int)$competenciaRegistro['id']);
-            $nomeArmazenado = bin2hex(random_bytes(18)) . '.' . $extensoesPermitidas[$tipoMime];
-            $caminhoRelativo = $diretorio['relativo'] . '/' . $nomeArmazenado;
-            $caminhoAbsoluto = $diretorio['absoluto'] . DIRECTORY_SEPARATOR . $nomeArmazenado;
-
+            $arquivosSalvos = [];
             try {
-                if (!move_uploaded_file($caminhoTemporario, $caminhoAbsoluto)) {
-                    throw new RuntimeException('Falha ao mover o relatório enviado.');
-                }
-                @chmod($caminhoAbsoluto, 0640);
-                clearstatcache(true, $caminhoAbsoluto);
-                $tamanhoSalvo = filesize($caminhoAbsoluto);
-                if (
-                    !is_file($caminhoAbsoluto)
-                    || !is_readable($caminhoAbsoluto)
-                    || $tamanhoSalvo === false
-                    || $tamanhoSalvo !== $tamanhoArquivo
-                    || permutasAnexoCaminhoAbsoluto($caminhoRelativo) === null
-                ) {
-                    throw new RuntimeException('O relatório não pôde ser validado no armazenamento persistente.');
+                foreach ($arquivosPreparados as $arquivoPreparado) {
+                    $nomeArmazenado = bin2hex(random_bytes(18)) . '.' . $arquivoPreparado['extensao'];
+                    $caminhoRelativo = $diretorio['relativo'] . '/' . $nomeArmazenado;
+                    $caminhoAbsoluto = $diretorio['absoluto'] . DIRECTORY_SEPARATOR . $nomeArmazenado;
+
+                    if (!move_uploaded_file($arquivoPreparado['temporario'], $caminhoAbsoluto)) {
+                        throw new RuntimeException('Falha ao mover o relatório ' . $arquivoPreparado['nome'] . '.');
+                    }
+                    @chmod($caminhoAbsoluto, 0640);
+                    clearstatcache(true, $caminhoAbsoluto);
+                    $tamanhoSalvo = filesize($caminhoAbsoluto);
+                    if (
+                        !is_file($caminhoAbsoluto)
+                        || !is_readable($caminhoAbsoluto)
+                        || $tamanhoSalvo === false
+                        || $tamanhoSalvo !== $arquivoPreparado['tamanho']
+                        || permutasAnexoCaminhoAbsoluto($caminhoRelativo) === null
+                    ) {
+                        throw new RuntimeException('O relatório ' . $arquivoPreparado['nome'] . ' não pôde ser validado no armazenamento.');
+                    }
+
+                    $arquivosSalvos[] = array_merge($arquivoPreparado, [
+                        'relativo' => $caminhoRelativo,
+                        'absoluto' => $caminhoAbsoluto,
+                    ]);
                 }
 
                 $pdo->beginTransaction();
@@ -262,23 +295,18 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     INSERT INTO permutas_anexos
                         (empresa_id, competencia_id, nome_original, caminho_arquivo, tipo_mime, tamanho_bytes, usuario_id)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE
-                        nome_original = VALUES(nome_original),
-                        caminho_arquivo = VALUES(caminho_arquivo),
-                        tipo_mime = VALUES(tipo_mime),
-                        tamanho_bytes = VALUES(tamanho_bytes),
-                        usuario_id = VALUES(usuario_id),
-                        enviado_em = CURRENT_TIMESTAMP
                 ');
-                $stmt->execute([
-                    $empresaId,
-                    (int)$competenciaRegistro['id'],
-                    $nomeOriginal,
-                    $caminhoRelativo,
-                    $tipoMime,
-                    $tamanhoArquivo,
-                    $usuarioId ?: null,
-                ]);
+                foreach ($arquivosSalvos as $arquivoSalvo) {
+                    $stmt->execute([
+                        $empresaId,
+                        (int)$competenciaRegistro['id'],
+                        $arquivoSalvo['nome'],
+                        $arquivoSalvo['relativo'],
+                        $arquivoSalvo['tipo'],
+                        $arquivoSalvo['tamanho'],
+                        $usuarioId ?: null,
+                    ]);
+                }
                 permutasMarcarAlterada($pdo, (int)$competenciaRegistro['id']);
                 registrarAuditoria(
                     $pdo,
@@ -286,37 +314,41 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     'anexar_relatorio_permuta',
                     'permuta_competencia',
                     (int)$competenciaRegistro['id'],
-                    'Anexou o relatório digitalizado da permuta de ' . permutasCompetenciaRotulo($competencia),
-                    $anexoAnterior,
-                    ['arquivo' => $nomeOriginal, 'tipo' => $tipoMime, 'tamanho' => $tamanhoArquivo]
+                    'Anexou ' . count($arquivosSalvos) . ' arquivo(s) digitalizado(s) da permuta de ' . permutasCompetenciaRotulo($competencia),
+                    null,
+                    ['arquivos' => array_column($arquivosSalvos, 'nome')]
                 );
                 $pdo->commit();
-
-                if ($anexoAnterior && $anexoAnterior['caminho_arquivo'] !== $caminhoRelativo) {
-                    $arquivoAnterior = permutasAnexoCaminhoAbsoluto((string)$anexoAnterior['caminho_arquivo']);
-                    if ($arquivoAnterior !== null) {
-                        @unlink($arquivoAnterior);
-                    }
-                }
             } catch (Throwable $e) {
                 if ($pdo->inTransaction()) {
                     $pdo->rollBack();
                 }
-                if (is_file($caminhoAbsoluto)) {
-                    @unlink($caminhoAbsoluto);
+                foreach ($arquivosSalvos as $arquivoSalvo) {
+                    if (is_file($arquivoSalvo['absoluto'])) {
+                        @unlink($arquivoSalvo['absoluto']);
+                    }
                 }
                 throw $e;
             }
 
-            permutasRedirecionar('Relatório digitalizado anexado com sucesso.', 'success', $competencia);
+            $quantidadeAnexada = count($arquivosSalvos);
+            permutasRedirecionar(
+                $quantidadeAnexada === 1
+                    ? 'Relatório digitalizado anexado com sucesso.'
+                    : $quantidadeAnexada . ' relatórios digitalizados anexados com sucesso.',
+                'success',
+                $competencia
+            );
         }
 
         if ($acao === 'excluir_relatorio') {
             $competenciaRegistro = permutasBuscarCompetencia($pdo, $competencia, false);
-            $anexo = $competenciaRegistro ? permutasBuscarAnexo($pdo, (int)$competenciaRegistro['id']) : null;
             $anexoId = (int)($_POST['anexo_id'] ?? 0);
+            $anexo = $competenciaRegistro
+                ? permutasBuscarAnexoPorId($pdo, $anexoId, (int)$competenciaRegistro['id'])
+                : null;
 
-            if (!$anexo || (int)$anexo['id'] !== $anexoId) {
+            if (!$anexo) {
                 throw new RuntimeException('Relatório digitalizado não encontrado nesta competência.');
             }
 
@@ -378,16 +410,16 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 'nome' => permutasNomeArquivo($competenciaRegistro),
                 'tipo' => 'application/pdf',
             ]];
-            $anexoDigitalizado = permutasBuscarAnexo($pdo, (int)$competenciaRegistro['id']);
-            if ($anexoDigitalizado) {
-                $caminhoDigitalizado = permutasAnexoCaminhoAbsoluto((string)$anexoDigitalizado['caminho_arquivo']);
+            $anexosDigitalizadosEmail = permutasBuscarAnexos($pdo, (int)$competenciaRegistro['id']);
+            foreach ($anexosDigitalizadosEmail as $anexoDigitalizadoEmail) {
+                $caminhoDigitalizado = permutasAnexoCaminhoAbsoluto((string)$anexoDigitalizadoEmail['caminho_arquivo']);
                 if ($caminhoDigitalizado === null) {
-                    throw new RuntimeException('O relatório digitalizado não foi localizado no armazenamento. Anexe-o novamente antes de enviar.');
+                    throw new RuntimeException('O arquivo ' . $anexoDigitalizadoEmail['nome_original'] . ' não foi localizado. Exclua o registro ou anexe-o novamente antes de enviar.');
                 }
                 $anexosEmail[] = [
                     'caminho' => $caminhoDigitalizado,
-                    'nome' => (string)$anexoDigitalizado['nome_original'],
-                    'tipo' => (string)$anexoDigitalizado['tipo_mime'],
+                    'nome' => (string)$anexoDigitalizadoEmail['nome_original'],
+                    'tipo' => (string)$anexoDigitalizadoEmail['tipo_mime'],
                 ];
             }
             $erroEmail = null;
@@ -477,13 +509,13 @@ $competenciasRecentes = [];
 $envios = [];
 $ultimoDestinatario = '';
 $itensDisponiveis = permutasItensPadrao();
-$anexoDigitalizado = null;
+$anexosDigitalizados = [];
 
 if ($estruturaDisponivel) {
     $competenciaRegistro = permutasBuscarCompetencia($pdo, $competencia, false);
     $itens = permutasBuscarItens($pdo, (int)($competenciaRegistro['id'] ?? 0));
     $itensDisponiveis = permutasItensDisponiveis($pdo);
-    $anexoDigitalizado = permutasBuscarAnexo($pdo, (int)($competenciaRegistro['id'] ?? 0));
+    $anexosDigitalizados = permutasBuscarAnexos($pdo, (int)($competenciaRegistro['id'] ?? 0));
     $competenciasRecentes = permutasBuscarCompetenciasRecentes($pdo);
     $envios = permutasBuscarEnvios($pdo, (int)($competenciaRegistro['id'] ?? 0));
     $ultimoDestinatario = trim((string)($competenciaRegistro['email_destinatario'] ?? '')) ?: permutasUltimoDestinatario($pdo);
@@ -527,6 +559,12 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                 <div class="alert alert-<?= htmlspecialchars($flash['tipo']) ?> alert-dismissible fade show" role="alert">
                     <?= htmlspecialchars($flash['mensagem']) ?>
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($estruturaDisponivel && !$multiplosAnexosDisponiveis): ?>
+                <div class="alert alert-danger" role="alert">
+                    Não foi possível atualizar a estrutura para vários anexos. Confira a permissão de alteração do banco de dados.
                 </div>
             <?php endif; ?>
 
@@ -580,31 +618,49 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                     </div>
                 </div>
 
-                <section class="permutas-anexo <?= $anexoDigitalizado ? 'tem-anexo' : '' ?>">
-                    <div class="permutas-anexo-info">
-                        <i class="bi <?= $anexoDigitalizado ? 'bi-file-earmark-check' : 'bi-file-earmark-arrow-up' ?>"></i>
-                        <span>
-                            <strong>Relatório digitalizado</strong>
-                            <small><?= $anexoDigitalizado
-                                        ? htmlspecialchars((string)$anexoDigitalizado['nome_original']) . ' · ' . htmlspecialchars(number_format((int)$anexoDigitalizado['tamanho_bytes'] / 1024, 0, ',', '.')) . ' KB'
-                                        : 'Anexe o PDF ou a imagem original desta competência.' ?></small>
-                        </span>
-                    </div>
-                    <div class="d-flex flex-wrap gap-2">
-                        <?php if ($anexoDigitalizado): ?>
-                            <a href="permuta_anexo.php?id=<?= (int)$anexoDigitalizado['id'] ?>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success">
-                                <i class="bi bi-eye"></i> Abrir
-                            </a>
-                        <?php endif; ?>
-                        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalAnexoPermuta">
-                            <i class="bi bi-paperclip"></i> <?= $anexoDigitalizado ? 'Substituir' : 'Anexar' ?>
+                <section class="permutas-anexo <?= $anexosDigitalizados !== [] ? 'tem-anexo' : '' ?>">
+                    <div class="permutas-anexo-cabecalho">
+                        <div class="permutas-anexo-info">
+                            <i class="bi <?= $anexosDigitalizados !== [] ? 'bi-files' : 'bi-file-earmark-arrow-up' ?>"></i>
+                            <span>
+                                <strong>Relatórios digitalizados</strong>
+                                <small><?= $anexosDigitalizados !== []
+                                            ? count($anexosDigitalizados) . (count($anexosDigitalizados) === 1 ? ' arquivo anexado' : ' arquivos anexados')
+                                            : 'Nenhum arquivo anexado nesta competência.' ?></small>
+                            </span>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalAnexoPermuta" <?= !$multiplosAnexosDisponiveis ? 'disabled' : '' ?>>
+                            <i class="bi bi-paperclip"></i> Anexar arquivos
                         </button>
-                        <?php if ($anexoDigitalizado): ?>
-                            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalExcluirAnexoPermuta">
-                                <i class="bi bi-trash"></i> Excluir
-                            </button>
-                        <?php endif; ?>
                     </div>
+
+                    <?php if ($anexosDigitalizados !== []): ?>
+                        <div class="permutas-anexos-lista">
+                            <?php foreach ($anexosDigitalizados as $anexoDigitalizado): ?>
+                                <div class="permutas-anexo-item">
+                                    <i class="bi <?= $anexoDigitalizado['tipo_mime'] === 'application/pdf' ? 'bi-file-earmark-pdf' : 'bi-file-earmark-image' ?>"></i>
+                                    <span>
+                                        <strong title="<?= htmlspecialchars((string)$anexoDigitalizado['nome_original']) ?>"><?= htmlspecialchars((string)$anexoDigitalizado['nome_original']) ?></strong>
+                                        <small><?= htmlspecialchars(number_format((int)$anexoDigitalizado['tamanho_bytes'] / 1024, 0, ',', '.')) ?> KB · <?= htmlspecialchars(permutasDataBr($anexoDigitalizado['enviado_em'], true)) ?></small>
+                                    </span>
+                                    <div class="permutas-anexo-acoes">
+                                        <a href="permuta_anexo.php?id=<?= (int)$anexoDigitalizado['id'] ?>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success btn-icon" title="Abrir arquivo" aria-label="Abrir <?= htmlspecialchars((string)$anexoDigitalizado['nome_original']) ?>">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        <button
+                                            type="button"
+                                            class="btn btn-sm btn-outline-danger btn-icon btn-excluir-anexo-permuta"
+                                            data-id="<?= (int)$anexoDigitalizado['id'] ?>"
+                                            data-nome="<?= htmlspecialchars((string)$anexoDigitalizado['nome_original'], ENT_QUOTES, 'UTF-8') ?>"
+                                            title="Excluir arquivo"
+                                            aria-label="Excluir <?= htmlspecialchars((string)$anexoDigitalizado['nome_original']) ?>">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
                 </section>
 
                 <section class="permutas-resumo" aria-label="Resumo da competência">
@@ -826,35 +882,33 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
         <div class="modal fade" id="modalAnexoPermuta" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
-                    <form method="post" enctype="multipart/form-data" novalidate>
+                    <form method="post" enctype="multipart/form-data" id="formAnexosPermuta" novalidate>
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(permutasToken()) ?>">
                         <input type="hidden" name="acao" value="anexar_relatorio">
                         <input type="hidden" name="competencia" value="<?= htmlspecialchars($competencia) ?>">
                         <div class="modal-header">
                             <div>
-                                <h5 class="modal-title"><?= $anexoDigitalizado ? 'Substituir relatório digitalizado' : 'Anexar relatório digitalizado' ?></h5>
+                                <h5 class="modal-title">Anexar relatórios digitalizados</h5>
                                 <p class="text-muted small mb-0"><?= htmlspecialchars(permutasCompetenciaRotulo($competencia)) ?></p>
                             </div>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                         </div>
                         <div class="modal-body">
-                            <?php if ($anexoDigitalizado): ?>
-                                <div class="alert alert-info py-2">O novo arquivo substituirá <strong><?= htmlspecialchars((string)$anexoDigitalizado['nome_original']) ?></strong>.</div>
-                            <?php endif; ?>
-                            <label for="relatorioDigitalizado" class="form-label">Arquivo</label>
-                            <input type="file" class="form-control" name="relatorio_digitalizado" id="relatorioDigitalizado" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" required>
-                            <div class="form-text">Formatos aceitos: PDF, JPG ou PNG, com até 10 MB.</div>
+                            <label for="relatoriosDigitalizados" class="form-label">Arquivos</label>
+                            <input type="file" class="form-control" name="relatorios_digitalizados[]" id="relatoriosDigitalizados" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" multiple required>
+                            <div class="invalid-feedback" id="erroRelatoriosDigitalizados">Escolha pelo menos um arquivo.</div>
+                            <div class="form-text">Selecione até 10 arquivos em PDF, JPG ou PNG, com até 10 MB cada.</div>
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                            <button type="submit" class="btn btn-primary"><i class="bi bi-upload"></i> Salvar relatório</button>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-upload"></i> Anexar arquivos</button>
                         </div>
                     </form>
                 </div>
             </div>
         </div>
 
-        <?php if ($anexoDigitalizado): ?>
+        <?php if ($anexosDigitalizados !== []): ?>
             <div class="modal fade" id="modalExcluirAnexoPermuta" tabindex="-1" aria-hidden="true">
                 <div class="modal-dialog modal-dialog-centered modal-sm">
                     <div class="modal-content">
@@ -862,11 +916,13 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(permutasToken()) ?>">
                             <input type="hidden" name="acao" value="excluir_relatorio">
                             <input type="hidden" name="competencia" value="<?= htmlspecialchars($competencia) ?>">
-                            <input type="hidden" name="anexo_id" value="<?= (int)$anexoDigitalizado['id'] ?>">
+                            <input type="hidden" name="anexo_id" id="excluirAnexoPermutaId">
                             <div class="modal-header">
                                 <h5 class="modal-title">Excluir relatório</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                             </div>
-                            <div class="modal-body">Deseja excluir o relatório digitalizado desta competência?</div>
+                            <div class="modal-body">
+                                <p class="mb-1">Deseja excluir este arquivo?</p><strong id="excluirAnexoPermutaNome"></strong>
+                            </div>
                             <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-danger"><i class="bi bi-trash"></i> Excluir</button></div>
                         </form>
                     </div>
@@ -904,7 +960,7 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                         <div class="modal-header">
                             <div>
                                 <h5 class="modal-title">Enviar relatório ao financeiro</h5>
-                                <p class="text-muted small mb-0"><?= $anexoDigitalizado ? 'O PDF do LOGI e o relatório digitalizado serão anexados automaticamente.' : 'O PDF do LOGI será anexado automaticamente.' ?></p>
+                                <p class="text-muted small mb-0"><?= $anexosDigitalizados !== [] ? 'O PDF do LOGI e todos os arquivos digitalizados serão anexados automaticamente.' : 'O PDF do LOGI será anexado automaticamente.' ?></p>
                             </div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                         </div>
                         <div class="modal-body">
@@ -930,6 +986,8 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                 const modalItem = modalItemElemento ? bootstrap.Modal.getOrCreateInstance(modalItemElemento) : null;
                 const modalExcluirElemento = document.getElementById('modalExcluirPermuta');
                 const modalExcluir = modalExcluirElemento ? bootstrap.Modal.getOrCreateInstance(modalExcluirElemento) : null;
+                const modalExcluirAnexoElemento = document.getElementById('modalExcluirAnexoPermuta');
+                const modalExcluirAnexo = modalExcluirAnexoElemento ? bootstrap.Modal.getOrCreateInstance(modalExcluirAnexoElemento) : null;
                 const campoQuantidade = document.getElementById('permutaQuantidade');
                 const campoValor = document.getElementById('permutaValor');
                 const itemSelecionado = document.getElementById('permutaItemSelecionado');
@@ -1029,6 +1087,35 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                         document.getElementById('excluirPermutaDescricao').textContent = linha.dataset.descricao || '';
                         modalExcluir?.show();
                     });
+                });
+
+                document.querySelectorAll('.btn-excluir-anexo-permuta').forEach(function(botao) {
+                    botao.addEventListener('click', function() {
+                        document.getElementById('excluirAnexoPermutaId').value = botao.dataset.id || '';
+                        document.getElementById('excluirAnexoPermutaNome').textContent = botao.dataset.nome || '';
+                        modalExcluirAnexo?.show();
+                    });
+                });
+
+                document.getElementById('formAnexosPermuta')?.addEventListener('submit', function(evento) {
+                    const campo = document.getElementById('relatoriosDigitalizados');
+                    const erro = document.getElementById('erroRelatoriosDigitalizados');
+                    const arquivos = Array.from(campo.files || []);
+                    let mensagem = '';
+
+                    if (arquivos.length === 0) {
+                        mensagem = 'Escolha pelo menos um arquivo.';
+                    } else if (arquivos.length > 10) {
+                        mensagem = 'Selecione no máximo 10 arquivos por vez.';
+                    } else if (arquivos.some((arquivo) => arquivo.size <= 0 || arquivo.size > 10 * 1024 * 1024)) {
+                        mensagem = 'Cada arquivo deve possuir até 10 MB.';
+                    }
+
+                    campo.classList.toggle('is-invalid', mensagem !== '');
+                    erro.textContent = mensagem || 'Escolha pelo menos um arquivo.';
+                    if (mensagem !== '') {
+                        evento.preventDefault();
+                    }
                 });
 
                 document.getElementById('competenciaPermuta')?.addEventListener('change', function() {

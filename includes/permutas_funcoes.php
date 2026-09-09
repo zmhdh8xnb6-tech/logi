@@ -266,16 +266,88 @@ function permutasUltimoDestinatario(PDO $pdo): string
     return trim((string)($stmt->fetchColumn() ?: ''));
 }
 
-function permutasBuscarAnexo(PDO $pdo, int $competenciaId): ?array
+function permutasHabilitarMultiplosAnexos(PDO $pdo): bool
+{
+    try {
+        $stmt = $pdo->prepare("\n            SELECT COUNT(*)\n            FROM information_schema.statistics\n            WHERE table_schema = DATABASE()\n              AND table_name = 'permutas_anexos'\n              AND index_name = 'uk_permutas_anexo_competencia'\n        ");
+        $stmt->execute();
+
+        if ((int)$stmt->fetchColumn() > 0) {
+            $pdo->exec('ALTER TABLE permutas_anexos DROP INDEX uk_permutas_anexo_competencia');
+        }
+
+        $stmt = $pdo->prepare("\n            SELECT COUNT(*)\n            FROM information_schema.statistics\n            WHERE table_schema = DATABASE()\n              AND table_name = 'permutas_anexos'\n              AND index_name = 'idx_permutas_anexos_competencia'\n        ");
+        $stmt->execute();
+
+        if ((int)$stmt->fetchColumn() === 0) {
+            $pdo->exec('ALTER TABLE permutas_anexos ADD INDEX idx_permutas_anexos_competencia (empresa_id, competencia_id, enviado_em)');
+        }
+
+        return true;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function permutasBuscarAnexos(PDO $pdo, int $competenciaId): array
 {
     if ($competenciaId <= 0) {
+        return [];
+    }
+
+    $stmt = $pdo->prepare('
+        SELECT *
+        FROM permutas_anexos
+        WHERE empresa_id = ? AND competencia_id = ?
+        ORDER BY enviado_em DESC, id DESC
+    ');
+    $stmt->execute([permutasEmpresaId($pdo), $competenciaId]);
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function permutasBuscarAnexoPorId(PDO $pdo, int $anexoId, int $competenciaId = 0): ?array
+{
+    if ($anexoId <= 0) {
         return null;
     }
 
-    $stmt = $pdo->prepare('SELECT * FROM permutas_anexos WHERE empresa_id = ? AND competencia_id = ? LIMIT 1');
-    $stmt->execute([permutasEmpresaId($pdo), $competenciaId]);
+    $sql = 'SELECT * FROM permutas_anexos WHERE id = ? AND empresa_id = ?';
+    $parametros = [$anexoId, permutasEmpresaId($pdo)];
+    if ($competenciaId > 0) {
+        $sql .= ' AND competencia_id = ?';
+        $parametros[] = $competenciaId;
+    }
+    $sql .= ' LIMIT 1';
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($parametros);
 
     return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+function permutasNormalizarArquivosUpload(?array $campo): array
+{
+    if (!$campo || !array_key_exists('name', $campo)) {
+        return [];
+    }
+
+    if (!is_array($campo['name'])) {
+        return [$campo];
+    }
+
+    $arquivos = [];
+    foreach (array_keys($campo['name']) as $indice) {
+        $arquivos[] = [
+            'name' => $campo['name'][$indice] ?? '',
+            'type' => $campo['type'][$indice] ?? '',
+            'tmp_name' => $campo['tmp_name'][$indice] ?? '',
+            'error' => $campo['error'][$indice] ?? UPLOAD_ERR_NO_FILE,
+            'size' => $campo['size'][$indice] ?? 0,
+        ];
+    }
+
+    return $arquivos;
 }
 
 function permutasAmbienteLocal(): bool
