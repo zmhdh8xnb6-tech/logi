@@ -303,20 +303,62 @@ function renderizarScriptImpressaoParcelamentos(): void
             });
         });
     </script>
-<?php
+    <?php
 }
 
-function atualizarParcelamentosLiquidados(PDO $pdo, string $orgao): array
+function parcelamentosToken(): string
 {
+    if (empty($_SESSION['parcelamentos_csrf_token'])) {
+        $_SESSION['parcelamentos_csrf_token'] = bin2hex(random_bytes(32));
+    }
+
+    return (string)$_SESSION['parcelamentos_csrf_token'];
+}
+
+function parcelamentosTokenValido(?string $token): bool
+{
+    return is_string($token)
+        && $token !== ''
+        && !empty($_SESSION['parcelamentos_csrf_token'])
+        && hash_equals((string)$_SESSION['parcelamentos_csrf_token'], $token);
+}
+
+function buscarParcelamentosPendentesLiquidacao(
+    PDO $pdo,
+    string $orgao,
+    ?array $ids = null,
+    bool $bloquear = false
+): array {
     if (!parcelamentosTemColuna($pdo, 'liquidado_em')) {
         return [];
     }
+
+    $parametros = [$orgao];
+    $filtroIds = '';
+
+    if ($ids !== null) {
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', $ids),
+            static fn(int $id): bool => $id > 0
+        )));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $filtroIds = ' AND p.id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')';
+        $parametros = array_merge($parametros, $ids);
+    }
+
+    $sufixoBloqueio = $bloquear ? ' FOR UPDATE' : '';
 
     $stmt = $pdo->prepare("
         SELECT
             p.id,
             p.numero_parcelamento,
             p.parcelas_total,
+            p.parcelas_emitidas,
+            p.parcelas_atrasadas,
             c.codigo AS cliente_codigo,
             c.nome AS cliente_nome
         FROM parcelamentos p
@@ -339,52 +381,13 @@ function atualizarParcelamentosLiquidados(PDO $pdo, string $orgao): array
                   ) + 1 > p.parcelas_total
               )
           )
+          {$filtroIds}
         ORDER BY CAST(c.codigo AS UNSIGNED), c.nome, p.id
+        {$sufixoBloqueio}
     ");
-    $stmt->execute([$orgao]);
-    $liquidados = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt->execute($parametros);
 
-    if (!$liquidados) {
-        return [];
-    }
-
-    $ids = array_column($liquidados, 'id');
-    $marcadores = implode(',', array_fill(0, count($ids), '?'));
-    $camposLiquidacao = 'liquidado_em = NOW()';
-
-    if (parcelamentosTemColuna($pdo, 'liquidacao_tipo')) {
-        $camposLiquidacao .= ", liquidacao_tipo = 'automatica'";
-    }
-
-    if (parcelamentosTemColuna($pdo, 'liquidacao_observacao')) {
-        $camposLiquidacao .= ', liquidacao_observacao = NULL';
-    }
-
-    $stmt = $pdo->prepare("
-        UPDATE parcelamentos
-        SET {$camposLiquidacao}
-        WHERE liquidado_em IS NULL
-          AND id IN ({$marcadores})
-          " . empresaFiltro($pdo, 'parcelamentos') . "
-    ");
-    $stmt->execute($ids);
-
-    foreach ($liquidados as $parcelamentoLiquidado) {
-        registrarAuditoria(
-            $pdo,
-            'Parcelamentos',
-            'liquidar_automaticamente',
-            'parcelamento',
-            $parcelamentoLiquidado['id'],
-            'Liquidação automática do parcelamento de ' . ($parcelamentoLiquidado['cliente_codigo'] ?? '') . ' - ' . ($parcelamentoLiquidado['cliente_nome'] ?? ''),
-            ['liquidado_em' => null],
-            ['liquidado_em' => date('Y-m-d H:i:s')],
-            0,
-            'Sistema automático'
-        );
-    }
-
-    return $liquidados;
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function buscarParcelamentosPorOrgao(
@@ -394,7 +397,7 @@ function buscarParcelamentosPorOrgao(
     bool $liquidados = false
 ): array {
     if (!$cancelados && !$liquidados) {
-        $GLOBALS['parcelamentos_liquidados_agora'] = atualizarParcelamentosLiquidados($pdo, $orgao);
+        $GLOBALS['parcelamentos_pendentes_liquidacao'] = buscarParcelamentosPendentesLiquidacao($pdo, $orgao);
     }
 
     $temLiquidadoEm = parcelamentosTemColuna($pdo, 'liquidado_em');
@@ -430,55 +433,124 @@ function buscarParcelamentosPorOrgao(
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-function renderizarAvisoLiquidacoesAutomaticas(string $orgao): void
+function renderizarResultadoRevisaoLiquidacoes(): void
 {
-    $liquidados = $GLOBALS['parcelamentos_liquidados_agora'] ?? [];
-
-    if (!$liquidados) {
+    if (isset($_GET['revisao_liquidacao'])) {
+    ?>
+        <div class="alert alert-success alert-auto-dismiss fade show">
+            Decisões salvas. Somente os parcelamentos confirmados foram enviados para Liquidados.
+        </div>
+    <?php
         return;
     }
 
-    $urlLiquidados = urlLiquidadosOrgaoParcelamento($orgao);
-?>
-    <div class="modal fade" id="modalLiquidacoesAutomaticas" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+    if (isset($_GET['revisao_liquidacao_desatualizada'])) {
+    ?>
+        <div class="alert alert-warning fade show">
+            A lista mudou antes da confirmação. Revise as informações novamente; nenhum parcelamento foi alterado.
+        </div>
+    <?php
+        return;
+    }
+
+    if (isset($_GET['erro_revisao_liquidacao'])) {
+    ?>
+        <div class="alert alert-danger fade show">
+            Não foi possível salvar as decisões. Nenhum parcelamento foi alterado.
+        </div>
+    <?php
+    }
+}
+
+function renderizarRevisaoLiquidacoesPendentes(string $orgao): void
+{
+    $pendentes = $GLOBALS['parcelamentos_pendentes_liquidacao'] ?? [];
+
+    if (!$pendentes) {
+        return;
+    }
+    ?>
+    <div
+        class="modal fade"
+        id="modalLiquidacoesAutomaticas"
+        tabindex="-1"
+        data-bs-backdrop="static"
+        data-bs-keyboard="false"
+        aria-labelledby="tituloRevisaoLiquidacoes"
+        aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="bi bi-check-circle text-success me-2"></i>
-                        Parcelamento liquidado automaticamente
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-                </div>
-                <div class="modal-body">
-                    <p>
-                        Os parcelamentos abaixo chegaram à última parcela. Confira se os clientes realmente pagaram:
-                    </p>
-
-                    <div class="list-group">
-                        <?php foreach ($liquidados as $parcelamento): ?>
-                            <div class="list-group-item">
-                                <strong class="d-block">
-                                    <?= htmlspecialchars($parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome']) ?>
-                                </strong>
-                                <span class="text-muted small">
-                                    Nº <?= htmlspecialchars($parcelamento['numero_parcelamento']) ?>
-                                    · <?= (int)$parcelamento['parcelas_total'] ?>/<?= (int)$parcelamento['parcelas_total'] ?> parcelas
-                                </span>
-                            </div>
-                        <?php endforeach; ?>
+                <form method="post" action="parcelamentos_revisar_liquidacao.php" id="formRevisaoLiquidacoes" novalidate>
+                    <div class="modal-header">
+                        <div>
+                            <h5 class="modal-title" id="tituloRevisaoLiquidacoes">
+                                <i class="bi bi-question-circle text-primary me-2"></i>
+                                Confirmar parcelamentos concluídos
+                            </h5>
+                            <p class="text-muted small mb-0 mt-1">Nada será alterado até você salvar as respostas.</p>
+                        </div>
                     </div>
+                    <div class="modal-body">
+                        <p class="mb-3">
+                            Estes parcelamentos chegaram ao final. Informe se cada cliente realizou o pagamento:
+                        </p>
 
-                    <p class="text-muted small mt-3 mb-0">
-                        Caso algum cliente não tenha pago, use “Voltar” na lista de liquidados.
-                    </p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                    <a href="<?= htmlspecialchars($urlLiquidados) ?>" class="btn btn-success">
-                        Revisar liquidados
-                    </a>
-                </div>
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(parcelamentosToken()) ?>">
+                        <input type="hidden" name="orgao" value="<?= htmlspecialchars($orgao) ?>">
+
+                        <div class="list-group revisao-liquidacoes-lista">
+                            <?php foreach ($pendentes as $parcelamento):
+                                $id = (int)$parcelamento['id'];
+                            ?>
+                                <div class="list-group-item revisao-liquidacao-item">
+                                    <input type="hidden" name="parcelamentos[]" value="<?= $id ?>">
+                                    <div class="revisao-liquidacao-dados">
+                                        <div class="h6 mb-1">
+                                            <?= htmlspecialchars($parcelamento['cliente_codigo'] . ' - ' . $parcelamento['cliente_nome']) ?>
+                                        </div>
+                                        <span class="text-muted small">
+                                            Nº <?= htmlspecialchars($parcelamento['numero_parcelamento']) ?>
+                                            · <?= (int)$parcelamento['parcelas_total'] ?>/<?= (int)$parcelamento['parcelas_total'] ?> parcelas
+                                        </span>
+                                    </div>
+                                    <div class="revisao-liquidacao-opcoes" role="group" aria-label="O cliente pagou este parcelamento?">
+                                        <input
+                                            type="radio"
+                                            class="btn-check"
+                                            name="decisoes[<?= $id ?>]"
+                                            id="liquidacaoNao<?= $id ?>"
+                                            value="nao"
+                                            required>
+                                        <label class="btn btn-outline-danger" for="liquidacaoNao<?= $id ?>">
+                                            <i class="bi bi-x-circle"></i> Não pagou
+                                        </label>
+
+                                        <input
+                                            type="radio"
+                                            class="btn-check"
+                                            name="decisoes[<?= $id ?>]"
+                                            id="liquidacaoSim<?= $id ?>"
+                                            value="sim"
+                                            required>
+                                        <label class="btn btn-outline-success" for="liquidacaoSim<?= $id ?>">
+                                            <i class="bi bi-check-circle"></i> Sim, pagou
+                                        </label>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <div class="alert alert-danger d-none mt-3 mb-0" id="avisoRevisaoLiquidacoes" role="alert">
+                            Responda Sim ou Não para todos os parcelamentos.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <span class="text-muted small me-auto">A pergunta reaparecerá se você sair sem responder.</span>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check2"></i> Salvar decisões
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -486,7 +558,40 @@ function renderizarAvisoLiquidacoesAutomaticas(string $orgao): void
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const modal = document.getElementById('modalLiquidacoesAutomaticas');
-            bootstrap.Modal.getOrCreateInstance(modal).show();
+            const formulario = document.getElementById('formRevisaoLiquidacoes');
+            const aviso = document.getElementById('avisoRevisaoLiquidacoes');
+
+            bootstrap.Modal.getOrCreateInstance(modal, {
+                backdrop: 'static',
+                keyboard: false
+            }).show();
+
+            formulario.addEventListener('submit', function(event) {
+                const grupos = new Map();
+
+                formulario.querySelectorAll('input[type="radio"]').forEach(function(campo) {
+                    if (!grupos.has(campo.name)) {
+                        grupos.set(campo.name, []);
+                    }
+
+                    grupos.get(campo.name).push(campo);
+                });
+
+                const grupoIncompleto = Array.from(grupos.values()).find(function(campos) {
+                    return !campos.some(function(campo) {
+                        return campo.checked;
+                    });
+                });
+
+                if (grupoIncompleto) {
+                    event.preventDefault();
+                    aviso.classList.remove('d-none');
+                    grupoIncompleto[0].focus();
+                    return;
+                }
+
+                aviso.classList.add('d-none');
+            });
         });
     </script>
 <?php
