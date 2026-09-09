@@ -224,7 +224,7 @@ body.app-layout :is(.legalizacao-metrica,
     .ponto-metrica,
     .financeiro-metrica,
     .tarefas-resumo-card,
-    .auditoria-resumo > div) span {
+    .auditoria-resumo > div)>span {
     margin-bottom: 5px;
     font-size: .76rem;
 }
@@ -234,7 +234,7 @@ body.app-layout :is(.legalizacao-metrica,
     .ponto-metrica,
     .financeiro-metrica,
     .tarefas-resumo-card,
-    .auditoria-resumo > div) strong {
+    .auditoria-resumo > div)>strong {
     margin-top: 0;
     font-size: 1.3rem;
 }

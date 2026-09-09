@@ -55,7 +55,7 @@
 
 .financeiro-mes-titulo {
     color: #172033;
-    font-size: 1.05rem;
+    font-size: 1.12rem;
     font-weight: 700;
 }
 
@@ -94,6 +94,7 @@
     border-color: #b8c5d3;
     background-color: #fff;
     color: #172033;
+    font-size: .92rem;
     font-weight: 600;
     cursor: pointer;
 }
@@ -264,16 +265,16 @@
     display: block;
 }
 
-.financeiro-metrica>span {
+body.app-layout .financeiro-metrica>span {
     color: #64748b;
-    font-size: .82rem;
+    font-size: .86rem;
     font-weight: 600;
 }
 
-.financeiro-metrica>strong {
+body.app-layout .financeiro-metrica>strong {
     margin-top: 8px;
     color: #172033;
-    font-size: 1.25rem;
+    font-size: 1.36rem;
 }
 
 .metrica-receita,
@@ -444,19 +445,29 @@
     margin-bottom: 0;
 }
 
-.financeiro-tabela thead th {
+body.app-layout .table.financeiro-tabela>thead>tr>th {
     padding: 12px 14px;
     border-bottom: 1px solid #dbe2ea;
     background: #f8fafc;
     color: #64748b;
-    font-size: .78rem;
+    font-size: .8rem;
     font-weight: 700;
     white-space: nowrap;
 }
 
-.financeiro-tabela tbody td,
+body.app-layout .table.financeiro-tabela>tbody>tr>td,
 .financeiro-tabela tfoot th {
     padding: 12px 14px;
+    font-size: .86rem;
+}
+
+.financeiro-painel-titulo h5 {
+    font-size: 1.12rem;
+}
+
+.financeiro-painel-titulo p,
+.financeiro-lista-filtros :is(.form-control, .form-select) {
+    font-size: .86rem;
 }
 
 .financeiro-tabela tbody tr {
