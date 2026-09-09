@@ -21,6 +21,56 @@
     width: 210px;
 }
 
+.permutas-anexo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    border: 1px solid #dce3eb;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.permutas-anexo.tem-anexo {
+    border-color: #b8dfc4;
+    background: #f6fcf8;
+}
+
+.permutas-anexo-info {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 11px;
+}
+
+.permutas-anexo-info>i {
+    flex: 0 0 auto;
+    color: #0d6efd;
+    font-size: 1.35rem;
+}
+
+.permutas-anexo.tem-anexo .permutas-anexo-info>i {
+    color: #198754;
+}
+
+.permutas-anexo-info span,
+.permutas-anexo-info strong,
+.permutas-anexo-info small {
+    display: block;
+    min-width: 0;
+}
+
+.permutas-anexo-info small {
+    overflow: hidden;
+    margin-top: 2px;
+    color: #697586;
+    font-size: .78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .permutas-page .btn-icon {
     display: inline-flex;
     align-items: center;
@@ -261,6 +311,7 @@
 @media (max-width: 700px) {
 
     .permutas-toolbar,
+    .permutas-anexo,
     .permutas-instalacao {
         align-items: stretch;
         flex-direction: column;

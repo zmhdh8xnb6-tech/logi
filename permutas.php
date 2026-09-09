@@ -19,7 +19,7 @@ $empresaId = permutasEmpresaId($pdo);
 $empresaNome = empresaAtivaNome($pdo);
 $usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
 $usuarioNome = trim((string)($_SESSION['usuario_nome'] ?? ''));
-$tabelasPermutas = ['permutas_competencias', 'permutas_itens', 'permutas_envios'];
+$tabelasPermutas = ['permutas_competencias', 'permutas_itens', 'permutas_anexos', 'permutas_envios'];
 $estruturaDisponivel = true;
 
 foreach ($tabelasPermutas as $tabelaPermuta) {
@@ -69,17 +69,12 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if ($acao === 'salvar_item') {
             $id = (int)($_POST['id'] ?? 0);
-            $dataRetirada = trim((string)($_POST['data_retirada'] ?? ''));
+            $dataRetirada = $competencia . '-01';
             $quantidade = permutasNumero($_POST['quantidade'] ?? '');
             $descricao = trim((string)($_POST['descricao'] ?? ''));
             $destino = trim((string)($_POST['destino'] ?? ''));
             $valorUnitario = permutasNumero($_POST['valor_unitario'] ?? '');
             $observacao = trim((string)($_POST['observacao'] ?? ''));
-            $dataValida = DateTime::createFromFormat('!Y-m-d', $dataRetirada);
-
-            if (!$dataValida || $dataValida->format('Y-m-d') !== $dataRetirada || substr($dataRetirada, 0, 7) !== $competencia) {
-                throw new RuntimeException('Informe uma data pertencente à competência selecionada.');
-            }
             if ($quantidade <= 0 || $quantidade > 99999) {
                 throw new RuntimeException('Informe uma quantidade válida.');
             }
@@ -104,12 +99,11 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($id > 0) {
                 $stmt = $pdo->prepare('
                     UPDATE permutas_itens
-                    SET data_retirada = ?, quantidade = ?, descricao = ?, destino = ?,
+                    SET quantidade = ?, descricao = ?, destino = ?,
                         valor_unitario = ?, observacao = ?, atualizado_em = NOW()
                     WHERE id = ? AND empresa_id = ? AND competencia_id = ?
                 ');
                 $stmt->execute([
-                    $dataRetirada,
                     $quantidade,
                     $descricao,
                     $destino !== '' ? $destino : null,
@@ -140,7 +134,6 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
             permutasMarcarAlterada($pdo, (int)$competenciaRegistro['id']);
             $depois = [
-                'data_retirada' => $dataRetirada,
                 'quantidade' => $quantidade,
                 'descricao' => $descricao,
                 'destino' => $destino,
@@ -189,6 +182,169 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             permutasRedirecionar('Item excluído com sucesso.', 'success', $competencia);
         }
 
+        if ($acao === 'anexar_relatorio') {
+            $arquivo = $_FILES['relatorio_digitalizado'] ?? null;
+            $competenciaRegistro = permutasBuscarCompetencia($pdo, $competencia, true);
+
+            if (!$competenciaRegistro) {
+                throw new RuntimeException('Não foi possível abrir a competência selecionada.');
+            }
+            if (!is_array($arquivo) || (int)($arquivo['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                $erroUpload = (int)($arquivo['error'] ?? UPLOAD_ERR_NO_FILE);
+                $mensagemUpload = match ($erroUpload) {
+                    UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'O arquivo ultrapassa o limite permitido de 10 MB.',
+                    UPLOAD_ERR_NO_FILE => 'Escolha o relatório digitalizado.',
+                    default => 'Não foi possível receber o relatório. Tente novamente.',
+                };
+                throw new RuntimeException($mensagemUpload);
+            }
+
+            $caminhoTemporario = (string)($arquivo['tmp_name'] ?? '');
+            $tamanhoArquivo = (int)($arquivo['size'] ?? 0);
+            if (!is_uploaded_file($caminhoTemporario) || $tamanhoArquivo <= 0 || $tamanhoArquivo > 10 * 1024 * 1024) {
+                throw new RuntimeException('O relatório deve possuir até 10 MB.');
+            }
+
+            $tipoMime = '';
+            if (function_exists('finfo_open')) {
+                $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                $tipoMime = $finfo ? (string)finfo_file($finfo, $caminhoTemporario) : '';
+                if ($finfo) {
+                    finfo_close($finfo);
+                }
+            } elseif (function_exists('mime_content_type')) {
+                $tipoMime = (string)mime_content_type($caminhoTemporario);
+            }
+
+            $extensoesPermitidas = [
+                'application/pdf' => 'pdf',
+                'image/jpeg' => 'jpg',
+                'image/png' => 'png',
+            ];
+            if (!isset($extensoesPermitidas[$tipoMime])) {
+                throw new RuntimeException('Envie o relatório em PDF, JPG ou PNG.');
+            }
+
+            $nomeOriginal = mb_substr(basename(str_replace(["\r", "\n"], '', (string)($arquivo['name'] ?? 'relatorio'))), 0, 255);
+            if ($nomeOriginal === '') {
+                $nomeOriginal = 'relatorio-digitalizado.' . $extensoesPermitidas[$tipoMime];
+            }
+
+            $diretorio = permutasAnexoPrepararDiretorio($empresaId, (int)$competenciaRegistro['id']);
+            if ($diretorio === null) {
+                throw new RuntimeException('Não foi possível acessar uma pasta gravável. No teste local, confira storage; no servidor, confira logi_storage.');
+            }
+
+            $anexoAnterior = permutasBuscarAnexo($pdo, (int)$competenciaRegistro['id']);
+            $nomeArmazenado = bin2hex(random_bytes(18)) . '.' . $extensoesPermitidas[$tipoMime];
+            $caminhoRelativo = $diretorio['relativo'] . '/' . $nomeArmazenado;
+            $caminhoAbsoluto = $diretorio['absoluto'] . DIRECTORY_SEPARATOR . $nomeArmazenado;
+
+            try {
+                if (!move_uploaded_file($caminhoTemporario, $caminhoAbsoluto)) {
+                    throw new RuntimeException('Falha ao mover o relatório enviado.');
+                }
+                @chmod($caminhoAbsoluto, 0640);
+                clearstatcache(true, $caminhoAbsoluto);
+                $tamanhoSalvo = filesize($caminhoAbsoluto);
+                if (
+                    !is_file($caminhoAbsoluto)
+                    || !is_readable($caminhoAbsoluto)
+                    || $tamanhoSalvo === false
+                    || $tamanhoSalvo !== $tamanhoArquivo
+                    || permutasAnexoCaminhoAbsoluto($caminhoRelativo) === null
+                ) {
+                    throw new RuntimeException('O relatório não pôde ser validado no armazenamento persistente.');
+                }
+
+                $pdo->beginTransaction();
+                $stmt = $pdo->prepare('
+                    INSERT INTO permutas_anexos
+                        (empresa_id, competencia_id, nome_original, caminho_arquivo, tipo_mime, tamanho_bytes, usuario_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        nome_original = VALUES(nome_original),
+                        caminho_arquivo = VALUES(caminho_arquivo),
+                        tipo_mime = VALUES(tipo_mime),
+                        tamanho_bytes = VALUES(tamanho_bytes),
+                        usuario_id = VALUES(usuario_id),
+                        enviado_em = CURRENT_TIMESTAMP
+                ');
+                $stmt->execute([
+                    $empresaId,
+                    (int)$competenciaRegistro['id'],
+                    $nomeOriginal,
+                    $caminhoRelativo,
+                    $tipoMime,
+                    $tamanhoArquivo,
+                    $usuarioId ?: null,
+                ]);
+                permutasMarcarAlterada($pdo, (int)$competenciaRegistro['id']);
+                registrarAuditoria(
+                    $pdo,
+                    'Outros Serviços',
+                    'anexar_relatorio_permuta',
+                    'permuta_competencia',
+                    (int)$competenciaRegistro['id'],
+                    'Anexou o relatório digitalizado da permuta de ' . permutasCompetenciaRotulo($competencia),
+                    $anexoAnterior,
+                    ['arquivo' => $nomeOriginal, 'tipo' => $tipoMime, 'tamanho' => $tamanhoArquivo]
+                );
+                $pdo->commit();
+
+                if ($anexoAnterior && $anexoAnterior['caminho_arquivo'] !== $caminhoRelativo) {
+                    $arquivoAnterior = permutasAnexoCaminhoAbsoluto((string)$anexoAnterior['caminho_arquivo']);
+                    if ($arquivoAnterior !== null) {
+                        @unlink($arquivoAnterior);
+                    }
+                }
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                if (is_file($caminhoAbsoluto)) {
+                    @unlink($caminhoAbsoluto);
+                }
+                throw $e;
+            }
+
+            permutasRedirecionar('Relatório digitalizado anexado com sucesso.', 'success', $competencia);
+        }
+
+        if ($acao === 'excluir_relatorio') {
+            $competenciaRegistro = permutasBuscarCompetencia($pdo, $competencia, false);
+            $anexo = $competenciaRegistro ? permutasBuscarAnexo($pdo, (int)$competenciaRegistro['id']) : null;
+            $anexoId = (int)($_POST['anexo_id'] ?? 0);
+
+            if (!$anexo || (int)$anexo['id'] !== $anexoId) {
+                throw new RuntimeException('Relatório digitalizado não encontrado nesta competência.');
+            }
+
+            $caminhoArquivo = permutasAnexoCaminhoAbsoluto((string)$anexo['caminho_arquivo']);
+            $pdo->beginTransaction();
+            $stmt = $pdo->prepare('DELETE FROM permutas_anexos WHERE id = ? AND empresa_id = ? AND competencia_id = ?');
+            $stmt->execute([$anexoId, $empresaId, (int)$competenciaRegistro['id']]);
+            permutasMarcarAlterada($pdo, (int)$competenciaRegistro['id']);
+            registrarAuditoria(
+                $pdo,
+                'Outros Serviços',
+                'excluir_relatorio_permuta',
+                'permuta_competencia',
+                (int)$competenciaRegistro['id'],
+                'Excluiu o relatório digitalizado da permuta de ' . permutasCompetenciaRotulo($competencia),
+                $anexo,
+                null
+            );
+            $pdo->commit();
+
+            $arquivoRemovido = $caminhoArquivo === null || @unlink($caminhoArquivo);
+            permutasRedirecionar(
+                $arquivoRemovido ? 'Relatório digitalizado excluído.' : 'O registro foi excluído, mas o arquivo não pôde ser removido do servidor.',
+                $arquivoRemovido ? 'success' : 'warning',
+                $competencia
+            );
+        }
+
         if ($acao === 'enviar_email') {
             require_once __DIR__ . '/mailer.php';
 
@@ -217,17 +373,30 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $totalEmail = permutasTotal($itensEmail);
             $pdfConteudo = permutasGerarPdf($competenciaRegistro, $itensEmail, $empresaNome, $usuarioNome);
+            $anexosEmail = [[
+                'conteudo' => $pdfConteudo,
+                'nome' => permutasNomeArquivo($competenciaRegistro),
+                'tipo' => 'application/pdf',
+            ]];
+            $anexoDigitalizado = permutasBuscarAnexo($pdo, (int)$competenciaRegistro['id']);
+            if ($anexoDigitalizado) {
+                $caminhoDigitalizado = permutasAnexoCaminhoAbsoluto((string)$anexoDigitalizado['caminho_arquivo']);
+                if ($caminhoDigitalizado === null) {
+                    throw new RuntimeException('O relatório digitalizado não foi localizado no armazenamento. Anexe-o novamente antes de enviar.');
+                }
+                $anexosEmail[] = [
+                    'caminho' => $caminhoDigitalizado,
+                    'nome' => (string)$anexoDigitalizado['nome_original'],
+                    'tipo' => (string)$anexoDigitalizado['tipo_mime'],
+                ];
+            }
             $erroEmail = null;
             $enviado = enviarEmailComAnexos(
                 $destinatario,
                 'Financeiro',
                 $assunto,
                 permutasCorpoEmail($mensagemEmail, $competenciaRegistro, $totalEmail),
-                [[
-                    'conteudo' => $pdfConteudo,
-                    'nome' => permutasNomeArquivo($competenciaRegistro),
-                    'tipo' => 'application/pdf',
-                ]],
+                $anexosEmail,
                 $erroEmail
             );
 
@@ -307,10 +476,14 @@ $itens = [];
 $competenciasRecentes = [];
 $envios = [];
 $ultimoDestinatario = '';
+$itensDisponiveis = permutasItensPadrao();
+$anexoDigitalizado = null;
 
 if ($estruturaDisponivel) {
     $competenciaRegistro = permutasBuscarCompetencia($pdo, $competencia, false);
     $itens = permutasBuscarItens($pdo, (int)($competenciaRegistro['id'] ?? 0));
+    $itensDisponiveis = permutasItensDisponiveis($pdo);
+    $anexoDigitalizado = permutasBuscarAnexo($pdo, (int)($competenciaRegistro['id'] ?? 0));
     $competenciasRecentes = permutasBuscarCompetenciasRecentes($pdo);
     $envios = permutasBuscarEnvios($pdo, (int)($competenciaRegistro['id'] ?? 0));
     $ultimoDestinatario = trim((string)($competenciaRegistro['email_destinatario'] ?? '')) ?: permutasUltimoDestinatario($pdo);
@@ -407,6 +580,33 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                     </div>
                 </div>
 
+                <section class="permutas-anexo <?= $anexoDigitalizado ? 'tem-anexo' : '' ?>">
+                    <div class="permutas-anexo-info">
+                        <i class="bi <?= $anexoDigitalizado ? 'bi-file-earmark-check' : 'bi-file-earmark-arrow-up' ?>"></i>
+                        <span>
+                            <strong>Relatório digitalizado</strong>
+                            <small><?= $anexoDigitalizado
+                                        ? htmlspecialchars((string)$anexoDigitalizado['nome_original']) . ' · ' . htmlspecialchars(number_format((int)$anexoDigitalizado['tamanho_bytes'] / 1024, 0, ',', '.')) . ' KB'
+                                        : 'Anexe o PDF ou a imagem original desta competência.' ?></small>
+                        </span>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <?php if ($anexoDigitalizado): ?>
+                            <a href="permuta_anexo.php?id=<?= (int)$anexoDigitalizado['id'] ?>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success">
+                                <i class="bi bi-eye"></i> Abrir
+                            </a>
+                        <?php endif; ?>
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalAnexoPermuta">
+                            <i class="bi bi-paperclip"></i> <?= $anexoDigitalizado ? 'Substituir' : 'Anexar' ?>
+                        </button>
+                        <?php if ($anexoDigitalizado): ?>
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalExcluirAnexoPermuta">
+                                <i class="bi bi-trash"></i> Excluir
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                </section>
+
                 <section class="permutas-resumo" aria-label="Resumo da competência">
                     <div>
                         <span>Competência</span>
@@ -455,7 +655,6 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                         <table class="table align-middle mb-0">
                             <thead>
                                 <tr>
-                                    <th>Data</th>
                                     <th class="text-center">Qtd.</th>
                                     <th>Descrição</th>
                                     <th>Destino</th>
@@ -467,20 +666,18 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                             <tbody>
                                 <?php if ($itens === []): ?>
                                     <tr>
-                                        <td colspan="7" class="text-center text-muted py-5">Nenhum item registrado nesta competência.</td>
+                                        <td colspan="6" class="text-center text-muted py-5">Nenhum item registrado nesta competência.</td>
                                     </tr>
                                 <?php endif; ?>
                                 <?php foreach ($itens as $item): ?>
                                     <?php $valorItem = (float)$item['quantidade'] * (float)$item['valor_unitario']; ?>
                                     <tr class="permuta-item"
                                         data-id="<?= (int)$item['id'] ?>"
-                                        data-data="<?= htmlspecialchars($item['data_retirada']) ?>"
                                         data-quantidade="<?= htmlspecialchars((string)$item['quantidade']) ?>"
                                         data-descricao="<?= htmlspecialchars($item['descricao'], ENT_QUOTES, 'UTF-8') ?>"
                                         data-destino="<?= htmlspecialchars((string)$item['destino'], ENT_QUOTES, 'UTF-8') ?>"
                                         data-valor="<?= htmlspecialchars(number_format((float)$item['valor_unitario'], 2, ',', '.')) ?>"
                                         data-observacao="<?= htmlspecialchars((string)$item['observacao'], ENT_QUOTES, 'UTF-8') ?>">
-                                        <td><?= htmlspecialchars(permutasDataBr($item['data_retirada'])) ?></td>
                                         <td class="text-center"><?= htmlspecialchars(permutasQuantidadeRotulo((float)$item['quantidade'])) ?></td>
                                         <td>
                                             <strong><?= htmlspecialchars($item['descricao']) ?></strong>
@@ -501,7 +698,7 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                             <?php if ($itens !== []): ?>
                                 <tfoot>
                                     <tr>
-                                        <td colspan="5" class="text-end">Total da competência</td>
+                                        <td colspan="4" class="text-end">Total da competência</td>
                                         <td class="text-end"><?= htmlspecialchars(permutasMoeda($total)) ?></td>
                                         <td></td>
                                     </tr>
@@ -572,15 +769,22 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                         </div>
                         <div class="modal-body">
                             <div class="row g-3">
-                                <div class="col-sm-7">
-                                    <label for="permutaDescricao" class="form-label">Descrição</label>
-                                    <input type="text" class="form-control" name="descricao" id="permutaDescricao" maxlength="255" required>
-                                    <div class="invalid-feedback">Informe a descrição.</div>
+                                <div class="col-12">
+                                    <label for="permutaItemSelecionado" class="form-label">Item</label>
+                                    <select class="form-select" id="permutaItemSelecionado" required>
+                                        <option value="">Selecione um item</option>
+                                        <?php foreach ($itensDisponiveis as $itemDisponivel): ?>
+                                            <option value="<?= htmlspecialchars($itemDisponivel, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($itemDisponivel) ?></option>
+                                        <?php endforeach; ?>
+                                        <option value="__outro__">Adicionar outro item...</option>
+                                    </select>
+                                    <div class="invalid-feedback">Escolha um item.</div>
+                                    <input type="hidden" name="descricao" id="permutaDescricao">
                                 </div>
-                                <div class="col-sm-5">
-                                    <label for="permutaData" class="form-label">Data da retirada</label>
-                                    <input type="date" class="form-control" name="data_retirada" id="permutaData" min="<?= htmlspecialchars($competencia . '-01') ?>" max="<?= htmlspecialchars($dataCompetencia->format('Y-m-t')) ?>" required>
-                                    <div class="invalid-feedback">Informe a data.</div>
+                                <div class="col-12 d-none" id="grupoPermutaOutroItem">
+                                    <label for="permutaOutroItem" class="form-label">Nome do novo item</label>
+                                    <input type="text" class="form-control" id="permutaOutroItem" maxlength="255" placeholder="Digite o nome do item">
+                                    <div class="invalid-feedback">Informe o nome do novo item.</div>
                                 </div>
                                 <div class="col-sm-4">
                                     <label for="permutaQuantidade" class="form-label">Quantidade</label>
@@ -589,7 +793,7 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                                 </div>
                                 <div class="col-sm-4">
                                     <label for="permutaValor" class="form-label">Valor unitário</label>
-                                    <div class="input-group"><span class="input-group-text">R$</span><input type="text" inputmode="decimal" class="form-control" name="valor_unitario" id="permutaValor" placeholder="0,00" required></div>
+                                    <input type="text" inputmode="decimal" class="form-control campo-moeda text-end" name="valor_unitario" id="permutaValor" placeholder="0,00" required>
                                     <div class="invalid-feedback">Informe o valor.</div>
                                 </div>
                                 <div class="col-sm-4">
@@ -618,6 +822,57 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                 </div>
             </div>
         </div>
+
+        <div class="modal fade" id="modalAnexoPermuta" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form method="post" enctype="multipart/form-data" novalidate>
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(permutasToken()) ?>">
+                        <input type="hidden" name="acao" value="anexar_relatorio">
+                        <input type="hidden" name="competencia" value="<?= htmlspecialchars($competencia) ?>">
+                        <div class="modal-header">
+                            <div>
+                                <h5 class="modal-title"><?= $anexoDigitalizado ? 'Substituir relatório digitalizado' : 'Anexar relatório digitalizado' ?></h5>
+                                <p class="text-muted small mb-0"><?= htmlspecialchars(permutasCompetenciaRotulo($competencia)) ?></p>
+                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                        <div class="modal-body">
+                            <?php if ($anexoDigitalizado): ?>
+                                <div class="alert alert-info py-2">O novo arquivo substituirá <strong><?= htmlspecialchars((string)$anexoDigitalizado['nome_original']) ?></strong>.</div>
+                            <?php endif; ?>
+                            <label for="relatorioDigitalizado" class="form-label">Arquivo</label>
+                            <input type="file" class="form-control" name="relatorio_digitalizado" id="relatorioDigitalizado" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" required>
+                            <div class="form-text">Formatos aceitos: PDF, JPG ou PNG, com até 10 MB.</div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-upload"></i> Salvar relatório</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <?php if ($anexoDigitalizado): ?>
+            <div class="modal fade" id="modalExcluirAnexoPermuta" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered modal-sm">
+                    <div class="modal-content">
+                        <form method="post">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(permutasToken()) ?>">
+                            <input type="hidden" name="acao" value="excluir_relatorio">
+                            <input type="hidden" name="competencia" value="<?= htmlspecialchars($competencia) ?>">
+                            <input type="hidden" name="anexo_id" value="<?= (int)$anexoDigitalizado['id'] ?>">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Excluir relatório</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                            </div>
+                            <div class="modal-body">Deseja excluir o relatório digitalizado desta competência?</div>
+                            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-danger"><i class="bi bi-trash"></i> Excluir</button></div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
 
         <div class="modal fade" id="modalExcluirPermuta" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered modal-sm">
@@ -649,7 +904,7 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                         <div class="modal-header">
                             <div>
                                 <h5 class="modal-title">Enviar relatório ao financeiro</h5>
-                                <p class="text-muted small mb-0">O PDF de <?= htmlspecialchars(permutasCompetenciaRotulo($competencia)) ?> será anexado automaticamente.</p>
+                                <p class="text-muted small mb-0"><?= $anexoDigitalizado ? 'O PDF do LOGI e o relatório digitalizado serão anexados automaticamente.' : 'O PDF do LOGI será anexado automaticamente.' ?></p>
                             </div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                         </div>
                         <div class="modal-body">
@@ -677,6 +932,10 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                 const modalExcluir = modalExcluirElemento ? bootstrap.Modal.getOrCreateInstance(modalExcluirElemento) : null;
                 const campoQuantidade = document.getElementById('permutaQuantidade');
                 const campoValor = document.getElementById('permutaValor');
+                const itemSelecionado = document.getElementById('permutaItemSelecionado');
+                const outroItem = document.getElementById('permutaOutroItem');
+                const descricaoItem = document.getElementById('permutaDescricao');
+                const grupoOutroItem = document.getElementById('grupoPermutaOutroItem');
 
                 function numero(valor) {
                     let texto = String(valor || '').replace(/[^0-9,.-]/g, '');
@@ -698,11 +957,39 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                     document.getElementById('permutaTotalPrevia').textContent = moeda(numero(campoQuantidade?.value) * numero(campoValor?.value));
                 }
 
+                function formatarCampoMoeda(campo) {
+                    const digitos = campo.value.replace(/\D/g, '');
+                    if (digitos === '') {
+                        campo.value = '';
+                        return;
+                    }
+
+                    campo.value = (Number(digitos) / 100).toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    });
+                }
+
+                function atualizarItemSelecionado() {
+                    const personalizado = itemSelecionado.value === '__outro__';
+                    grupoOutroItem.classList.toggle('d-none', !personalizado);
+                    descricaoItem.value = personalizado ? outroItem.value.trim() : itemSelecionado.value;
+                    outroItem.required = personalizado;
+                }
+
+                function selecionarItem(descricao) {
+                    const existe = Array.from(itemSelecionado.options).some((opcao) => opcao.value === descricao);
+                    itemSelecionado.value = existe ? descricao : '__outro__';
+                    outroItem.value = existe ? '' : descricao;
+                    atualizarItemSelecionado();
+                }
+
                 function limparItem() {
                     document.getElementById('tituloModalItemPermuta').textContent = 'Adicionar item';
                     document.getElementById('permutaItemId').value = '';
-                    document.getElementById('permutaDescricao').value = '';
-                    document.getElementById('permutaData').value = '';
+                    itemSelecionado.value = '';
+                    outroItem.value = '';
+                    atualizarItemSelecionado();
                     document.getElementById('permutaQuantidade').value = '1';
                     document.getElementById('permutaValor').value = '';
                     document.getElementById('permutaDestino').value = '';
@@ -713,15 +1000,19 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
 
                 document.getElementById('btnNovoItemPermuta')?.addEventListener('click', limparItem);
                 campoQuantidade?.addEventListener('input', atualizarTotal);
-                campoValor?.addEventListener('input', atualizarTotal);
+                campoValor?.addEventListener('input', function() {
+                    formatarCampoMoeda(campoValor);
+                    atualizarTotal();
+                });
+                itemSelecionado?.addEventListener('change', atualizarItemSelecionado);
+                outroItem?.addEventListener('input', atualizarItemSelecionado);
 
                 document.querySelectorAll('.btn-editar-permuta').forEach(function(botao) {
                     botao.addEventListener('click', function() {
                         const linha = botao.closest('.permuta-item');
                         document.getElementById('tituloModalItemPermuta').textContent = 'Editar item';
                         document.getElementById('permutaItemId').value = linha.dataset.id || '';
-                        document.getElementById('permutaDescricao').value = linha.dataset.descricao || '';
-                        document.getElementById('permutaData').value = linha.dataset.data || '';
+                        selecionarItem(linha.dataset.descricao || '');
                         document.getElementById('permutaQuantidade').value = String(numero(linha.dataset.quantidade)).replace('.', ',');
                         document.getElementById('permutaValor').value = linha.dataset.valor || '';
                         document.getElementById('permutaDestino').value = linha.dataset.destino || '';
@@ -745,18 +1036,18 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                 });
 
                 document.getElementById('formItemPermuta')?.addEventListener('submit', function(evento) {
-                    const descricao = document.getElementById('permutaDescricao');
-                    const data = document.getElementById('permutaData');
                     const quantidade = document.getElementById('permutaQuantidade');
                     const valor = document.getElementById('permutaValor');
+                    atualizarItemSelecionado();
+                    const itemValido = descricaoItem.value.trim() !== '';
+                    itemSelecionado.classList.toggle('is-invalid', itemSelecionado.value === '');
+                    outroItem.classList.toggle('is-invalid', itemSelecionado.value === '__outro__' && !itemValido);
                     const validacoes = [
-                        [descricao, descricao.value.trim() !== ''],
-                        [data, data.value !== ''],
                         [quantidade, numero(quantidade.value) > 0],
                         [valor, numero(valor.value) > 0]
                     ];
                     validacoes.forEach(([campo, valido]) => campo.classList.toggle('is-invalid', !valido));
-                    if (validacoes.some(([, valido]) => !valido)) {
+                    if (!itemValido || validacoes.some(([, valido]) => !valido)) {
                         evento.preventDefault();
                     }
                 });

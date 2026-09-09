@@ -101,6 +101,32 @@ function permutasQuantidadeRotulo(float $quantidade): string
     return rtrim(rtrim(number_format($quantidade, 2, ',', '.'), '0'), ',');
 }
 
+function permutasItensPadrao(): array
+{
+    return ['Resma', 'Toner HP', 'Toner Brother'];
+}
+
+function permutasItensDisponiveis(PDO $pdo): array
+{
+    $itens = permutasItensPadrao();
+    $normalizados = array_map(static fn(string $item): string => mb_strtolower($item), $itens);
+
+    $stmt = $pdo->prepare('SELECT DISTINCT descricao FROM permutas_itens WHERE empresa_id = ? ORDER BY descricao');
+    $stmt->execute([permutasEmpresaId($pdo)]);
+
+    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $descricao) {
+        $descricao = trim((string)$descricao);
+        $normalizada = mb_strtolower($descricao);
+
+        if ($descricao !== '' && !in_array($normalizada, $normalizados, true)) {
+            $itens[] = $descricao;
+            $normalizados[] = $normalizada;
+        }
+    }
+
+    return $itens;
+}
+
 function permutasStatusRotulo(string $status): string
 {
     return match ($status) {
@@ -155,7 +181,7 @@ function permutasBuscarItens(PDO $pdo, int $competenciaId): array
         SELECT *, (quantidade * valor_unitario) AS valor_total
         FROM permutas_itens
         WHERE competencia_id = ? AND empresa_id = ?
-        ORDER BY data_retirada ASC, id ASC
+        ORDER BY id ASC
     ');
     $stmt->execute([$competenciaId, permutasEmpresaId($pdo)]);
 
@@ -240,6 +266,158 @@ function permutasUltimoDestinatario(PDO $pdo): string
     return trim((string)($stmt->fetchColumn() ?: ''));
 }
 
+function permutasBuscarAnexo(PDO $pdo, int $competenciaId): ?array
+{
+    if ($competenciaId <= 0) {
+        return null;
+    }
+
+    $stmt = $pdo->prepare('SELECT * FROM permutas_anexos WHERE empresa_id = ? AND competencia_id = ? LIMIT 1');
+    $stmt->execute([permutasEmpresaId($pdo), $competenciaId]);
+
+    return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+function permutasAmbienteLocal(): bool
+{
+    $servidor = strtolower(trim((string)($_SERVER['SERVER_NAME'] ?? $_SERVER['HTTP_HOST'] ?? '')));
+    $servidor = preg_replace('/:\d+$/', '', $servidor) ?? $servidor;
+
+    return PHP_SAPI === 'cli-server'
+        || in_array($servidor, ['localhost', '127.0.0.1', '::1'], true);
+}
+
+function permutasArmazenamentoCandidatos(): array
+{
+    $configurado = defined('LOGI_STORAGE_PATH')
+        ? (string)constant('LOGI_STORAGE_PATH')
+        : (string)(getenv('LOGI_STORAGE_PATH') ?: '');
+    $caminho = trim($configurado);
+
+    if ($caminho !== '') {
+        if (!str_starts_with($caminho, DIRECTORY_SEPARATOR)) {
+            $caminho = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . $caminho;
+        }
+
+        return [$caminho];
+    }
+
+    $externo = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'logi_storage';
+    if (!permutasAmbienteLocal()) {
+        return [$externo];
+    }
+
+    return array_values(array_unique([
+        dirname(__DIR__) . DIRECTORY_SEPARATOR . 'storage',
+        $externo,
+        rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'logi_storage',
+    ]));
+}
+
+function permutasArmazenamentoRaiz(bool $criar = false): ?string
+{
+    foreach (permutasArmazenamentoCandidatos() as $caminho) {
+        if ($criar && !is_dir($caminho) && !@mkdir($caminho, 0750, true) && !is_dir($caminho)) {
+            continue;
+        }
+
+        $raiz = realpath($caminho);
+        if ($raiz === false || !is_dir($raiz) || ($criar && !is_writable($raiz))) {
+            continue;
+        }
+
+        return rtrim($raiz, DIRECTORY_SEPARATOR);
+    }
+
+    return null;
+}
+
+function permutasArmazenamentoRaizesLeitura(): array
+{
+    $raizes = [];
+
+    foreach (permutasArmazenamentoCandidatos() as $caminho) {
+        $raiz = realpath($caminho);
+        if ($raiz !== false && is_dir($raiz)) {
+            $raizes[] = rtrim($raiz, DIRECTORY_SEPARATOR);
+        }
+    }
+
+    $raizLegada = realpath(dirname(__DIR__) . '/storage');
+    if ($raizLegada !== false) {
+        $raizes[] = rtrim($raizLegada, DIRECTORY_SEPARATOR);
+    }
+
+    return array_values(array_unique($raizes));
+}
+
+function permutasAnexoCaminhoLogico(string $caminho): ?string
+{
+    $caminho = str_replace('\\', '/', trim($caminho));
+    $caminho = preg_replace('#^(?:\./)+#', '', $caminho) ?? $caminho;
+
+    foreach (['/logi_storage/permutas/', '/storage/permutas/'] as $marcador) {
+        $posicao = strripos('/' . ltrim($caminho, '/'), $marcador);
+        if ($posicao !== false) {
+            $caminho = 'permutas/' . substr('/' . ltrim($caminho, '/'), $posicao + strlen($marcador));
+            break;
+        }
+    }
+
+    $caminho = ltrim($caminho, '/');
+    if (str_starts_with($caminho, 'storage/')) {
+        $caminho = substr($caminho, strlen('storage/'));
+    } elseif (str_starts_with($caminho, 'logi_storage/')) {
+        $caminho = substr($caminho, strlen('logi_storage/'));
+    }
+
+    return preg_match('#^permutas/[1-9]\d*/[1-9]\d*/[a-z0-9][a-z0-9._-]{0,127}\.(?:pdf|jpe?g|png)$#i', $caminho) === 1
+        ? $caminho
+        : null;
+}
+
+function permutasAnexoPrepararDiretorio(int $empresaId, int $competenciaId): ?array
+{
+    if ($empresaId <= 0 || $competenciaId <= 0) {
+        return null;
+    }
+
+    $raiz = permutasArmazenamentoRaiz(true);
+    if ($raiz === null || !is_writable($raiz)) {
+        return null;
+    }
+
+    $relativo = 'permutas/' . $empresaId . '/' . $competenciaId;
+    $absoluto = $raiz . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativo);
+    if (!is_dir($absoluto) && !@mkdir($absoluto, 0750, true) && !is_dir($absoluto)) {
+        return null;
+    }
+
+    return ['relativo' => $relativo, 'absoluto' => $absoluto];
+}
+
+function permutasAnexoCaminhoAbsoluto(string $caminho): ?string
+{
+    $logico = permutasAnexoCaminhoLogico($caminho);
+    if ($logico === null) {
+        return null;
+    }
+
+    foreach (permutasArmazenamentoRaizesLeitura() as $raiz) {
+        $candidato = realpath($raiz . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $logico));
+        if (
+            $candidato !== false
+            && str_starts_with($candidato, $raiz . DIRECTORY_SEPARATOR)
+            && is_file($candidato)
+            && is_readable($candidato)
+        ) {
+            return $candidato;
+        }
+    }
+
+    return null;
+}
+
 function permutasMarcarAlterada(PDO $pdo, int $competenciaId): void
 {
     $stmt = $pdo->prepare("
@@ -273,7 +451,6 @@ function permutasHtmlRelatorio(array $competencia, array $itens, string $empresa
         $quantidade = (float)$item['quantidade'];
         $unitario = (float)$item['valor_unitario'];
         $linhas .= '<tr>'
-            . '<td>' . htmlspecialchars(permutasDataBr($item['data_retirada'])) . '</td>'
             . '<td class="numero">' . htmlspecialchars(permutasQuantidadeRotulo($quantidade)) . '</td>'
             . '<td>' . htmlspecialchars((string)$item['descricao']) . '</td>'
             . '<td>' . htmlspecialchars((string)($item['destino'] ?: '-')) . '</td>'
@@ -308,7 +485,7 @@ function permutasHtmlRelatorio(array $competencia, array $itens, string $empresa
             <td><strong>Competência</strong>' . htmlspecialchars($rotulo) . '</td>
             <td><strong>Itens</strong>' . count($itens) . '</td>
         </tr></table>
-        <table class="itens"><thead><tr><th>Data</th><th>Qtd.</th><th>Descrição</th><th>Destino</th><th>Valor unitário</th><th>Total</th></tr></thead><tbody>'
+        <table class="itens"><thead><tr><th>Qtd.</th><th>Descrição</th><th>Destino</th><th>Valor unitário</th><th>Total</th></tr></thead><tbody>'
         . $linhas
         . '</tbody></table>
         <div class="total">Total da competência: ' . htmlspecialchars(permutasMoeda($total)) . '</div>
