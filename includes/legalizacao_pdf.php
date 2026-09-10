@@ -39,9 +39,6 @@ function legalizacaoPdfEnderecoCliente(array $cliente): string
 function legalizacaoPdfHtml(
     array $processo,
     array $cliente,
-    array $etapas,
-    array $checklist,
-    array $historico,
     string $empresaNome,
     string $usuarioNome
 ): string {
@@ -55,32 +52,6 @@ function legalizacaoPdfHtml(
     ])));
     $empresaNome = trim($empresaNome) !== '' ? $empresaNome : 'Logi';
 
-    $linhasEtapas = '';
-    foreach ($etapas as $etapa) {
-        $status = (string)($etapa['status'] ?? 'pendente');
-        $statusTexto = ['concluida' => 'Concluída', 'atual' => 'Em andamento', 'pendente' => 'Pendente'][$status] ?? ucfirst($status);
-        $classe = $status === 'concluida' ? 'ok' : ($status === 'atual' ? 'atual' : 'pendente');
-        $linhasEtapas .= '<tr><td class="numero">' . (int)($etapa['ordem'] ?? 0) . '</td><td>'
-            . legalizacaoPdfValor(legalizacaoNormalizarNomeEtapa((string)($etapa['nome'] ?? ''))) . '</td><td class="status ' . $classe . '">'
-            . legalizacaoPdfEscapar($statusTexto) . '</td></tr>';
-    }
-
-    $linhasChecklist = '';
-    foreach ($checklist as $item) {
-        $status = (string)($item['status'] ?? 'pendente');
-        $recebido = $status === 'recebido';
-        $linhasChecklist .= '<tr><td class="numero">' . ($recebido ? '&#10003;' : '&#9633;') . '</td><td>'
-            . legalizacaoPdfValor($item['item'] ?? '') . '</td><td class="status ' . ($recebido ? 'ok' : 'pendente') . '">'
-            . legalizacaoPdfEscapar(legalizacaoStatusChecklist($status)) . '</td></tr>';
-    }
-
-    $linhasHistorico = '';
-    foreach ($historico as $evento) {
-        $linhasHistorico .= '<tr><td class="data">' . legalizacaoPdfEscapar(legalizacaoFormatarDataHora($evento['criado_em'] ?? null))
-            . '</td><td class="usuario">' . legalizacaoPdfValor($evento['usuario_nome'] ?? '') . '</td><td>'
-            . legalizacaoPdfValor($evento['descricao'] ?? '') . '</td></tr>';
-    }
-
     return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><style>
         @page { margin: 18mm 13mm 16mm; }
         * { box-sizing: border-box; }
@@ -92,27 +63,15 @@ function legalizacaoPdfHtml(
         .protocolo { float: right; margin-top: -34px; text-align: right; color: #475569; }
         .protocolo strong { display: block; color: #172033; font-size: 13px; }
         .secao { margin-top: 13px; page-break-inside: avoid; }
-        .quebravel { page-break-inside: auto; }
-        .documentacao { page-break-before: always; }
         h2 { margin: 0 0 6px; padding-bottom: 4px; border-bottom: 1px solid #cbd5e1; color: #1e3a5f; font-size: 11px; text-transform: uppercase; }
         table { width: 100%; border-collapse: collapse; }
         .dados td { width: 50%; padding: 5px 7px; border: 1px solid #dbe3ed; vertical-align: top; }
         .rotulo { display: block; margin-bottom: 2px; color: #64748b; font-size: 7.5px; font-weight: bold; text-transform: uppercase; }
-        .lista th { padding: 5px 6px; background: #eef3f8; border: 1px solid #dbe3ed; color: #475569; font-size: 7.5px; text-align: left; text-transform: uppercase; }
-        .lista td { padding: 5px 6px; border: 1px solid #dbe3ed; vertical-align: top; }
-        .lista tr { page-break-inside: avoid; }
-        .numero { width: 28px; text-align: center; }
-        .status { width: 82px; font-size: 8px; font-weight: bold; }
-        .ok { color: #15803d; } .atual { color: #1368f5; } .pendente { color: #b45309; }
-        .data { width: 92px; white-space: nowrap; } .usuario { width: 110px; }
-        .observacoes { min-height: 42px; padding: 8px; border: 1px solid #dbe3ed; background: #f8fafc; white-space: pre-wrap; }
-        .assinaturas { margin-top: 30px; page-break-inside: avoid; }
-        .assinaturas td { width: 46%; padding-top: 24px; border-top: 1px solid #94a3b8; text-align: center; }
-        .assinaturas .espaco { width: 8%; border: 0; }
+        .alteracao { min-height: 120px; padding: 12px; border: 1px solid #b8cff5; border-left: 4px solid #1368f5; background: #f5f8ff; font-size: 11px; line-height: 1.55; white-space: pre-wrap; }
         .rodape { position: fixed; right: 0; bottom: -10mm; left: 0; color: #94a3b8; font-size: 7.5px; text-align: center; }
     </style></head><body>
         <div class="cabecalho"><div class="marca">' . legalizacaoPdfEscapar($empresaNome) . ' | Sistema Logi</div>
-            <h1>Ficha de acompanhamento - Legalização</h1><p class="subtitulo">Controle impresso do processo e da documentação exigida</p>
+            <h1>Ficha de acompanhamento - Legalização</h1><p class="subtitulo">Resumo do cliente e do processo</p>
             <div class="protocolo"><span>PROCESSO</span><strong>#' . (int)($processo['id'] ?? 0) . '</strong></div></div>
 
         <section class="secao"><h2>Dados do cliente</h2><table class="dados">
@@ -129,15 +88,7 @@ function legalizacaoPdfHtml(
             <tr><td colspan="2"><span class="rotulo">Contato do cliente</span>' . legalizacaoPdfValor($processo['contato_cliente'] ?? '') . '</td></tr>
         </table></section>
 
-        <section class="secao quebravel"><h2>Etapas do processo</h2><table class="lista"><thead><tr><th class="numero">Nº</th><th>Etapa</th><th class="status">Situação</th></tr></thead><tbody>'
-        . ($linhasEtapas !== '' ? $linhasEtapas : '<tr><td colspan="3">Nenhuma etapa cadastrada.</td></tr>') . '</tbody></table></section>
-
-        <section class="secao quebravel documentacao"><h2>Documentação exigida</h2><table class="lista"><thead><tr><th class="numero"></th><th>Documento</th><th class="status">Situação</th></tr></thead><tbody>'
-        . ($linhasChecklist !== '' ? $linhasChecklist : '<tr><td colspan="3">Nenhum documento cadastrado.</td></tr>') . '</tbody></table></section>
-
-        <section class="secao"><h2>Observações do processo</h2><div class="observacoes">' . legalizacaoPdfValor($processo['observacoes'] ?? '') . '</div></section>'
-        . ($linhasHistorico !== '' ? '<section class="secao quebravel"><h2>Histórico recente</h2><table class="lista"><thead><tr><th class="data">Data</th><th class="usuario">Usuário</th><th>Registro</th></tr></thead><tbody>' . $linhasHistorico . '</tbody></table></section>' : '') . '
-        <table class="assinaturas"><tr><td>Responsável pelo processo</td><td class="espaco"></td><td>Conferência</td></tr></table>
+        <section class="secao"><h2>O que está sendo alterado</h2><div class="alteracao">' . legalizacaoPdfValor($processo['observacoes'] ?? '') . '</div></section>
         <div class="rodape">Gerado em ' . date('d/m/Y H:i') . ' por ' . legalizacaoPdfValor($usuarioNome ?: 'Usuário') . '</div>
     </body></html>';
 }
@@ -145,9 +96,6 @@ function legalizacaoPdfHtml(
 function legalizacaoGerarPdf(
     array $processo,
     array $cliente,
-    array $etapas,
-    array $checklist,
-    array $historico,
     string $empresaNome,
     string $usuarioNome
 ): string {
@@ -157,7 +105,7 @@ function legalizacaoGerarPdf(
     $opcoes->set('isPhpEnabled', false);
 
     $pdf = new Dompdf($opcoes);
-    $pdf->loadHtml(legalizacaoPdfHtml($processo, $cliente, $etapas, $checklist, $historico, $empresaNome, $usuarioNome), 'UTF-8');
+    $pdf->loadHtml(legalizacaoPdfHtml($processo, $cliente, $empresaNome, $usuarioNome), 'UTF-8');
     $pdf->setPaper('A4', 'portrait');
     $pdf->render();
     return $pdf->output();

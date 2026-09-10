@@ -28,24 +28,9 @@ $stmt = $pdo->prepare("SELECT * FROM clientes WHERE id = ? " . empresaFiltroClie
 $stmt->execute([(int)$processo['cliente_id']]);
 $cliente = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-$stmt = $pdo->prepare("SELECT * FROM legalizacao_etapas WHERE processo_id = ? ORDER BY ordem");
-$stmt->execute([$processoId]);
-$etapas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-$stmt = $pdo->prepare("SELECT * FROM legalizacao_checklist WHERE processo_id = ? ORDER BY id");
-$stmt->execute([$processoId]);
-$checklist = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-$stmt = $pdo->prepare("SELECT * FROM legalizacao_historico WHERE processo_id = ? ORDER BY criado_em DESC, id DESC LIMIT 15");
-$stmt->execute([$processoId]);
-$historico = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
 $conteudo = legalizacaoGerarPdf(
     $processo,
     $cliente,
-    $etapas,
-    $checklist,
-    $historico,
     empresaAtivaNome($pdo),
     trim((string)($_SESSION['usuario_nome'] ?? ''))
 );
