@@ -559,7 +559,8 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (!$enviado) {
                 permutasRevogarCompartilhamentoPorId($authPdo, (int)$compartilhamentoEmail['id']);
-                throw new RuntimeException('O servidor de e-mail não confirmou o envio. ' . trim((string)$erroEmail));
+                error_log('[Logi][Permutas][E-mail] ' . trim((string)$erroEmail));
+                throw new RuntimeException(mensagemErroEmailAmigavel($erroEmail));
             }
 
             $_SESSION['permutas_links'][$origemChave] = [

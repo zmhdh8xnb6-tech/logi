@@ -5,6 +5,22 @@ require __DIR__ . '/vendor/autoload.php';
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
+function mensagemErroEmailAmigavel(?string $erro): string
+{
+    $erro = trim((string)$erro);
+    $erroNormalizado = strtolower($erro);
+
+    if (
+        str_contains($erroNormalizado, 'daily user sending limit exceeded')
+        || str_contains($erroNormalizado, 'daily smtp relay limit exceeded')
+    ) {
+        return 'A conta de e-mail do sistema atingiu o limite diário de envios do Gmail. '
+            . 'Nenhum e-mail foi enviado. Aguarde a liberação do Google, que normalmente ocorre dentro de 1 a 24 horas, e tente novamente.';
+    }
+
+    return 'O servidor de e-mail não confirmou o envio. Tente novamente mais tarde.';
+}
+
 function adicionarDestinatariosEmail(PHPMailer $mail, string|array $para, string $nome = ''): void
 {
     $destinatarios = is_array($para) ? $para : [$para];
