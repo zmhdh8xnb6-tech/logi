@@ -674,6 +674,7 @@ $status = (string)($competenciaRegistro['status'] ?? 'em_preenchimento');
 $dataCompetencia = DateTime::createFromFormat('!Y-m', $competencia) ?: new DateTime('first day of this month');
 $competenciaAnterior = (clone $dataCompetencia)->modify('-1 month')->format('Y-m');
 $competenciaSeguinte = (clone $dataCompetencia)->modify('+1 month')->format('Y-m');
+$urlPdfPermuta = 'permutas_pdf.php?' . http_build_query(['competencia' => $competencia]);
 $assuntoPadrao = 'Permuta DF Cartuchos - ' . permutasCompetenciaRotulo($competencia);
 $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta na competência "
     . permutasCompetenciaRotulo($competencia)
@@ -771,9 +772,9 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                     </div>
                     <div class="d-flex flex-wrap gap-2">
                         <?php if ($itens !== []): ?>
-                            <a href="permutas_pdf.php?<?= htmlspecialchars(http_build_query(['competencia' => $competencia])) ?>" target="_blank" class="btn btn-outline-danger">
+                            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalPdfPermuta">
                                 <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
-                            </a>
+                            </button>
                             <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalEnviarPermuta">
                                 <i class="bi bi-envelope-arrow-up"></i> Enviar ao financeiro
                             </button>
@@ -1001,6 +1002,34 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
     </main>
 
     <?php if ($estruturaDisponivel): ?>
+        <div class="modal fade" id="modalPdfPermuta" tabindex="-1" aria-labelledby="tituloModalPdfPermuta" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-dialog-centered permutas-pdf-modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <div>
+                            <h5 class="modal-title" id="tituloModalPdfPermuta">Relatório de permuta</h5>
+                            <p class="text-muted small mb-0"><?= htmlspecialchars(permutasCompetenciaRotulo($competencia)) ?></p>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body p-0">
+                        <iframe
+                            class="permutas-pdf-frame"
+                            id="visualizadorPdfPermuta"
+                            src="about:blank"
+                            data-src="<?= htmlspecialchars($urlPdfPermuta) ?>"
+                            title="Relatório de permuta em PDF"></iframe>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+                        <a href="<?= htmlspecialchars($urlPdfPermuta . '&baixar=1') ?>" class="btn btn-danger">
+                            <i class="bi bi-download"></i> Baixar PDF
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="modal fade" id="modalItemPermuta" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
@@ -1234,8 +1263,22 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                 const modalExcluir = modalExcluirElemento ? bootstrap.Modal.getOrCreateInstance(modalExcluirElemento) : null;
                 const modalExcluirAnexoElemento = document.getElementById('modalExcluirAnexoPermuta');
                 const modalExcluirAnexo = modalExcluirAnexoElemento ? bootstrap.Modal.getOrCreateInstance(modalExcluirAnexoElemento) : null;
+                const modalPdfElemento = document.getElementById('modalPdfPermuta');
+                const visualizadorPdf = document.getElementById('visualizadorPdfPermuta');
                 const campoQuantidade = document.getElementById('permutaQuantidade');
                 const campoValor = document.getElementById('permutaValor');
+
+                modalPdfElemento?.addEventListener('show.bs.modal', function() {
+                    if (visualizadorPdf && visualizadorPdf.getAttribute('src') === 'about:blank') {
+                        visualizadorPdf.src = visualizadorPdf.dataset.src;
+                    }
+                });
+
+                modalPdfElemento?.addEventListener('hidden.bs.modal', function() {
+                    if (visualizadorPdf) {
+                        visualizadorPdf.src = 'about:blank';
+                    }
+                });
                 const itemSelecionado = document.getElementById('permutaItemSelecionado');
                 const outroItem = document.getElementById('permutaOutroItem');
                 const descricaoItem = document.getElementById('permutaDescricao');
