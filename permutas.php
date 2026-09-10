@@ -31,6 +31,9 @@ foreach ($tabelasPermutas as $tabelaPermuta) {
 $multiplosAnexosDisponiveis = $estruturaDisponivel
     ? permutasHabilitarMultiplosAnexos($pdo)
     : false;
+$destinatariosPadraoDisponiveis = $estruturaDisponivel
+    ? permutasHabilitarDestinatariosPadrao($pdo)
+    : false;
 $statusEnvioNormalizado = true;
 if ($estruturaDisponivel) {
     try {
@@ -469,13 +472,18 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($acao === 'enviar_email') {
             require_once __DIR__ . '/mailer.php';
 
-            $destinatario = trim((string)($_POST['destinatario'] ?? ''));
+            $destinatarios = permutasEmailsNormalizar($_POST['destinatarios'] ?? '');
+            $destinatariosTexto = permutasEmailsTexto($destinatarios);
+            $salvarDestinatariosPadrao = isset($_POST['salvar_destinatarios_padrao']);
             $assunto = trim((string)($_POST['assunto'] ?? ''));
             $mensagemEmail = trim((string)($_POST['mensagem_email'] ?? ''));
             $competenciaRegistro = permutasBuscarCompetencia($pdo, $competencia, false);
 
-            if (!filter_var($destinatario, FILTER_VALIDATE_EMAIL)) {
-                throw new RuntimeException('Informe um e-mail válido para o financeiro.');
+            if ($destinatarios === []) {
+                throw new RuntimeException('Informe pelo menos um e-mail válido para o financeiro.');
+            }
+            if (count($destinatarios) > 1 && !$destinatariosPadraoDisponiveis) {
+                throw new RuntimeException('Não foi possível ativar o envio para vários e-mails. Confira a permissão de alteração do banco de dados.');
             }
             if ($assunto === '' || mb_strlen($assunto) > 255) {
                 throw new RuntimeException('Informe o assunto do e-mail.');
@@ -535,7 +543,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $urlCompartilhamentoEmail = permutasUrlCompartilhamento($compartilhamentoEmail['token'], $baseUrl);
             $erroEmail = null;
             $enviado = enviarEmailComAnexos(
-                $destinatario,
+                $destinatarios,
                 'Financeiro',
                 $assunto,
                 permutasCorpoEmail(
@@ -567,7 +575,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     enviado_em = NOW(), enviado_por = ?, atualizado_em = NOW()
                 WHERE id = ? AND empresa_id = ?
             ");
-            $stmt->execute([$destinatario, $assunto, $usuarioId ?: null, (int)$competenciaRegistro['id'], $empresaId]);
+            $stmt->execute([$destinatariosTexto, $assunto, $usuarioId ?: null, (int)$competenciaRegistro['id'], $empresaId]);
 
             $stmt = $pdo->prepare('
                 INSERT INTO permutas_envios
@@ -577,12 +585,15 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([
                 $empresaId,
                 (int)$competenciaRegistro['id'],
-                $destinatario,
+                $destinatariosTexto,
                 $assunto,
                 $totalEmail,
                 $usuarioId ?: null,
                 $usuarioNome !== '' ? $usuarioNome : null,
             ]);
+            if ($salvarDestinatariosPadrao && $destinatariosPadraoDisponiveis) {
+                permutasSalvarDestinatariosPadrao($pdo, $destinatarios);
+            }
             registrarAuditoria(
                 $pdo,
                 'Outros Serviços',
@@ -591,10 +602,17 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 (int)$competenciaRegistro['id'],
                 'Enviou por e-mail a permuta DF Cartuchos de ' . permutasCompetenciaRotulo($competencia),
                 null,
-                ['destinatario' => $destinatario, 'total' => $totalEmail]
+                ['destinatarios' => $destinatarios, 'total' => $totalEmail]
             );
             $pdo->commit();
-            permutasRedirecionar('Relatório enviado com o PDF e o link de visualização válido por 30 dias.', 'success', $competencia);
+            $quantidadeDestinatarios = count($destinatarios);
+            permutasRedirecionar(
+                'Relatório enviado para ' . $quantidadeDestinatarios
+                    . ($quantidadeDestinatarios === 1 ? ' destinatário' : ' destinatários')
+                    . ' com o PDF e o link de visualização válido por 30 dias.',
+                'success',
+                $competencia
+            );
         }
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -609,6 +627,7 @@ $itens = [];
 $competenciasRecentes = [];
 $envios = [];
 $ultimoDestinatario = '';
+$destinatariosPadrao = [];
 $itensDisponiveis = permutasItensPadrao();
 $anexosDigitalizados = [];
 $compartilhamentoAtivo = null;
@@ -622,7 +641,16 @@ if ($estruturaDisponivel) {
     $anexosDigitalizados = permutasBuscarAnexos($pdo, (int)($competenciaRegistro['id'] ?? 0));
     $competenciasRecentes = permutasBuscarCompetenciasRecentes($pdo);
     $envios = permutasBuscarEnvios($pdo, (int)($competenciaRegistro['id'] ?? 0));
-    $ultimoDestinatario = trim((string)($competenciaRegistro['email_destinatario'] ?? '')) ?: permutasUltimoDestinatario($pdo);
+    if ($destinatariosPadraoDisponiveis) {
+        $destinatariosPadrao = permutasDestinatariosPadrao($pdo);
+    }
+    if ($empresaId === 1) {
+        $ultimoDestinatario = permutasEmailsTexto(permutasDestinatariosIniciaisFecon());
+    } elseif ($destinatariosPadrao !== []) {
+        $ultimoDestinatario = permutasEmailsTexto($destinatariosPadrao);
+    } else {
+        $ultimoDestinatario = trim((string)($competenciaRegistro['email_destinatario'] ?? '')) ?: permutasUltimoDestinatario($pdo);
+    }
 
     if ($compartilhamentoDisponivel && $competenciaRegistro) {
         $origemCompartilhamento = permutasCompartilhamentoOrigemChave($db, $empresaId, (int)$competenciaRegistro['id']);
@@ -685,6 +713,12 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
             <?php if ($estruturaDisponivel && !$multiplosAnexosDisponiveis): ?>
                 <div class="alert alert-danger" role="alert">
                     Não foi possível atualizar a estrutura para vários anexos. Confira a permissão de alteração do banco de dados.
+                </div>
+            <?php endif; ?>
+
+            <?php if ($estruturaDisponivel && !$destinatariosPadraoDisponiveis): ?>
+                <div class="alert alert-danger" role="alert">
+                    Não foi possível ativar os vários destinatários. Confira a permissão de alteração do banco de dados.
                 </div>
             <?php endif; ?>
 
@@ -1161,8 +1195,15 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                         </div>
                         <div class="modal-body">
                             <div class="permutas-email-resumo"><span><i class="bi bi-file-earmark-pdf"></i> <?= htmlspecialchars(permutasNomeArquivo($competenciaRegistro ?: ['competencia' => $competencia . '-01'])) ?></span><strong><?= htmlspecialchars(permutasMoeda($total)) ?></strong></div>
-                            <div class="mb-3"><label for="permutaDestinatario" class="form-label">E-mail do financeiro</label><input type="email" class="form-control" name="destinatario" id="permutaDestinatario" value="<?= htmlspecialchars($ultimoDestinatario) ?>" required>
-                                <div class="invalid-feedback">Informe um e-mail válido.</div>
+                            <div class="mb-3">
+                                <label for="permutaDestinatarios" class="form-label">E-mails do financeiro</label>
+                                <textarea class="form-control" name="destinatarios" id="permutaDestinatarios" rows="2" required placeholder="financeiro@empresa.com; responsavel@empresa.com"><?= htmlspecialchars($ultimoDestinatario) ?></textarea>
+                                <div class="form-text">Separe os endereços por vírgula, ponto e vírgula ou linha. Máximo de 10.</div>
+                                <div class="invalid-feedback" id="permutaDestinatariosErro">Informe pelo menos um e-mail válido.</div>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" name="salvar_destinatarios_padrao" value="1" id="salvarDestinatariosPermuta" checked>
+                                <label class="form-check-label" for="salvarDestinatariosPermuta">Usar estes e-mails nos próximos envios</label>
                             </div>
                             <div class="mb-3"><label for="permutaAssunto" class="form-label">Assunto</label><input type="text" class="form-control" name="assunto" id="permutaAssunto" value="<?= htmlspecialchars($assuntoPadrao) ?>" maxlength="255" required></div>
                             <div><label for="permutaMensagemEmail" class="form-label">Mensagem</label><textarea class="form-control" name="mensagem_email" id="permutaMensagemEmail" rows="6" required><?= htmlspecialchars($mensagemPadrao) ?></textarea></div>
@@ -1366,14 +1407,28 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                 });
 
                 document.getElementById('formEnviarPermuta')?.addEventListener('submit', function(evento) {
-                    const email = document.getElementById('permutaDestinatario');
-                    const valido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim());
-                    email.classList.toggle('is-invalid', !valido);
+                    const campoEmails = document.getElementById('permutaDestinatarios');
+                    const erroEmails = document.getElementById('permutaDestinatariosErro');
+                    const emails = campoEmails.value
+                        .split(/[\s,;]+/)
+                        .map((email) => email.trim())
+                        .filter(Boolean);
+                    const unicos = [...new Map(emails.map((email) => [email.toLowerCase(), email])).values()];
+                    const emailValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    const valido = unicos.length > 0 &&
+                        unicos.length <= 10 &&
+                        unicos.every((email) => emailValido.test(email));
+                    campoEmails.classList.toggle('is-invalid', !valido);
                     if (!valido) {
                         evento.preventDefault();
-                        email.focus();
+                        erroEmails.textContent = unicos.length > 10 ?
+                            'Informe no máximo 10 e-mails.' :
+                            'Revise os e-mails informados.';
+                        campoEmails.focus();
                         return;
                     }
+
+                    campoEmails.value = unicos.join(', ');
 
                     const botao = document.getElementById('btnEnviarPermuta');
                     botao.disabled = true;

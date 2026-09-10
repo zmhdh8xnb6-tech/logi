@@ -305,6 +305,17 @@ function permutasEmailsTexto(array $emails): string
     return implode(', ', permutasEmailsNormalizar($emails));
 }
 
+function permutasDestinatariosIniciaisFecon(): array
+{
+    return [
+        'fecon.apoiofinanceiro@gmail.com',
+        'fecon.rafaela@gmail.com',
+        'investingfecon@gmail.com',
+        'fecon.financeiro@gmail.com',
+        'fecon.logistica@gmail.com',
+    ];
+}
+
 function permutasHabilitarDestinatariosPadrao(PDO $pdo): bool
 {
     try {
