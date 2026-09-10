@@ -48,13 +48,13 @@
     gap: 11px;
 }
 
-.permutas-anexo-info > i {
+.permutas-anexo-info>i {
     flex: 0 0 auto;
     color: #0d6efd;
     font-size: 1.35rem;
 }
 
-.permutas-anexo.tem-anexo .permutas-anexo-info > i {
+.permutas-anexo.tem-anexo .permutas-anexo-info>i {
     color: #198754;
 }
 
@@ -95,12 +95,12 @@
     background: #fff;
 }
 
-.permutas-anexo-item > i {
+.permutas-anexo-item>i {
     color: #198754;
     font-size: 1.2rem;
 }
 
-.permutas-anexo-item > span,
+.permutas-anexo-item>span,
 .permutas-anexo-item strong,
 .permutas-anexo-item small {
     display: block;
@@ -153,7 +153,7 @@
     gap: 11px;
 }
 
-.permutas-compartilhamento-info > i {
+.permutas-compartilhamento-info>i {
     flex: 0 0 auto;
     color: #1368f5;
     font-size: 1.35rem;
@@ -222,13 +222,13 @@
     background: #fff;
 }
 
-.permutas-resumo > div {
+.permutas-resumo>div {
     min-width: 0;
     padding: 14px 16px;
     border-right: 1px solid #e7ebf0;
 }
 
-.permutas-resumo > div:last-child {
+.permutas-resumo>div:last-child {
     border-right: 0;
 }
 
@@ -237,7 +237,7 @@
     display: block;
 }
 
-.permutas-resumo > div > span {
+.permutas-resumo>div>span {
     margin-bottom: 5px;
     color: #697586;
     font-size: .76rem;
@@ -245,7 +245,7 @@
     text-transform: uppercase;
 }
 
-.permutas-resumo > div > strong {
+.permutas-resumo>div>strong {
     overflow: hidden;
     color: #172033;
     font-size: 1rem;
@@ -375,13 +375,13 @@
     font-size: .76rem;
 }
 
-.permutas-envio-item > i {
+.permutas-envio-item>i {
     flex: 0 0 auto;
     color: #198754;
     font-size: 1.05rem;
 }
 
-.permutas-envio-item > span {
+.permutas-envio-item>span {
     flex: 1;
 }
 
@@ -400,23 +400,6 @@
 .permutas-email-resumo i {
     margin-right: 6px;
     color: #dc3545;
-}
-
-.permutas-pdf-modal .modal-content {
-    height: min(90vh, 920px);
-}
-
-.permutas-pdf-modal .modal-body {
-    min-height: 0;
-    background: #eef1f5;
-}
-
-.permutas-pdf-frame {
-    display: block;
-    width: 100%;
-    height: 100%;
-    border: 0;
-    background: #fff;
 }
 
 .permutas-instalacao {
@@ -452,19 +435,12 @@
 }
 
 @media (max-width: 1050px) {
-    .permutas-resumo > div {
+    .permutas-resumo>div {
         min-width: 170px;
     }
 }
 
 @media (max-width: 700px) {
-    .permutas-pdf-modal {
-        margin: 10px;
-    }
-
-    .permutas-pdf-modal .modal-content {
-        height: calc(100vh - 20px);
-    }
 
     .permutas-toolbar,
     .permutas-anexo-cabecalho,
@@ -499,15 +475,15 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .permutas-resumo > div {
+    .permutas-resumo>div {
         border-top: 1px solid #e7ebf0;
     }
 
-    .permutas-resumo > div:nth-child(-n + 2) {
+    .permutas-resumo>div:nth-child(-n + 2) {
         border-top: 0;
     }
 
-    .permutas-resumo > div:nth-child(even) {
+    .permutas-resumo>div:nth-child(even) {
         border-right: 0;
     }
 }
