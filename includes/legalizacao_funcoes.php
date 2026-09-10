@@ -75,6 +75,7 @@ function legalizacaoFluxosPadrao(): array
                 'IPTU',
                 'Certidão de casamento',
                 'Termo de ciência',
+                'Código do Simples Nacional',
                 'Viabilidade',
                 'DBE',
                 'Taxa Junta',
@@ -121,6 +122,7 @@ function legalizacaoFluxosPadrao(): array
                 'Processo concluído',
             ],
             'checklist' => [
+                'Comunicado e Contrato de Prest. de Baixa',
                 'Distrato',
                 'Documentos dos sócios',
                 'Certidões',
@@ -152,6 +154,45 @@ function legalizacaoFluxoPorTipo(string $tipo): array
 {
     $fluxos = legalizacaoFluxosPadrao();
     return $fluxos[$tipo] ?? $fluxos['default'];
+}
+
+function legalizacaoGarantirDocumentacaoObrigatoria(PDO $pdo, array $processo): void
+{
+    $processoId = (int)($processo['id'] ?? 0);
+    $tipo = (string)($processo['tipo'] ?? '');
+    $itensPorTipo = [
+        'constituicao' => ['Código do Simples Nacional'],
+        'baixa' => ['Comunicado e Contrato de Prest. de Baixa'],
+    ];
+
+    if ($processoId <= 0 || !isset($itensPorTipo[$tipo])) {
+        return;
+    }
+
+    $stmtExiste = $pdo->prepare("
+        SELECT id
+        FROM legalizacao_checklist
+        WHERE processo_id = ?
+          AND LOWER(TRIM(item)) = LOWER(?)
+        LIMIT 1
+    ");
+    $stmtInserir = $pdo->prepare("
+        INSERT INTO legalizacao_checklist (
+            processo_id,
+            item,
+            status,
+            atualizado_em
+        )
+        VALUES (?, ?, 'pendente', NOW())
+    ");
+
+    foreach ($itensPorTipo[$tipo] as $item) {
+        $stmtExiste->execute([$processoId, $item]);
+
+        if (!$stmtExiste->fetchColumn()) {
+            $stmtInserir->execute([$processoId, $item]);
+        }
+    }
 }
 
 function legalizacaoNormalizarNomeEtapa(string $nome): string

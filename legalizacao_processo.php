@@ -337,6 +337,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $processo = legalizacaoBuscarProcesso($pdo, $processoId);
+legalizacaoGarantirDocumentacaoObrigatoria($pdo, $processo);
 $mensagem = legalizacaoObterFlash();
 
 $stmt = $pdo->prepare("
@@ -435,6 +436,9 @@ $clienteDocumentoExibicao = $processo['cliente_documento_atual'] ?? $processo['c
                 <div class="d-flex gap-2">
                     <a href="legalizacao.php" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left"></i> Voltar
+                    </a>
+                    <a href="legalizacao_processo_pdf.php?id=<?= $processoId ?>" target="_blank" rel="noopener" class="btn btn-outline-primary">
+                        <i class="bi bi-printer"></i> Imprimir ficha
                     </a>
                     <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalExcluirProcesso">
                         <i class="bi bi-trash"></i> Excluir
