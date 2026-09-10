@@ -5,6 +5,48 @@ require __DIR__ . '/vendor/autoload.php';
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
+function configuracaoSmtpLogi(): array
+{
+    $configuracao = [
+        'host' => getenv('SMTP_HOST') ?: 'smtp.gmail.com',
+        'porta' => (int)(getenv('SMTP_PORT') ?: 587),
+        'usuario' => getenv('SMTP_USERNAME') ?: 'phsolucoesemti@gmail.com',
+        'senha' => getenv('SMTP_PASSWORD') ?: 'zputfsfvzsdgueqe',
+        'remetente_email' => getenv('SMTP_FROM_ADDRESS') ?: '',
+        'remetente_nome' => getenv('SMTP_FROM_NAME') ?: 'FECON LOGISTICA',
+        'seguranca' => getenv('SMTP_ENCRYPTION') ?: 'tls',
+    ];
+
+    $arquivoConfiguracao = __DIR__ . '/storage/email_config.php';
+    if (!is_file($arquivoConfiguracao)) {
+        return $configuracao;
+    }
+
+    $configuracaoLocal = require $arquivoConfiguracao;
+    if (!is_array($configuracaoLocal) || empty($configuracaoLocal['ativo'])) {
+        return $configuracao;
+    }
+
+    foreach (array_keys($configuracao) as $chave) {
+        if (array_key_exists($chave, $configuracaoLocal) && $configuracaoLocal[$chave] !== '') {
+            $configuracao[$chave] = $chave === 'porta'
+                ? (int)$configuracaoLocal[$chave]
+                : trim((string)$configuracaoLocal[$chave]);
+        }
+    }
+
+    if (
+        $configuracao['usuario'] === ''
+        || $configuracao['senha'] === ''
+        || str_contains($configuracao['usuario'], 'COLE_')
+        || str_contains($configuracao['senha'], 'COLE_')
+    ) {
+        throw new RuntimeException('A configuração SMTP do Brevo está incompleta. Informe o login e a chave SMTP em storage/email_config.php.');
+    }
+
+    return $configuracao;
+}
+
 function mensagemErroEmailAmigavel(?string $erro): string
 {
     $erro = trim((string)$erro);
@@ -39,15 +81,23 @@ function enviarEmailComAnexos($para, $nome, $assunto, $mensagemHtml, array $anex
     $mail = new PHPMailer(true);
 
     try {
+        $smtp = configuracaoSmtpLogi();
         $mail->isSMTP();
-        $mail->Host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
+        $mail->Host = $smtp['host'];
         $mail->SMTPAuth = true;
-        $mail->Username = getenv('SMTP_USERNAME') ?: 'phsolucoesemti@gmail.com';
-        $mail->Password = getenv('SMTP_PASSWORD') ?: 'zputfsfvzsdgueqe';
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port = (int)(getenv('SMTP_PORT') ?: 587);
+        $mail->Username = $smtp['usuario'];
+        $mail->Password = $smtp['senha'];
+        $mail->Port = $smtp['porta'];
 
-        $mail->setFrom(getenv('SMTP_FROM_ADDRESS') ?: $mail->Username, 'FECON LOGISTICA');
+        if (strtolower($smtp['seguranca']) === 'ssl') {
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+        } elseif (strtolower($smtp['seguranca']) === 'tls') {
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        } else {
+            $mail->SMTPSecure = '';
+        }
+
+        $mail->setFrom($smtp['remetente_email'] ?: $mail->Username, $smtp['remetente_nome']);
         adicionarDestinatariosEmail($mail, $para, (string)$nome);
 
         $mail->isHTML(true);
