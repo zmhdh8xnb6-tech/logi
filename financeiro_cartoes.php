@@ -1555,6 +1555,13 @@ if ($cartaoSelecionado && !empty($cartaoSelecionado['dia_vencimento'])) {
                                             <td colspan="6" class="financeiro-vazio">Nenhuma compra corresponde aos filtros.</td>
                                         </tr>
                                     </tbody>
+                                    <tfoot>
+                                        <tr>
+                                            <th colspan="2" scope="row" class="text-end">Total da fatura</th>
+                                            <th class="text-end"><?= financeiroMoeda((float)$cartaoSelecionado['fatura_mes']) ?></th>
+                                            <th colspan="3"></th>
+                                        </tr>
+                                    </tfoot>
                                 </table>
                             </div>
                         <?php endif; ?>
