@@ -129,20 +129,25 @@ function permutasItensDisponiveis(PDO $pdo): array
 
 function permutasStatusRotulo(string $status): string
 {
-    return match ($status) {
-        'enviado' => 'Enviado ao financeiro',
-        'confirmado' => 'Confirmado pelo financeiro',
-        default => 'Em preenchimento',
-    };
+    return in_array($status, ['enviado', 'confirmado'], true)
+        ? 'Enviado'
+        : 'Em preenchimento';
 }
 
 function permutasStatusClasse(string $status): string
 {
-    return match ($status) {
-        'enviado' => 'bg-primary',
-        'confirmado' => 'bg-success',
-        default => 'bg-warning text-dark',
-    };
+    return in_array($status, ['enviado', 'confirmado'], true)
+        ? 'bg-primary'
+        : 'bg-warning text-dark';
+}
+
+function permutasNormalizarStatusEnvio(PDO $pdo): void
+{
+    $pdo->exec("
+        UPDATE permutas_competencias
+        SET status = 'enviado', atualizado_em = COALESCE(atualizado_em, NOW())
+        WHERE status = 'confirmado'
+    ");
 }
 
 function permutasBuscarCompetencia(PDO $pdo, string $competencia, bool $criar = false): ?array
@@ -287,6 +292,229 @@ function permutasHabilitarMultiplosAnexos(PDO $pdo): bool
     } catch (Throwable $e) {
         return false;
     }
+}
+
+function permutasHabilitarCompartilhamentos(PDO $pdo): bool
+{
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS permutas_compartilhamentos (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                origem_chave CHAR(64) NOT NULL,
+                empresa_id INT NOT NULL DEFAULT 1,
+                competencia_id INT UNSIGNED NOT NULL,
+                token_hash CHAR(64) NOT NULL,
+                conteudo_json LONGTEXT NOT NULL,
+                expira_em DATETIME NOT NULL,
+                revogado_em DATETIME NULL,
+                criado_por INT NULL,
+                criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ultimo_acesso_em DATETIME NULL,
+                PRIMARY KEY (id),
+                UNIQUE KEY uk_permutas_compartilhamento_token (token_hash),
+                KEY idx_permutas_compartilhamento_origem (origem_chave, revogado_em, expira_em)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+        return true;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function permutasCompartilhamentoOrigemChave(string $banco, int $empresaId, int $competenciaId): string
+{
+    return hash('sha256', trim($banco) . '|' . $empresaId . '|' . $competenciaId);
+}
+
+function permutasCompartilhamentoSnapshot(
+    array $competencia,
+    array $itens,
+    array $anexos,
+    string $empresaNome,
+    string $usuarioNome
+): array {
+    $itensPublicos = array_map(static function (array $item): array {
+        return [
+            'id' => (int)($item['id'] ?? 0),
+            'quantidade' => (float)($item['quantidade'] ?? 0),
+            'descricao' => (string)($item['descricao'] ?? ''),
+            'destino' => (string)($item['destino'] ?? ''),
+            'valor_unitario' => (float)($item['valor_unitario'] ?? 0),
+            'observacao' => (string)($item['observacao'] ?? ''),
+        ];
+    }, $itens);
+    $anexosPublicos = array_map(static function (array $anexo): array {
+        return [
+            'id' => (int)($anexo['id'] ?? 0),
+            'nome_original' => (string)($anexo['nome_original'] ?? ''),
+            'caminho_arquivo' => (string)($anexo['caminho_arquivo'] ?? ''),
+            'tipo_mime' => (string)($anexo['tipo_mime'] ?? ''),
+            'tamanho_bytes' => (int)($anexo['tamanho_bytes'] ?? 0),
+            'enviado_em' => (string)($anexo['enviado_em'] ?? ''),
+        ];
+    }, $anexos);
+
+    return [
+        'versao' => 1,
+        'empresa_nome' => trim($empresaNome) !== '' ? trim($empresaNome) : 'FECON LOGISTICA',
+        'usuario_nome' => trim($usuarioNome),
+        'gerado_em' => date('Y-m-d H:i:s'),
+        'competencia' => [
+            'id' => (int)($competencia['id'] ?? 0),
+            'parceiro' => (string)($competencia['parceiro'] ?? 'DF Cartuchos'),
+            'competencia' => (string)($competencia['competencia'] ?? date('Y-m-01')),
+        ],
+        'itens' => $itensPublicos,
+        'anexos' => $anexosPublicos,
+        'total' => permutasTotal($itensPublicos),
+    ];
+}
+
+function permutasCriarCompartilhamento(
+    PDO $pdo,
+    string $origemChave,
+    int $empresaId,
+    int $competenciaId,
+    array $snapshot,
+    int $usuarioId,
+    int $diasValidade = 30
+): array {
+    $diasPermitidos = [7, 15, 30, 60, 90];
+    if (!in_array($diasValidade, $diasPermitidos, true)) {
+        $diasValidade = 30;
+    }
+
+    $token = bin2hex(random_bytes(32));
+    $tokenHash = hash('sha256', $token);
+    $conteudoJson = json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $expiraEm = (new DateTimeImmutable('now'))->modify('+' . $diasValidade . ' days')->format('Y-m-d H:i:s');
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare('UPDATE permutas_compartilhamentos SET revogado_em = NOW() WHERE origem_chave = ? AND revogado_em IS NULL');
+        $stmt->execute([$origemChave]);
+
+        $stmt = $pdo->prepare('
+            INSERT INTO permutas_compartilhamentos
+                (origem_chave, empresa_id, competencia_id, token_hash, conteudo_json, expira_em, criado_por)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ');
+        $stmt->execute([
+            $origemChave,
+            $empresaId,
+            $competenciaId,
+            $tokenHash,
+            $conteudoJson,
+            $expiraEm,
+            $usuarioId > 0 ? $usuarioId : null,
+        ]);
+        $id = (int)$pdo->lastInsertId();
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+
+    return [
+        'id' => $id,
+        'token' => $token,
+        'expira_em' => $expiraEm,
+        'dias_validade' => $diasValidade,
+    ];
+}
+
+function permutasBuscarCompartilhamentoAtivo(PDO $pdo, string $origemChave): ?array
+{
+    $stmt = $pdo->prepare('
+        SELECT id, origem_chave, empresa_id, competencia_id, expira_em, criado_em, ultimo_acesso_em
+        FROM permutas_compartilhamentos
+        WHERE origem_chave = ? AND revogado_em IS NULL AND expira_em > NOW()
+        ORDER BY id DESC
+        LIMIT 1
+    ');
+    $stmt->execute([$origemChave]);
+
+    return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+function permutasBuscarCompartilhamentoPublico(PDO $pdo, ?string $token, bool $registrarAcesso = false): ?array
+{
+    $token = strtolower(trim((string)$token));
+    if (preg_match('/^[a-f0-9]{64}$/', $token) !== 1) {
+        return null;
+    }
+
+    $stmt = $pdo->prepare('
+        SELECT *
+        FROM permutas_compartilhamentos
+        WHERE token_hash = ? AND revogado_em IS NULL AND expira_em > NOW()
+        LIMIT 1
+    ');
+    $stmt->execute([hash('sha256', $token)]);
+    $registro = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$registro) {
+        return null;
+    }
+
+    try {
+        $conteudo = json_decode((string)$registro['conteudo_json'], true, 32, JSON_THROW_ON_ERROR);
+    } catch (Throwable $e) {
+        return null;
+    }
+    if (!is_array($conteudo) || !is_array($conteudo['competencia'] ?? null) || !is_array($conteudo['itens'] ?? null)) {
+        return null;
+    }
+
+    if ($registrarAcesso) {
+        $stmt = $pdo->prepare('UPDATE permutas_compartilhamentos SET ultimo_acesso_em = NOW() WHERE id = ?');
+        $stmt->execute([(int)$registro['id']]);
+    }
+
+    $registro['conteudo'] = $conteudo;
+    return $registro;
+}
+
+function permutasRevogarCompartilhamentos(PDO $pdo, string $origemChave): int
+{
+    $stmt = $pdo->prepare('UPDATE permutas_compartilhamentos SET revogado_em = NOW() WHERE origem_chave = ? AND revogado_em IS NULL');
+    $stmt->execute([$origemChave]);
+
+    return $stmt->rowCount();
+}
+
+function permutasRevogarCompartilhamentoPorId(PDO $pdo, int $id): void
+{
+    if ($id <= 0) {
+        return;
+    }
+
+    $stmt = $pdo->prepare('UPDATE permutas_compartilhamentos SET revogado_em = NOW() WHERE id = ? AND revogado_em IS NULL');
+    $stmt->execute([$id]);
+}
+
+function permutasBaseUrlPublica(?string $configurada = null): string
+{
+    $configurada = rtrim(trim((string)$configurada), '/');
+    if (!permutasAmbienteLocal() && filter_var($configurada, FILTER_VALIDATE_URL)) {
+        return $configurada;
+    }
+
+    $https = strtolower((string)($_SERVER['HTTPS'] ?? ''));
+    $protocoloEncaminhado = strtolower(trim(explode(',', (string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0]));
+    $protocolo = ($https !== '' && $https !== 'off') || $protocoloEncaminhado === 'https' ? 'https' : 'http';
+    $host = preg_replace('/[^A-Za-z0-9.:[\]-]/', '', (string)($_SERVER['HTTP_HOST'] ?? 'localhost')) ?: 'localhost';
+    $diretorio = str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/')));
+    $diretorio = $diretorio === '/' || $diretorio === '.' ? '' : '/' . trim($diretorio, '/');
+
+    return $protocolo . '://' . $host . $diretorio;
+}
+
+function permutasUrlCompartilhamento(string $token, ?string $baseUrl = null): string
+{
+    return permutasBaseUrlPublica($baseUrl) . '/permuta_publica.php?' . http_build_query(['token' => $token]);
 }
 
 function permutasBuscarAnexos(PDO $pdo, int $competenciaId): array
@@ -499,7 +727,6 @@ function permutasMarcarAlterada(PDO $pdo, int $competenciaId): void
             assunto_email = NULL,
             enviado_em = NULL,
             enviado_por = NULL,
-            confirmado_em = NULL,
             atualizado_em = NOW()
         WHERE id = ? AND empresa_id = ?
     ");
@@ -580,14 +807,31 @@ function permutasGerarPdf(array $competencia, array $itens, string $empresaNome,
     return $pdf->output();
 }
 
-function permutasCorpoEmail(string $mensagem, array $competencia, float $total): string
-{
+function permutasCorpoEmail(
+    string $mensagem,
+    array $competencia,
+    float $total,
+    ?string $urlCompartilhamento = null,
+    ?string $expiraEm = null
+): string {
     $rotulo = permutasCompetenciaRotulo(date('Y-m', strtotime((string)$competencia['competencia'])));
+
+    $blocoCompartilhamento = '';
+    if (is_string($urlCompartilhamento) && filter_var($urlCompartilhamento, FILTER_VALIDATE_URL)) {
+        $validade = $expiraEm ? ' Este link ficará disponível até ' . permutasDataBr($expiraEm, true) . '.' : '';
+        $blocoCompartilhamento = '<div style="margin:20px 0;padding:16px;border:1px solid #bfdbfe;background:#eff6ff">'
+            . '<strong style="display:block;margin-bottom:8px;color:#172033">Visualização online</strong>'
+            . '<p style="margin:0 0 12px;color:#475569">Consulte o relatório e seus anexos em modo somente leitura.' . htmlspecialchars($validade) . '</p>'
+            . '<a href="' . htmlspecialchars($urlCompartilhamento) . '" style="display:inline-block;padding:10px 16px;background:#1368f5;color:#fff;text-decoration:none;font-weight:bold">Abrir relatório</a>'
+            . '<div style="margin-top:10px;color:#64748b;font-size:11px;word-break:break-all">' . htmlspecialchars($urlCompartilhamento) . '</div>'
+            . '</div>';
+    }
 
     return '<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.55">'
         . '<p>' . nl2br(htmlspecialchars($mensagem)) . '</p>'
         . '<div style="margin:20px 0;padding:14px 16px;border-left:4px solid #f97316;background:#fff7ed">'
         . '<strong>DF Cartuchos - ' . htmlspecialchars($rotulo) . '</strong><br>'
         . 'Total da competência: <strong>' . htmlspecialchars(permutasMoeda($total)) . '</strong>'
-        . '</div><p style="color:#64748b;font-size:12px">O relatório detalhado segue anexado em PDF.</p></div>';
+        . '</div>' . $blocoCompartilhamento
+        . '<p style="color:#64748b;font-size:12px">O relatório detalhado também segue anexado em PDF.</p></div>';
 }

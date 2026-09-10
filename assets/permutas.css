@@ -130,6 +130,79 @@
     gap: 6px;
 }
 
+.permutas-compartilhamento {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    border: 1px solid #bfd4f7;
+    border-radius: 8px;
+    background: #f5f9ff;
+}
+
+.permutas-compartilhamento.destacado {
+    box-shadow: 0 0 0 3px rgba(19, 104, 245, .1);
+}
+
+.permutas-compartilhamento-info {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 11px;
+}
+
+.permutas-compartilhamento-info>i {
+    flex: 0 0 auto;
+    color: #1368f5;
+    font-size: 1.35rem;
+}
+
+.permutas-compartilhamento-info span,
+.permutas-compartilhamento-info strong,
+.permutas-compartilhamento-info small {
+    display: block;
+    min-width: 0;
+}
+
+.permutas-compartilhamento-info small {
+    margin-top: 2px;
+    color: #5e6f86;
+    font-size: .78rem;
+}
+
+.permutas-compartilhamento-acoes {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.permutas-compartilhamento-acoes .form-control {
+    width: min(430px, 42vw);
+    background: #fff;
+    font-size: .78rem;
+}
+
+.permutas-compartilhar-aviso {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid #bfd4f7;
+    border-radius: 7px;
+    background: #f5f9ff;
+    color: #334155;
+    font-size: .86rem;
+}
+
+.permutas-compartilhar-aviso i {
+    color: #1368f5;
+    font-size: 1.15rem;
+}
+
 .permutas-page .btn-icon {
     display: inline-flex;
     align-items: center;
@@ -371,9 +444,19 @@
 
     .permutas-toolbar,
     .permutas-anexo-cabecalho,
+    .permutas-compartilhamento,
     .permutas-instalacao {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .permutas-compartilhamento-acoes {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .permutas-compartilhamento-acoes .form-control {
+        width: 100%;
     }
 
     .permutas-anexos-lista {

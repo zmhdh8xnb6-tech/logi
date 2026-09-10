@@ -186,6 +186,7 @@ $filtroResponsavel = (int)($_GET['responsavel'] ?? 0);
 $abaProcessos = $_GET['aba'] ?? 'ativos';
 $abasProcessosPermitidas = ['ativos', 'concluidos', 'todos'];
 $abaProcessos = in_array($abaProcessos, $abasProcessosPermitidas, true) ? $abaProcessos : 'ativos';
+$abaConsultaProcessos = $filtroBusca !== '' ? 'todos' : $abaProcessos;
 $processos = [];
 $opcoesPorPagina = [15, 30, 60, 90];
 $processosPorPagina = (int)($_GET['por_pagina'] ?? 15);
@@ -224,9 +225,9 @@ if ($tabelasDisponiveis) {
     if ($filtroStatus !== '') {
         $where[] = 'p.status = ?';
         $params[] = $filtroStatus;
-    } elseif ($abaProcessos === 'concluidos') {
+    } elseif ($abaConsultaProcessos === 'concluidos') {
         $where[] = "p.status = 'concluido'";
-    } elseif ($abaProcessos === 'ativos') {
+    } elseif ($abaConsultaProcessos === 'ativos') {
         $where[] = "p.status <> 'concluido'";
     }
 
@@ -440,7 +441,7 @@ if ($tabelasDisponiveis) {
                             $parametrosAba['pagina'] = 1;
                             unset($parametrosAba['status']);
                         ?>
-                            <a href="?<?= htmlspecialchars(http_build_query($parametrosAba)) ?>" class="<?= $abaProcessos === $chaveAba && $filtroStatus === '' ? 'ativo' : '' ?>">
+                            <a href="?<?= htmlspecialchars(http_build_query($parametrosAba)) ?>" class="<?= $abaConsultaProcessos === $chaveAba && $filtroStatus === '' ? 'ativo' : '' ?>">
                                 <?= htmlspecialchars($rotuloAba) ?>
                                 <span><?= (int)($totaisAbasProcessos[$chaveAba] ?? 0) ?></span>
                             </a>
@@ -458,13 +459,12 @@ if ($tabelasDisponiveis) {
                                     <th>Prazo</th>
                                     <th>Documentação</th>
                                     <th>Status</th>
-                                    <th class="text-end">Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if ($processos === []): ?>
                                     <tr>
-                                        <td colspan="8" class="legalizacao-vazio">Nenhum processo encontrado.</td>
+                                        <td colspan="7" class="legalizacao-vazio">Nenhum processo encontrado.</td>
                                     </tr>
                                 <?php endif; ?>
 
@@ -509,11 +509,6 @@ if ($tabelasDisponiveis) {
                                             <span class="badge <?= htmlspecialchars($statusClasse) ?>">
                                                 <?= htmlspecialchars($statusTexto) ?>
                                             </span>
-                                        </td>
-                                        <td class="text-end">
-                                            <a href="legalizacao_processo.php?id=<?= (int)$processo['id'] ?>" class="btn btn-outline-primary btn-sm">
-                                                <i class="bi bi-eye"></i>
-                                            </a>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>

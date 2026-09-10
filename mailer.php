@@ -18,7 +18,7 @@ function enviarEmailComAnexos($para, $nome, $assunto, $mensagemHtml, array $anex
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port = (int)(getenv('SMTP_PORT') ?: 587);
 
-        $mail->setFrom(getenv('SMTP_FROM_ADDRESS') ?: $mail->Username, getenv('SMTP_FROM_NAME') ?: 'Sistema Logi');
+        $mail->setFrom(getenv('SMTP_FROM_ADDRESS') ?: $mail->Username, 'FECON LOGISTICA');
         $mail->addAddress($para, $nome);
 
         $mail->isHTML(true);

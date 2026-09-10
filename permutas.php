@@ -4,12 +4,12 @@ require_once __DIR__ . '/includes/permutas_funcoes.php';
 
 exigirPermissao('outros_servicos');
 
-function permutasRedirecionar(string $mensagem, string $tipo, string $competencia): never
+function permutasRedirecionar(string $mensagem, string $tipo, string $competencia, array $dados = []): never
 {
-    $_SESSION['permutas_flash'] = [
+    $_SESSION['permutas_flash'] = array_merge([
         'mensagem' => $mensagem,
         'tipo' => in_array($tipo, ['success', 'warning', 'danger', 'info'], true) ? $tipo : 'info',
-    ];
+    ], $dados);
     header('Location: permutas.php?' . http_build_query(['competencia' => permutasCompetenciaNormalizar($competencia)]));
     exit;
 }
@@ -30,6 +30,17 @@ foreach ($tabelasPermutas as $tabelaPermuta) {
 }
 $multiplosAnexosDisponiveis = $estruturaDisponivel
     ? permutasHabilitarMultiplosAnexos($pdo)
+    : false;
+$statusEnvioNormalizado = true;
+if ($estruturaDisponivel) {
+    try {
+        permutasNormalizarStatusEnvio($pdo);
+    } catch (Throwable $e) {
+        $statusEnvioNormalizado = false;
+    }
+}
+$compartilhamentoDisponivel = $estruturaDisponivel
+    ? permutasHabilitarCompartilhamentos($authPdo)
     : false;
 
 $sqlPermutas = (string)@file_get_contents(__DIR__ . '/sql/permutas.sql');
@@ -377,6 +388,84 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             );
         }
 
+        if ($acao === 'criar_compartilhamento') {
+            if (!$compartilhamentoDisponivel) {
+                throw new RuntimeException('Não foi possível ativar os links públicos. Confira a permissão de criação de tabelas no banco.');
+            }
+
+            $competenciaRegistro = permutasBuscarCompetencia($pdo, $competencia, false);
+            $itensCompartilhados = permutasBuscarItens($pdo, (int)($competenciaRegistro['id'] ?? 0));
+            if (!$competenciaRegistro || $itensCompartilhados === []) {
+                throw new RuntimeException('Adicione pelo menos um item antes de criar o link.');
+            }
+
+            $anexosCompartilhados = permutasBuscarAnexos($pdo, (int)$competenciaRegistro['id']);
+            $origemChave = permutasCompartilhamentoOrigemChave($db, $empresaId, (int)$competenciaRegistro['id']);
+            $snapshot = permutasCompartilhamentoSnapshot(
+                $competenciaRegistro,
+                $itensCompartilhados,
+                $anexosCompartilhados,
+                $empresaNome,
+                $usuarioNome
+            );
+            $compartilhamento = permutasCriarCompartilhamento(
+                $authPdo,
+                $origemChave,
+                $empresaId,
+                (int)$competenciaRegistro['id'],
+                $snapshot,
+                $usuarioId,
+                (int)($_POST['dias_validade'] ?? 30)
+            );
+            $urlCompartilhamento = permutasUrlCompartilhamento($compartilhamento['token'], $baseUrl);
+            $_SESSION['permutas_links'][$origemChave] = [
+                'id' => (int)$compartilhamento['id'],
+                'url' => $urlCompartilhamento,
+                'expira_em' => (string)$compartilhamento['expira_em'],
+            ];
+
+            registrarAuditoria(
+                $pdo,
+                'Outros Serviços',
+                'compartilhar_permuta',
+                'permuta_competencia',
+                (int)$competenciaRegistro['id'],
+                'Criou link somente leitura da permuta de ' . permutasCompetenciaRotulo($competencia),
+                null,
+                ['expira_em' => $compartilhamento['expira_em']]
+            );
+            permutasRedirecionar(
+                'Link de visualização criado. Ele não permite nenhuma alteração.',
+                'success',
+                $competencia,
+                ['destacar_link' => true]
+            );
+        }
+
+        if ($acao === 'revogar_compartilhamento') {
+            $competenciaRegistro = permutasBuscarCompetencia($pdo, $competencia, false);
+            if (!$competenciaRegistro || !$compartilhamentoDisponivel) {
+                throw new RuntimeException('Nenhum link ativo foi encontrado para esta competência.');
+            }
+
+            $origemChave = permutasCompartilhamentoOrigemChave($db, $empresaId, (int)$competenciaRegistro['id']);
+            $revogados = permutasRevogarCompartilhamentos($authPdo, $origemChave);
+            unset($_SESSION['permutas_links'][$origemChave]);
+            if ($revogados === 0) {
+                throw new RuntimeException('Nenhum link ativo foi encontrado para esta competência.');
+            }
+
+            registrarAuditoria(
+                $pdo,
+                'Outros Serviços',
+                'revogar_compartilhamento_permuta',
+                'permuta_competencia',
+                (int)$competenciaRegistro['id'],
+                'Revogou o link público da permuta de ' . permutasCompetenciaRotulo($competencia)
+            );
+            permutasRedirecionar('O link público foi revogado e não pode mais ser aberto.', 'success', $competencia);
+        }
+
         if ($acao === 'enviar_email') {
             require_once __DIR__ . '/mailer.php';
 
@@ -402,6 +491,9 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($itensEmail === []) {
                 throw new RuntimeException('Adicione pelo menos um item antes de enviar o relatório.');
             }
+            if (!$compartilhamentoDisponivel) {
+                throw new RuntimeException('Não foi possível preparar o link de visualização. Confira a permissão de criação de tabelas no banco.');
+            }
 
             $totalEmail = permutasTotal($itensEmail);
             $pdfConteudo = permutasGerarPdf($competenciaRegistro, $itensEmail, $empresaNome, $usuarioNome);
@@ -422,25 +514,57 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     'tipo' => (string)$anexoDigitalizadoEmail['tipo_mime'],
                 ];
             }
+
+            $origemChave = permutasCompartilhamentoOrigemChave($db, $empresaId, (int)$competenciaRegistro['id']);
+            $snapshot = permutasCompartilhamentoSnapshot(
+                $competenciaRegistro,
+                $itensEmail,
+                $anexosDigitalizadosEmail,
+                $empresaNome,
+                $usuarioNome
+            );
+            $compartilhamentoEmail = permutasCriarCompartilhamento(
+                $authPdo,
+                $origemChave,
+                $empresaId,
+                (int)$competenciaRegistro['id'],
+                $snapshot,
+                $usuarioId,
+                30
+            );
+            $urlCompartilhamentoEmail = permutasUrlCompartilhamento($compartilhamentoEmail['token'], $baseUrl);
             $erroEmail = null;
             $enviado = enviarEmailComAnexos(
                 $destinatario,
                 'Financeiro',
                 $assunto,
-                permutasCorpoEmail($mensagemEmail, $competenciaRegistro, $totalEmail),
+                permutasCorpoEmail(
+                    $mensagemEmail,
+                    $competenciaRegistro,
+                    $totalEmail,
+                    $urlCompartilhamentoEmail,
+                    (string)$compartilhamentoEmail['expira_em']
+                ),
                 $anexosEmail,
                 $erroEmail
             );
 
             if (!$enviado) {
+                permutasRevogarCompartilhamentoPorId($authPdo, (int)$compartilhamentoEmail['id']);
                 throw new RuntimeException('O servidor de e-mail não confirmou o envio. ' . trim((string)$erroEmail));
             }
+
+            $_SESSION['permutas_links'][$origemChave] = [
+                'id' => (int)$compartilhamentoEmail['id'],
+                'url' => $urlCompartilhamentoEmail,
+                'expira_em' => (string)$compartilhamentoEmail['expira_em'],
+            ];
 
             $pdo->beginTransaction();
             $stmt = $pdo->prepare("
                 UPDATE permutas_competencias
                 SET status = 'enviado', email_destinatario = ?, assunto_email = ?,
-                    enviado_em = NOW(), enviado_por = ?, confirmado_em = NULL, atualizado_em = NOW()
+                    enviado_em = NOW(), enviado_por = ?, atualizado_em = NOW()
                 WHERE id = ? AND empresa_id = ?
             ");
             $stmt->execute([$destinatario, $assunto, $usuarioId ?: null, (int)$competenciaRegistro['id'], $empresaId]);
@@ -470,30 +594,7 @@ if ($estruturaDisponivel && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 ['destinatario' => $destinatario, 'total' => $totalEmail]
             );
             $pdo->commit();
-            permutasRedirecionar('Relatório enviado ao financeiro com o PDF anexado.', 'success', $competencia);
-        }
-
-        if ($acao === 'confirmar_recebimento') {
-            $competenciaRegistro = permutasBuscarCompetencia($pdo, $competencia, false);
-            if (!$competenciaRegistro || $competenciaRegistro['status'] !== 'enviado') {
-                throw new RuntimeException('Envie o relatório antes de marcar a confirmação.');
-            }
-
-            $stmt = $pdo->prepare("
-                UPDATE permutas_competencias
-                SET status = 'confirmado', confirmado_em = NOW(), atualizado_em = NOW()
-                WHERE id = ? AND empresa_id = ? AND status = 'enviado'
-            ");
-            $stmt->execute([(int)$competenciaRegistro['id'], $empresaId]);
-            registrarAuditoria(
-                $pdo,
-                'Outros Serviços',
-                'confirmar_permuta',
-                'permuta_competencia',
-                (int)$competenciaRegistro['id'],
-                'Marcou como confirmado o relatório de permuta de ' . permutasCompetenciaRotulo($competencia)
-            );
-            permutasRedirecionar('Recebimento confirmado.', 'success', $competencia);
+            permutasRedirecionar('Relatório enviado com o PDF e o link de visualização válido por 30 dias.', 'success', $competencia);
         }
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -510,6 +611,9 @@ $envios = [];
 $ultimoDestinatario = '';
 $itensDisponiveis = permutasItensPadrao();
 $anexosDigitalizados = [];
+$compartilhamentoAtivo = null;
+$linkCompartilhamentoSessao = null;
+$origemCompartilhamento = '';
 
 if ($estruturaDisponivel) {
     $competenciaRegistro = permutasBuscarCompetencia($pdo, $competencia, false);
@@ -519,6 +623,22 @@ if ($estruturaDisponivel) {
     $competenciasRecentes = permutasBuscarCompetenciasRecentes($pdo);
     $envios = permutasBuscarEnvios($pdo, (int)($competenciaRegistro['id'] ?? 0));
     $ultimoDestinatario = trim((string)($competenciaRegistro['email_destinatario'] ?? '')) ?: permutasUltimoDestinatario($pdo);
+
+    if ($compartilhamentoDisponivel && $competenciaRegistro) {
+        $origemCompartilhamento = permutasCompartilhamentoOrigemChave($db, $empresaId, (int)$competenciaRegistro['id']);
+        $compartilhamentoAtivo = permutasBuscarCompartilhamentoAtivo($authPdo, $origemCompartilhamento);
+        $linkSessao = $_SESSION['permutas_links'][$origemCompartilhamento] ?? null;
+        if (
+            is_array($linkSessao)
+            && $compartilhamentoAtivo
+            && (int)($linkSessao['id'] ?? 0) === (int)$compartilhamentoAtivo['id']
+            && filter_var($linkSessao['url'] ?? '', FILTER_VALIDATE_URL)
+        ) {
+            $linkCompartilhamentoSessao = $linkSessao;
+        } elseif (isset($_SESSION['permutas_links'][$origemCompartilhamento])) {
+            unset($_SESSION['permutas_links'][$origemCompartilhamento]);
+        }
+    }
 }
 
 $total = permutasTotal($itens);
@@ -556,7 +676,7 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
             </div>
 
             <?php if (is_array($flash)): ?>
-                <div class="alert alert-<?= htmlspecialchars($flash['tipo']) ?> alert-dismissible fade show" role="alert">
+                <div class="alert alert-<?= htmlspecialchars($flash['tipo']) ?> alert-dismissible alert-auto-dismiss fade show" role="alert">
                     <?= htmlspecialchars($flash['mensagem']) ?>
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
                 </div>
@@ -565,6 +685,18 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
             <?php if ($estruturaDisponivel && !$multiplosAnexosDisponiveis): ?>
                 <div class="alert alert-danger" role="alert">
                     Não foi possível atualizar a estrutura para vários anexos. Confira a permissão de alteração do banco de dados.
+                </div>
+            <?php endif; ?>
+
+            <?php if ($estruturaDisponivel && !$compartilhamentoDisponivel): ?>
+                <div class="alert alert-danger" role="alert">
+                    Não foi possível ativar os links públicos. Confira a permissão de criação de tabelas no banco de dados.
+                </div>
+            <?php endif; ?>
+
+            <?php if ($estruturaDisponivel && !$statusEnvioNormalizado): ?>
+                <div class="alert alert-danger" role="alert">
+                    Não foi possível atualizar as situações antigas das permutas. Confira a permissão de alteração do banco de dados.
                 </div>
             <?php endif; ?>
 
@@ -610,6 +742,9 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                             </a>
                             <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalEnviarPermuta">
                                 <i class="bi bi-envelope-arrow-up"></i> Enviar ao financeiro
+                            </button>
+                            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalCompartilharPermuta" <?= !$compartilhamentoDisponivel ? 'disabled' : '' ?>>
+                                <i class="bi bi-link-45deg"></i> Compartilhar
                             </button>
                         <?php endif; ?>
                         <button type="button" class="btn btn-primary" id="btnNovoItemPermuta" data-bs-toggle="modal" data-bs-target="#modalItemPermuta">
@@ -663,6 +798,39 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                     <?php endif; ?>
                 </section>
 
+                <?php if ($compartilhamentoAtivo): ?>
+                    <section class="permutas-compartilhamento <?= !empty($flash['destacar_link']) ? 'destacado' : '' ?>" aria-label="Link público da competência">
+                        <div class="permutas-compartilhamento-info">
+                            <i class="bi bi-shield-check"></i>
+                            <span>
+                                <strong>Visualização somente leitura ativa</strong>
+                                <small>Disponível até <?= htmlspecialchars(permutasDataBr($compartilhamentoAtivo['expira_em'], true)) ?>. A pessoa não precisa entrar no sistema e não pode alterar dados.</small>
+                            </span>
+                        </div>
+                        <div class="permutas-compartilhamento-acoes">
+                            <?php if ($linkCompartilhamentoSessao): ?>
+                                <label class="visually-hidden" for="linkPublicoPermuta">Link público</label>
+                                <input type="text" class="form-control" id="linkPublicoPermuta" value="<?= htmlspecialchars((string)$linkCompartilhamentoSessao['url']) ?>" readonly>
+                                <button type="button" class="btn btn-outline-primary" id="btnCopiarLinkPermuta">
+                                    <i class="bi bi-copy"></i> Copiar link
+                                </button>
+                            <?php else: ?>
+                                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalCompartilharPermuta">
+                                    <i class="bi bi-arrow-repeat"></i> Gerar novo link
+                                </button>
+                            <?php endif; ?>
+                            <form method="post">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(permutasToken()) ?>">
+                                <input type="hidden" name="acao" value="revogar_compartilhamento">
+                                <input type="hidden" name="competencia" value="<?= htmlspecialchars($competencia) ?>">
+                                <button type="submit" class="btn btn-outline-danger">
+                                    <i class="bi bi-link-45deg"></i> Revogar
+                                </button>
+                            </form>
+                        </div>
+                    </section>
+                <?php endif; ?>
+
                 <section class="permutas-resumo" aria-label="Resumo da competência">
                     <div>
                         <span>Competência</span>
@@ -687,18 +855,6 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                         </div>
                     <?php endif; ?>
                 </section>
-
-                <?php if ($status === 'enviado'): ?>
-                    <div class="alert alert-primary d-flex flex-wrap justify-content-between align-items-center gap-3">
-                        <span><i class="bi bi-send-check me-1"></i> PDF enviado para <?= htmlspecialchars((string)$competenciaRegistro['email_destinatario']) ?>.</span>
-                        <form method="post">
-                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(permutasToken()) ?>">
-                            <input type="hidden" name="acao" value="confirmar_recebimento">
-                            <input type="hidden" name="competencia" value="<?= htmlspecialchars($competencia) ?>">
-                            <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check2"></i> Marcar como confirmado</button>
-                        </form>
-                    </div>
-                <?php endif; ?>
 
                 <section class="permutas-lista">
                     <div class="permutas-secao-titulo">
@@ -950,6 +1106,46 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
             </div>
         </div>
 
+        <div class="modal fade" id="modalCompartilharPermuta" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form method="post">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(permutasToken()) ?>">
+                        <input type="hidden" name="acao" value="criar_compartilhamento">
+                        <input type="hidden" name="competencia" value="<?= htmlspecialchars($competencia) ?>">
+                        <div class="modal-header">
+                            <div>
+                                <h5 class="modal-title">Compartilhar permuta</h5>
+                                <p class="text-muted small mb-0">Acesso sem login e somente para visualização.</p>
+                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="permutas-compartilhar-aviso">
+                                <i class="bi bi-shield-lock"></i>
+                                <span>O link mostra apenas esta competência, o PDF e seus anexos. Não permite cadastrar, editar ou excluir nada.</span>
+                            </div>
+                            <label for="permutaDiasValidade" class="form-label mt-3">Validade do link</label>
+                            <select class="form-select" name="dias_validade" id="permutaDiasValidade">
+                                <option value="7">7 dias</option>
+                                <option value="15">15 dias</option>
+                                <option value="30" selected>30 dias</option>
+                                <option value="60">60 dias</option>
+                                <option value="90">90 dias</option>
+                            </select>
+                            <?php if ($compartilhamentoAtivo): ?>
+                                <p class="form-text mb-0">Ao gerar um novo link, o atual será revogado automaticamente.</p>
+                            <?php endif; ?>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-link-45deg"></i> Gerar link</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <div class="modal fade" id="modalEnviarPermuta" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered modal-lg">
                 <div class="modal-content">
@@ -960,7 +1156,7 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                         <div class="modal-header">
                             <div>
                                 <h5 class="modal-title">Enviar relatório ao financeiro</h5>
-                                <p class="text-muted small mb-0"><?= $anexosDigitalizados !== [] ? 'O PDF do LOGI e todos os arquivos digitalizados serão anexados automaticamente.' : 'O PDF do LOGI será anexado automaticamente.' ?></p>
+                                <p class="text-muted small mb-0"><?= $anexosDigitalizados !== [] ? 'O PDF, o link de visualização e todos os arquivos digitalizados serão enviados.' : 'O PDF e o link de visualização serão enviados automaticamente.' ?></p>
                             </div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                         </div>
                         <div class="modal-body">
@@ -971,7 +1167,7 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                             <div class="mb-3"><label for="permutaAssunto" class="form-label">Assunto</label><input type="text" class="form-control" name="assunto" id="permutaAssunto" value="<?= htmlspecialchars($assuntoPadrao) ?>" maxlength="255" required></div>
                             <div><label for="permutaMensagemEmail" class="form-label">Mensagem</label><textarea class="form-control" name="mensagem_email" id="permutaMensagemEmail" rows="6" required><?= htmlspecialchars($mensagemPadrao) ?></textarea></div>
                         </div>
-                        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-primary" id="btnEnviarPermuta"><i class="bi bi-send"></i> Enviar com PDF</button></div>
+                        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-primary" id="btnEnviarPermuta"><i class="bi bi-send"></i> Enviar PDF e link</button></div>
                     </form>
                 </div>
             </div>
@@ -982,6 +1178,15 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
     <?php if ($estruturaDisponivel): ?>
         <script>
             (function() {
+                window.setTimeout(function() {
+                    document.querySelectorAll('.alert-auto-dismiss').forEach(function(alerta) {
+                        alerta.classList.remove('show');
+                        window.setTimeout(function() {
+                            alerta.remove();
+                        }, 200);
+                    });
+                }, 4000);
+
                 const modalItemElemento = document.getElementById('modalItemPermuta');
                 const modalItem = modalItemElemento ? bootstrap.Modal.getOrCreateInstance(modalItemElemento) : null;
                 const modalExcluirElemento = document.getElementById('modalExcluirPermuta');
@@ -1064,6 +1269,27 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                 });
                 itemSelecionado?.addEventListener('change', atualizarItemSelecionado);
                 outroItem?.addEventListener('input', atualizarItemSelecionado);
+
+                document.getElementById('btnCopiarLinkPermuta')?.addEventListener('click', async function() {
+                    const botao = this;
+                    const campo = document.getElementById('linkPublicoPermuta');
+                    if (!campo) {
+                        return;
+                    }
+
+                    try {
+                        await navigator.clipboard.writeText(campo.value);
+                    } catch (erro) {
+                        campo.focus();
+                        campo.select();
+                        document.execCommand('copy');
+                    }
+
+                    botao.innerHTML = '<i class="bi bi-check2"></i> Copiado';
+                    window.setTimeout(function() {
+                        botao.innerHTML = '<i class="bi bi-copy"></i> Copiar link';
+                    }, 1800);
+                });
 
                 document.querySelectorAll('.btn-editar-permuta').forEach(function(botao) {
                     botao.addEventListener('click', function() {

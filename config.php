@@ -1,6 +1,7 @@
 <?php
 date_default_timezone_set('America/Sao_Paulo');
-if (session_status() === PHP_SESSION_NONE) {
+$logiAcessoPublico = defined('LOGI_PUBLIC_ACCESS') && LOGI_PUBLIC_ACCESS === true;
+if (!$logiAcessoPublico && session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
@@ -56,9 +57,12 @@ try {
     $pdo = $authPdo;
     $conn = $authConn;
 
-    atualizarSessaoUsuario($authPdo);
+    $acessoPublico = $logiAcessoPublico;
+    if (!$acessoPublico) {
+        atualizarSessaoUsuario($authPdo);
+    }
 
-    if (!empty($_SESSION['tenant_db'])) {
+    if (!$acessoPublico && !empty($_SESSION['tenant_db'])) {
         $host = $_SESSION['tenant_host'] ?: $centralHost;
         $db = $_SESSION['tenant_db'];
         $user = $_SESSION['tenant_user'] ?: $centralUser;
