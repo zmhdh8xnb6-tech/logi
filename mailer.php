@@ -19,7 +19,15 @@ function enviarEmailComAnexos($para, $nome, $assunto, $mensagemHtml, array $anex
         $mail->Port = (int)(getenv('SMTP_PORT') ?: 587);
 
         $mail->setFrom(getenv('SMTP_FROM_ADDRESS') ?: $mail->Username, 'FECON LOGISTICA');
-        $mail->addAddress($para, $nome);
+        $destinatarios = is_array($para) ? $para : [$para];
+        foreach ($destinatarios as $indice => $destinatario) {
+            $endereco = trim((string)$destinatario);
+            if (!filter_var($endereco, FILTER_VALIDATE_EMAIL)) {
+                throw new Exception('Endereço de e-mail inválido: ' . $endereco);
+            }
+
+            $mail->addAddress($endereco, $indice === 0 ? (string)$nome : '');
+        }
 
         $mail->isHTML(true);
         $mail->CharSet = 'UTF-8';

@@ -271,6 +271,116 @@ function permutasUltimoDestinatario(PDO $pdo): string
     return trim((string)($stmt->fetchColumn() ?: ''));
 }
 
+function permutasEmailsNormalizar(string|array|null $valor): array
+{
+    $texto = is_array($valor)
+        ? implode(',', array_map(static fn($item): string => (string)$item, $valor))
+        : (string)$valor;
+    $partes = preg_split('/[\s,;]+/u', trim($texto), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $emails = [];
+    $vistos = [];
+
+    foreach ($partes as $parte) {
+        $email = trim((string)$parte);
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new InvalidArgumentException('E-mail inválido: ' . $email . '.');
+        }
+
+        $chave = mb_strtolower($email);
+        if (!isset($vistos[$chave])) {
+            $emails[] = $email;
+            $vistos[$chave] = true;
+        }
+    }
+
+    if (count($emails) > 10) {
+        throw new InvalidArgumentException('Informe no máximo 10 e-mails por envio.');
+    }
+
+    return $emails;
+}
+
+function permutasEmailsTexto(array $emails): string
+{
+    return implode(', ', permutasEmailsNormalizar($emails));
+}
+
+function permutasHabilitarDestinatariosPadrao(PDO $pdo): bool
+{
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS permutas_destinatarios (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                empresa_id INT NOT NULL DEFAULT 1,
+                email VARCHAR(254) NOT NULL,
+                criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                UNIQUE KEY uk_permutas_destinatario_empresa_email (empresa_id, email),
+                KEY idx_permutas_destinatarios_empresa (empresa_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+        $colunasTexto = [
+            ['tabela' => 'permutas_competencias', 'coluna' => 'email_destinatario', 'nulo' => 'NULL'],
+            ['tabela' => 'permutas_envios', 'coluna' => 'destinatario', 'nulo' => 'NOT NULL'],
+        ];
+
+        $stmtTipo = $pdo->prepare("
+            SELECT DATA_TYPE
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = ?
+              AND COLUMN_NAME = ?
+            LIMIT 1
+        ");
+
+        foreach ($colunasTexto as $colunaTexto) {
+            $stmtTipo->execute([$colunaTexto['tabela'], $colunaTexto['coluna']]);
+            $tipoAtual = strtolower((string)($stmtTipo->fetchColumn() ?: ''));
+            if (!in_array($tipoAtual, ['text', 'mediumtext', 'longtext'], true)) {
+                $pdo->exec(sprintf(
+                    'ALTER TABLE `%s` MODIFY `%s` TEXT %s',
+                    $colunaTexto['tabela'],
+                    $colunaTexto['coluna'],
+                    $colunaTexto['nulo']
+                ));
+            }
+        }
+
+        return true;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function permutasDestinatariosPadrao(PDO $pdo): array
+{
+    $stmt = $pdo->prepare('
+        SELECT email
+        FROM permutas_destinatarios
+        WHERE empresa_id = ?
+        ORDER BY id ASC
+    ');
+    $stmt->execute([permutasEmpresaId($pdo)]);
+
+    return permutasEmailsNormalizar($stmt->fetchAll(PDO::FETCH_COLUMN));
+}
+
+function permutasSalvarDestinatariosPadrao(PDO $pdo, array $emails): void
+{
+    $emails = permutasEmailsNormalizar($emails);
+    $empresaId = permutasEmpresaId($pdo);
+    $pdo->prepare('DELETE FROM permutas_destinatarios WHERE empresa_id = ?')->execute([$empresaId]);
+
+    $stmt = $pdo->prepare('
+        INSERT INTO permutas_destinatarios (empresa_id, email)
+        VALUES (?, ?)
+    ');
+    foreach ($emails as $email) {
+        $stmt->execute([$empresaId, $email]);
+    }
+}
+
 function permutasHabilitarMultiplosAnexos(PDO $pdo): bool
 {
     try {

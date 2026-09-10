@@ -268,13 +268,14 @@ function avisosParcelamentosImpressao(PDO $pdo): array
     return $avisos;
 }
 
-function renderizarBotaoImpressaoParcelamentos(string $orgao): void
+function renderizarBotaoImpressaoParcelamentos(string $orgao, bool $registrarImpressao = true): void
 {
 ?>
     <button
         type="button"
         class="btn btn-sm btn-outline-secondary btn-imprimir-parcelamentos"
         data-orgao="<?= htmlspecialchars($orgao) ?>"
+        data-registrar-impressao="<?= $registrarImpressao ? '1' : '0' ?>"
         title="Imprimir dados">
         <i class="bi bi-printer"></i> Imprimir
     </button>
@@ -285,23 +286,61 @@ function renderizarScriptImpressaoParcelamentos(): void
 {
 ?>
     <script>
-        document.querySelectorAll('.btn-imprimir-parcelamentos').forEach(function(botao) {
-            botao.addEventListener('click', function() {
-                const orgao = botao.dataset.orgao || '';
-                const dados = new URLSearchParams();
-                dados.append('orgao', orgao);
+        (function() {
+            const parametrosAtuais = new URLSearchParams(window.location.search);
 
-                fetch('registrar_impressao_parcelamentos.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: dados.toString()
-                }).finally(function() {
-                    window.print();
+            if (parametrosAtuais.get('imprimir') === 'todos') {
+                window.addEventListener('load', function() {
+                    setTimeout(function() {
+                        window.print();
+                    }, 150);
+                });
+
+                window.addEventListener('afterprint', function() {
+                    if (window.opener) {
+                        window.close();
+                        return;
+                    }
+
+                    parametrosAtuais.delete('imprimir');
+                    const retorno = window.location.pathname +
+                        (parametrosAtuais.toString() ? '?' + parametrosAtuais.toString() : '');
+                    window.location.replace(retorno);
+                });
+                return;
+            }
+
+            document.querySelectorAll('.btn-imprimir-parcelamentos').forEach(function(botao) {
+                botao.addEventListener('click', function() {
+                    const orgao = botao.dataset.orgao || '';
+                    const urlImpressao = new URL(window.location.href);
+                    urlImpressao.searchParams.set('imprimir', 'todos');
+                    urlImpressao.searchParams.delete('pagina');
+
+                    const janelaImpressao = window.open(urlImpressao.toString(), '_blank');
+
+                    if (!janelaImpressao) {
+                        window.location.href = urlImpressao.toString();
+                    }
+
+                    if (botao.dataset.registrarImpressao !== '1') {
+                        return;
+                    }
+
+                    const dados = new URLSearchParams({
+                        orgao: orgao
+                    });
+
+                    fetch('registrar_impressao_parcelamentos.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: dados.toString()
+                    });
                 });
             });
-        });
+        })();
     </script>
 <?php
 }
@@ -512,8 +551,11 @@ function paginarParcelamentosPorOrgao(
     $porPagina = parcelamentosPorPaginaSelecionado();
     $busca = trim((string)($_GET['busca'] ?? ''));
     $total = contarParcelamentosPorOrgao($pdo, $orgao, $cancelados, $liquidados, $busca);
-    $totalPaginas = max(1, (int)ceil($total / $porPagina));
-    $pagina = min($totalPaginas, max(1, (int)($_GET['pagina'] ?? 1)));
+    $modoImpressao = parcelamentosModoImpressao();
+    $totalPaginas = $modoImpressao ? 1 : max(1, (int)ceil($total / $porPagina));
+    $pagina = $modoImpressao
+        ? 1
+        : min($totalPaginas, max(1, (int)($_GET['pagina'] ?? 1)));
     $offset = ($pagina - 1) * $porPagina;
 
     return [
@@ -523,7 +565,7 @@ function paginarParcelamentosPorOrgao(
             $cancelados,
             $liquidados,
             $busca,
-            $porPagina,
+            $modoImpressao ? null : $porPagina,
             $offset
         ),
         'busca' => $busca,
@@ -532,6 +574,11 @@ function paginarParcelamentosPorOrgao(
         'total' => $total,
         'total_paginas' => $totalPaginas,
     ];
+}
+
+function parcelamentosModoImpressao(): bool
+{
+    return ($_GET['imprimir'] ?? '') === 'todos';
 }
 
 function parcelamentosPorPaginaSelecionado(): int
@@ -681,6 +728,10 @@ function renderizarResultadoRevisaoLiquidacoes(): void
 
 function renderizarRevisaoLiquidacoesPendentes(string $orgao): void
 {
+    if (parcelamentosModoImpressao()) {
+        return;
+    }
+
     $pendentes = $GLOBALS['parcelamentos_pendentes_liquidacao'] ?? [];
 
     if (!$pendentes) {
