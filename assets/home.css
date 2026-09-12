@@ -225,6 +225,10 @@
     --card-accent: #f97316;
 }
 
+.card-assinaturas-email {
+    --card-accent: #0f766e;
+}
+
 .card-usuarios {
     --card-accent: #475569;
 }

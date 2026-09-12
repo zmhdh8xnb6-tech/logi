@@ -43,6 +43,13 @@ exigirPermissao('outros_servicos');
                         <p>Retiradas mensais e envio ao financeiro</p>
                     </div>
                 </div>
+                <div class="col-md-4">
+                    <div class="card-servico card-assinaturas-email" onclick="location.href='assinaturas_email.php'">
+                        <div class="icon"><i class="bi bi-cloud-check"></i></div>
+                        <h5>Assinaturas de E-mail</h5>
+                        <p>Espaço, cartões e datas de desconto</p>
+                    </div>
+                </div>
             </div>
         </div>
     </main>

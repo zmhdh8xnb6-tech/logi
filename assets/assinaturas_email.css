@@ -1,0 +1,151 @@
+.assinaturas-email-page .container-fluid {
+    padding-bottom: 40px;
+}
+
+.assinaturas-email-controle {
+    overflow: hidden;
+    border: 1px solid #dce3eb;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .04);
+}
+
+.assinaturas-email-filtros {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #e7ebf0;
+}
+
+.assinaturas-email-busca {
+    width: min(620px, 100%);
+}
+
+.assinaturas-email-filtros>.form-select {
+    width: 138px;
+}
+
+.assinaturas-email-total {
+    margin-left: auto;
+    color: #64748b;
+    font-size: .82rem;
+    white-space: nowrap;
+}
+
+.assinaturas-email-controle .table th {
+    padding: 10px 14px;
+    border-bottom-color: #dce3eb;
+    background: #f7f9fc;
+    color: #64748b;
+    font-size: .72rem;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.assinaturas-email-controle .table td {
+    padding: 10px 14px;
+    border-bottom-color: #edf0f4;
+    color: #172033;
+    font-size: .86rem;
+}
+
+.assinaturas-email-controle .table tbody tr:hover {
+    background: #f8fafc;
+}
+
+.assinaturas-email-cartao {
+    font-weight: 700;
+    letter-spacing: 0;
+    white-space: nowrap;
+}
+
+.assinaturas-email-observacao {
+    max-width: 280px;
+    overflow: hidden;
+    color: #64748b !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.assinaturas-email-paginacao {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 13px 16px;
+    border-top: 1px solid #e7ebf0;
+}
+
+.assinaturas-email-paginacao span {
+    color: #64748b;
+    font-size: .82rem;
+}
+
+#historicoCartao {
+    width: min(430px, 100vw);
+}
+
+.assinaturas-email-historico-item {
+    position: relative;
+    margin-left: 7px;
+    padding: 0 0 20px 20px;
+    border-left: 1px solid #cbd5e1;
+}
+
+.assinaturas-email-historico-item::before {
+    content: "";
+    position: absolute;
+    top: 4px;
+    left: -5px;
+    width: 9px;
+    height: 9px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    background: #1368f5;
+    box-shadow: 0 0 0 1px #1368f5;
+}
+
+.assinaturas-email-historico-item small,
+.assinaturas-email-historico-item strong,
+.assinaturas-email-historico-item span {
+    display: block;
+}
+
+.assinaturas-email-historico-item small,
+.assinaturas-email-historico-item span {
+    color: #64748b;
+    font-size: .78rem;
+}
+
+.assinaturas-email-historico-item strong {
+    margin: 3px 0;
+    color: #172033;
+    font-size: .95rem;
+}
+
+.assinaturas-email-sql {
+    max-height: 360px;
+    overflow: auto;
+    padding: 14px;
+    border-radius: 7px;
+    background: #172033;
+    color: #f8fafc;
+    white-space: pre-wrap;
+}
+
+@media (max-width: 760px) {
+    .assinaturas-email-filtros {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .assinaturas-email-busca,
+    .assinaturas-email-filtros>.form-select {
+        width: 100%;
+    }
+
+    .assinaturas-email-total {
+        margin-left: 0;
+    }
+}

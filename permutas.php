@@ -671,7 +671,6 @@ if ($estruturaDisponivel) {
 }
 
 $total = permutasTotal($itens);
-$status = (string)($competenciaRegistro['status'] ?? 'em_preenchimento');
 $dataCompetencia = DateTime::createFromFormat('!Y-m', $competencia) ?: new DateTime('first day of this month');
 $competenciaAnterior = (clone $dataCompetencia)->modify('-1 month')->format('Y-m');
 $competenciaSeguinte = (clone $dataCompetencia)->modify('+1 month')->format('Y-m');
@@ -880,10 +879,6 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                         <span>Total do mês</span>
                         <strong class="permutas-total-destaque"><?= htmlspecialchars(permutasMoeda($total)) ?></strong>
                     </div>
-                    <div>
-                        <span>Situação</span>
-                        <strong><span class="badge <?= permutasStatusClasse($status) ?>"><?= htmlspecialchars(permutasStatusRotulo($status)) ?></span></strong>
-                    </div>
                     <?php if (!empty($competenciaRegistro['enviado_em'])): ?>
                         <div>
                             <span>Último envio</span>
@@ -971,7 +966,7 @@ $mensagemPadrao = "Olá,\n\nSegue o relatório dos itens retirados por permuta n
                                     <?php $mesHistorico = date('Y-m', strtotime($historico['competencia'])); ?>
                                     <a href="?competencia=<?= htmlspecialchars($mesHistorico) ?>" class="permutas-competencia-item <?= $mesHistorico === $competencia ? 'ativo' : '' ?>">
                                         <span><strong><?= htmlspecialchars(permutasCompetenciaRotulo($mesHistorico)) ?></strong><small><?= (int)$historico['itens_total'] ?> item(ns)</small></span>
-                                        <span class="text-end"><strong><?= htmlspecialchars(permutasMoeda((float)$historico['valor_total'])) ?></strong><small><?= htmlspecialchars(permutasStatusRotulo($historico['status'])) ?></small></span>
+                                        <span class="text-end"><strong><?= htmlspecialchars(permutasMoeda((float)$historico['valor_total'])) ?></strong></span>
                                     </a>
                                 <?php endforeach; ?>
                             </div>
